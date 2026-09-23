@@ -13,7 +13,7 @@
         "UNICODE",
         "_UNICODE"
       ],
-      "libraries": ["ole32.lib", "uuid.lib"],
+      "libraries": ["ole32.lib", "uuid.lib", "mmdevapi.lib"],
       "msvs_settings": {
         "VCCLCompilerTool": {
           "AdditionalOptions": ["/std:c++20"],
