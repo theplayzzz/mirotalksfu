@@ -1,0 +1,13 @@
+[Unit]
+Description=Firewall rules for MiroTalk SFU development media ports
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/home/devuser/mirotalksfu-dev/ops/mirotalksfu-dev-firewall.sh start
+ExecStop=/home/devuser/mirotalksfu-dev/ops/mirotalksfu-dev-firewall.sh stop
+
+[Install]
+WantedBy=multi-user.target

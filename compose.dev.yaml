@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: mirotalksfu-dev:d6f523dc-phase1
+    image: mirotalksfu-dev:${MIROTALK_DEV_IMAGE_TAG:-phase1}
     container_name: mirotalksfu-dev
     hostname: mirotalksfu-dev
     user: "1000:1000"
@@ -30,6 +30,9 @@ services:
     pids_limit: 384
     security_opt:
       - no-new-privileges:true
+    labels:
+      org.opencontainers.image.source: https://github.com/theplayzzz/mirotalksfu
+      org.opencontainers.image.revision: ${MIROTALK_DEV_REVISION:-local}
     logging:
       driver: json-file
       options:

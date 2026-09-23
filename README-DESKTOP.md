@@ -47,6 +47,7 @@ comportamento.
 - Aplicação Windows: `desktop/`.
 - Ambiente isolado: `compose.dev.yaml`, porta HTTP local 3013 e mídia
   TCP/UDP 40200–40300.
+- Firewall persistente isolado: `ops/mirotalksfu-dev-firewall.service`.
 - Produção não utiliza esses arquivos e permanece no checkout separado
   `/home/devuser/mirotalksfu`.
 
