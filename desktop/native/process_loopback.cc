@@ -33,7 +33,7 @@ constexpr WORD kChannels = 2;
 constexpr WORD kBitsPerSample = 16;
 
 struct AudioEvent {
-    enum class Kind { Ready, Audio, Error, Stopped } kind;
+    enum class Kind { Activated, Ready, Audio, Error, Stopped } kind;
     std::vector<uint8_t> pcm;
     std::string message;
 };
@@ -143,6 +143,9 @@ class ProcessLoopbackCapture {
         napi_status status = callback_.NonBlockingCall(event, [](Napi::Env env, Napi::Function callback, AudioEvent* item) {
             Napi::Object payload = Napi::Object::New(env);
             switch (item->kind) {
+                case AudioEvent::Kind::Activated:
+                    payload.Set("type", "activated");
+                    break;
                 case AudioEvent::Kind::Ready:
                     payload.Set("type", "ready");
                     payload.Set("sampleRate", kSampleRate);
@@ -219,6 +222,7 @@ class ProcessLoopbackCapture {
         if (SUCCEEDED(hr)) {
             failedOperation = "A ativação do áudio por processo";
             hr = ActivateProcessAudio(processId, audioClient);
+            if (SUCCEEDED(hr)) Post(new AudioEvent{AudioEvent::Kind::Activated});
         }
 
         WAVEFORMATEX format{};

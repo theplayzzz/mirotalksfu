@@ -10,14 +10,26 @@ app.whenReady().then(() => {
         throw new Error('O módulo WASAPI não expôs a interface esperada.');
     }
     let finished = false;
+    let activated = false;
     addon.start(process.pid, (message) => {
         if (finished) return;
+        if (message.type === 'activated') {
+            activated = true;
+            console.log(JSON.stringify({ nativeAddon: 'process-activation-ready', system }));
+            return;
+        }
         if (message.type === 'error') {
             finished = true;
-            console.error(JSON.stringify({ nativeAddon: 'error', system, message: message.message }));
+            const headlessRunnerWithoutEndpoint = activated && /HRESULT 0x88890010\b/.test(message.message);
+            const output = {
+                nativeAddon: headlessRunnerWithoutEndpoint ? 'activation-only' : 'error',
+                system,
+                message: message.message,
+            };
+            (headlessRunnerWithoutEndpoint ? console.warn : console.error)(JSON.stringify(output));
             setImmediate(() => {
                 addon.stop();
-                app.exit(1);
+                app.exit(headlessRunnerWithoutEndpoint ? 0 : 1);
             });
             return;
         }

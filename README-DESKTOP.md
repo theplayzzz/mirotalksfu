@@ -10,9 +10,12 @@ processo interrompe o compartilhamento da janela e nunca ativa o loopback do
 sistema como alternativa silenciosa.
 
 Desde a versão 0.1.1, o callback assíncrono do WASAPI usa o *free-threaded
-marshaler* exigido pela API do Windows. O workflow também inicia de fato uma
-captura por processo no runner; carregar o arquivo nativo sem exercitar a API
-não é mais considerado um teste suficiente.
+marshaler* exigido pela API do Windows. O workflow também executa de fato a
+ativação por processo no runner; carregar o arquivo nativo sem exercitar a API
+não é mais considerado um teste suficiente. Como o runner Windows não possui
+um endpoint de áudio, ele aceita `AUDCLNT_E_ENDPOINT_CREATE_FAILED` somente
+depois de provar que a ativação por processo foi concluída. `capture-ready`
+continua sendo exigido no teste humano com hardware de áudio real.
 
 ## Artefato Windows
 
