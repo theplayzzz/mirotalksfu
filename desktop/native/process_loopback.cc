@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <audioclient.h>
 #include <audioclientactivationparams.h>
+#include <mmdeviceapi.h>
 #include <winternl.h>
 #include <wrl/client.h>
 
