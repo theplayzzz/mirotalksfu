@@ -17,6 +17,7 @@ services:
     environment:
       SERVER_HOST_URL: https://mirotalk-dev.5-161-64-137.sslip.io
       SERVER_LISTEN_PORT: "3010"
+      CORS_ORIGIN: https://mirotalk-dev.5-161-64-137.sslip.io
       SFU_ANNOUNCED_IP: 5.161.64.137
       SFU_LISTEN_IP: 0.0.0.0
       SFU_MIN_PORT: "40200"
