@@ -8,6 +8,7 @@
 #include <mmdeviceapi.h>
 #include <winternl.h>
 #include <wrl/client.h>
+#include <wrl/implements.h>
 
 #include <atomic>
 #include <iomanip>
@@ -19,6 +20,11 @@
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
+using Microsoft::WRL::FtmBase;
+using Microsoft::WRL::Make;
+using Microsoft::WRL::RuntimeClass;
+using Microsoft::WRL::RuntimeClassFlags;
+using Microsoft::WRL::ClassicCom;
 
 namespace {
 
@@ -36,30 +42,35 @@ std::string HResultMessage(const char* operation, HRESULT hr) {
     std::ostringstream out;
     out << operation << " falhou (HRESULT 0x" << std::hex << std::uppercase
         << static_cast<unsigned long>(hr) << ")";
+
+    char* systemMessage = nullptr;
+    DWORD length = FormatMessageA(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr,
+        static_cast<DWORD>(hr),
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        reinterpret_cast<char*>(&systemMessage),
+        0,
+        nullptr);
+    if (length && systemMessage) {
+        std::string detail(systemMessage, length);
+        while (!detail.empty() && (detail.back() == '\r' || detail.back() == '\n' || detail.back() == ' ')) {
+            detail.pop_back();
+        }
+        if (!detail.empty()) out << ": " << detail;
+    }
+    if (systemMessage) LocalFree(systemMessage);
     return out.str();
 }
 
-class ActivationHandler final : public IActivateAudioInterfaceCompletionHandler {
+// ActivateAudioInterfaceAsync completes on another COM apartment. FtmBase makes
+// the callback agile, matching Microsoft's ApplicationLoopback reference sample.
+class ActivationHandler final
+    : public RuntimeClass<RuntimeClassFlags<ClassicCom>, FtmBase, IActivateAudioInterfaceCompletionHandler> {
   public:
-    explicit ActivationHandler(HANDLE completed) : completed_(completed) {}
-
-    STDMETHODIMP QueryInterface(REFIID iid, void** object) override {
-        if (!object) return E_POINTER;
-        if (iid == __uuidof(IUnknown) || iid == __uuidof(IActivateAudioInterfaceCompletionHandler)) {
-            *object = static_cast<IActivateAudioInterfaceCompletionHandler*>(this);
-            AddRef();
-            return S_OK;
-        }
-        *object = nullptr;
-        return E_NOINTERFACE;
-    }
-
-    STDMETHODIMP_(ULONG) AddRef() override { return ++references_; }
-
-    STDMETHODIMP_(ULONG) Release() override {
-        ULONG remaining = --references_;
-        if (!remaining) delete this;
-        return remaining;
+    ActivationHandler() : completed_(CreateEventW(nullptr, TRUE, FALSE, nullptr)) {}
+    ~ActivationHandler() {
+        if (completed_) CloseHandle(completed_);
     }
 
     STDMETHODIMP ActivateCompleted(IActivateAudioInterfaceAsyncOperation* operation) override {
@@ -74,10 +85,9 @@ class ActivationHandler final : public IActivateAudioInterfaceCompletionHandler 
 
     HRESULT result() const { return result_; }
     ComPtr<IUnknown> activated() const { return activated_; }
+    HANDLE completedEvent() const { return completed_; }
 
   private:
-    ~ActivationHandler() = default;
-    std::atomic<ULONG> references_{1};
     HANDLE completed_ = nullptr;
     HRESULT result_ = E_PENDING;
     ComPtr<IUnknown> activated_;
@@ -159,10 +169,9 @@ class ProcessLoopbackCapture {
     }
 
     HRESULT ActivateProcessAudio(DWORD processId, ComPtr<IAudioClient>& audioClient) {
-        HANDLE completed = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (!completed) return HRESULT_FROM_WIN32(GetLastError());
-
-        ActivationHandler* handler = new ActivationHandler(completed);
+        ComPtr<ActivationHandler> handler = Make<ActivationHandler>();
+        if (!handler) return E_OUTOFMEMORY;
+        if (!handler->completedEvent()) return HRESULT_FROM_WIN32(GetLastError());
         AUDIOCLIENT_ACTIVATION_PARAMS params{};
         params.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
         params.ProcessLoopbackParams.TargetProcessId = processId;
@@ -178,21 +187,21 @@ class ProcessLoopbackCapture {
             VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
             __uuidof(IAudioClient),
             &activationParams,
-            handler,
+            handler.Get(),
             &operation);
 
         if (SUCCEEDED(hr)) {
-            DWORD wait = WaitForSingleObject(completed, 10000);
+            HANDLE waits[] = {stopEvent_, handler->completedEvent()};
+            DWORD wait = WaitForMultipleObjects(2, waits, FALSE, 10000);
             if (wait == WAIT_OBJECT_0) {
+                hr = E_ABORT;
+            } else if (wait == WAIT_OBJECT_0 + 1) {
                 hr = handler->result();
                 if (SUCCEEDED(hr)) hr = handler->activated().As(&audioClient);
             } else {
                 hr = wait == WAIT_TIMEOUT ? HRESULT_FROM_WIN32(ERROR_TIMEOUT) : HRESULT_FROM_WIN32(GetLastError());
             }
         }
-
-        handler->Release();
-        CloseHandle(completed);
         return hr;
     }
 
@@ -206,7 +215,11 @@ class ProcessLoopbackCapture {
         HANDLE audioEvent = nullptr;
         bool started = false;
 
-        if (SUCCEEDED(hr)) hr = ActivateProcessAudio(processId, audioClient);
+        const char* failedOperation = "A inicialização COM";
+        if (SUCCEEDED(hr)) {
+            failedOperation = "A ativação do áudio por processo";
+            hr = ActivateProcessAudio(processId, audioClient);
+        }
 
         WAVEFORMATEX format{};
         format.wFormatTag = WAVE_FORMAT_PCM;
@@ -217,10 +230,12 @@ class ProcessLoopbackCapture {
         format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
 
         if (SUCCEEDED(hr)) {
+            failedOperation = "A criação do evento de áudio";
             audioEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
             if (!audioEvent) hr = HRESULT_FROM_WIN32(GetLastError());
         }
         if (SUCCEEDED(hr)) {
+            failedOperation = "A inicialização do cliente de áudio";
             hr = audioClient->Initialize(
                 AUDCLNT_SHAREMODE_SHARED,
                 AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
@@ -230,14 +245,23 @@ class ProcessLoopbackCapture {
                 &format,
                 nullptr);
         }
-        if (SUCCEEDED(hr)) hr = audioClient->GetService(IID_PPV_ARGS(&captureClient));
-        if (SUCCEEDED(hr)) hr = audioClient->SetEventHandle(audioEvent);
-        if (SUCCEEDED(hr)) hr = audioClient->Start();
+        if (SUCCEEDED(hr)) {
+            failedOperation = "A obtenção do serviço de captura";
+            hr = audioClient->GetService(IID_PPV_ARGS(&captureClient));
+        }
+        if (SUCCEEDED(hr)) {
+            failedOperation = "A configuração do evento de áudio";
+            hr = audioClient->SetEventHandle(audioEvent);
+        }
+        if (SUCCEEDED(hr)) {
+            failedOperation = "O início da captura de áudio";
+            hr = audioClient->Start();
+        }
         if (SUCCEEDED(hr)) {
             started = true;
             Post(new AudioEvent{AudioEvent::Kind::Ready});
         } else {
-            Post(new AudioEvent{AudioEvent::Kind::Error, {}, HResultMessage("A captura WASAPI", hr)});
+            Post(new AudioEvent{AudioEvent::Kind::Error, {}, HResultMessage(failedOperation, hr)});
         }
 
         HANDLE waits[] = {stopEvent_, audioEvent};

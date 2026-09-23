@@ -18,8 +18,18 @@ async function getMiroTalkDisplayMedia(constraints) {
 
     await stopMiroTalkDesktopCapture();
 
-    const stream = await navigator.mediaDevices.getDisplayMedia(constraints);
-    const selection = await desktop.consumeSelection();
+    let stream;
+    let selection;
+    try {
+        stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+        selection = await desktop.consumeSelection();
+    } catch (error) {
+        selection = await desktop.consumeSelection().catch(() => null);
+        if (selection?.cancelled) {
+            throw new DOMException('Compartilhamento de tela cancelado pelo usuário.', 'NotAllowedError');
+        }
+        throw error;
+    }
 
     if (!selection) {
         stopStream(stream);

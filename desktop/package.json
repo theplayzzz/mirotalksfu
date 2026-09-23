@@ -1,6 +1,6 @@
 {
   "name": "mirotalk-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MiroTalk SFU desktop proof of concept with Windows per-process audio capture",
   "license": "AGPL-3.0",
   "main": "src/main.js",

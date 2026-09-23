@@ -3190,6 +3190,11 @@ function detectCameraFacingMode(stream) {
 // ####################################################
 
 function handleMediaError(mediaType, err, redirectURL = false) {
+    if (mediaType === 'screenType' && err.name === 'NotAllowedError') {
+        console.warn('User cancelled the screen sharing prompt');
+        return;
+    }
+
     sound('alert');
 
     let errMessage = err;
@@ -3221,11 +3226,6 @@ function handleMediaError(mediaType, err, redirectURL = false) {
         default:
             getUserMediaError = false;
             break;
-    }
-
-    if (mediaType === 'screenType' && err.name === 'NotAllowedError') {
-        console.warn('User cancelled the screen sharing prompt');
-        return;
     }
 
     let html = `

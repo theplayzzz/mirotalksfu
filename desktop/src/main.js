@@ -10,6 +10,7 @@ const nativeAudio = require(path.join(__dirname, '..', 'build', 'Release', 'proc
 
 let mainWindow;
 let activePicker;
+let shuttingDown = false;
 let nativeOwnerId = null;
 const pendingSelections = new Map();
 const authorizedProcesses = new Map();
@@ -102,6 +103,7 @@ function configureDisplayCapture() {
         try {
             const source = await chooseDesktopSource(mainWindow);
             if (!source) {
+                pendingSelections.set(mainWindow.webContents.id, { cancelled: true });
                 callback(null);
                 return;
             }
@@ -147,8 +149,12 @@ function createMainWindow() {
     mainWindow.webContents.on('will-navigate', (event, url) => {
         if (!isTrustedUrl(url, TRUSTED_ORIGIN)) event.preventDefault();
     });
-    mainWindow.on('closed', () => {
+    mainWindow.on('close', () => {
+        shuttingDown = true;
+        if (activePicker && !activePicker.window.isDestroyed()) activePicker.window.close();
         nativeAudio.stop();
+    });
+    mainWindow.on('closed', () => {
         mainWindow = null;
     });
     mainWindow.loadURL(APP_URL);
@@ -194,6 +200,10 @@ ipcMain.handle('desktop-capture:start-audio', async (event, processId) => {
 
     nativeAudio.stop();
     nativeOwnerId = ownerId;
+    const windows = nativeAudio.getWindowsBuild();
+    const systemSuffix = windows?.build
+        ? ` [Windows ${windows.major}.${windows.minor}, build ${windows.build}; app ${app.getVersion()}]`
+        : ` [build do Windows indisponível; app ${app.getVersion()}]`;
 
     return new Promise((resolve, reject) => {
         let settled = false;
@@ -213,7 +223,9 @@ ipcMain.handle('desktop-capture:start-audio', async (event, processId) => {
 
         try {
             nativeAudio.start(processId, (message) => {
-                if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.id !== ownerId) return;
+                if (shuttingDown || !mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.id !== ownerId) {
+                    return;
+                }
                 if (message.type === 'ready') {
                     finish(resolve, {
                         sampleRate: message.sampleRate,
@@ -227,12 +239,13 @@ ipcMain.handle('desktop-capture:start-audio', async (event, processId) => {
                         channels: message.channels,
                     });
                 } else if (message.type === 'error') {
-                    finish(reject, new Error(message.message));
-                    mainWindow.webContents.send('desktop-capture:audio-error', message.message);
+                    const diagnostic = `${message.message}${systemSuffix}`;
+                    finish(reject, new Error(diagnostic));
+                    mainWindow.webContents.send('desktop-capture:audio-error', diagnostic);
                 }
             });
         } catch (error) {
-            finish(reject, error);
+            finish(reject, new Error(`${error.message}${systemSuffix}`));
         }
     });
 });
@@ -253,4 +266,8 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => nativeAudio.stop());
+app.on('before-quit', () => {
+    shuttingDown = true;
+    if (activePicker && !activePicker.window.isDestroyed()) activePicker.window.close();
+    nativeAudio.stop();
+});

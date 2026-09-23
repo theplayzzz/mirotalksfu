@@ -44,17 +44,17 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifact | Out-Null
-          Copy-Item dist/MiroTalk-Desktop-0.1.0-x64.exe artifact/
+          Copy-Item dist/MiroTalk-Desktop-0.1.1-x64.exe artifact/
           git -C .. rev-parse HEAD | Set-Content -NoNewline artifact/git-revision.txt
-          Get-FileHash artifact/MiroTalk-Desktop-0.1.0-x64.exe -Algorithm SHA256 |
-            ForEach-Object { "$($_.Hash.ToLower())  MiroTalk-Desktop-0.1.0-x64.exe" } |
+          Get-FileHash artifact/MiroTalk-Desktop-0.1.1-x64.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  MiroTalk-Desktop-0.1.1-x64.exe" } |
             Set-Content artifact/SHA256SUMS.txt
-          Compress-Archive -Path artifact/* -DestinationPath MiroTalk-Desktop-0.1.0-x64.zip -Force
+          Compress-Archive -Path artifact/* -DestinationPath MiroTalk-Desktop-0.1.1-x64.zip -Force
 
       - name: Upload portable application
         uses: actions/upload-artifact@v4
         with:
-          name: MiroTalk-Desktop-0.1.0-x64
-          path: desktop/MiroTalk-Desktop-0.1.0-x64.zip
+          name: MiroTalk-Desktop-0.1.1-x64
+          path: desktop/MiroTalk-Desktop-0.1.1-x64.zip
           if-no-files-found: error
           retention-days: 14
