@@ -1,0 +1,45 @@
+services:
+  mirotalksfu-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mirotalksfu-dev:d6f523dc-phase1
+    container_name: mirotalksfu-dev
+    hostname: mirotalksfu-dev
+    user: "1000:1000"
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3013:3010/tcp"
+      - "40200-40300:40200-40300/tcp"
+      - "40200-40300:40200-40300/udp"
+    env_file:
+      - /home/devuser/mirotalksfu/.env
+    environment:
+      SERVER_HOST_URL: https://mirotalk-dev.5-161-64-137.sslip.io
+      SERVER_LISTEN_PORT: "3010"
+      SFU_ANNOUNCED_IP: 5.161.64.137
+      SFU_LISTEN_IP: 0.0.0.0
+      SFU_MIN_PORT: "40200"
+      SFU_MAX_PORT: "40300"
+      SFU_NUM_WORKERS: "1"
+      HOST_PROTECTED: "false"
+      HOST_USER_AUTH: "false"
+    mem_limit: 2g
+    mem_reservation: 512m
+    cpus: 2.0
+    pids_limit: 384
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 25m
+        max-file: "3"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "node -e \"fetch('http://127.0.0.1:3010').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 60s

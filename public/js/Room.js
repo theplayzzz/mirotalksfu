@@ -3291,8 +3291,7 @@ async function toggleScreenSharing() {
         const selectedValue = getId('videoFps').options[localStorageSettings.screen_fps].value;
         const customFrameRate = parseInt(selectedValue, 10);
         const frameRate = selectedValue == 'max' ? defaultFrameRate : customFrameRate;
-        await navigator.mediaDevices
-            .getDisplayMedia({ audio: true, video: { frameRate: frameRate } })
+        await getMiroTalkDisplayMedia({ audio: true, video: { frameRate: frameRate } })
             .then((screenStream) => {
                 if (initVideo.classList.contains('mirror')) {
                     initVideo.classList.toggle('mirror');

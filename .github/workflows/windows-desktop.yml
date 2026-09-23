@@ -1,0 +1,60 @@
+name: Build Windows desktop test app
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: desktop
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Test capture policy
+        run: npm test
+
+      - name: Compile native WASAPI module
+        run: npm run build:native
+
+      - name: Smoke-test native module in Electron
+        run: npm run test:native
+
+      - name: Build portable executable
+        run: npx electron-builder --win portable --x64 --publish never
+
+      - name: Assemble ZIP and checksum
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          Copy-Item dist/MiroTalk-Desktop-0.1.0-x64.exe artifact/
+          git -C .. rev-parse HEAD | Set-Content -NoNewline artifact/git-revision.txt
+          Get-FileHash artifact/MiroTalk-Desktop-0.1.0-x64.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  MiroTalk-Desktop-0.1.0-x64.exe" } |
+            Set-Content artifact/SHA256SUMS.txt
+          Compress-Archive -Path artifact/* -DestinationPath MiroTalk-Desktop-0.1.0-x64.zip -Force
+
+      - name: Upload portable application
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiroTalk-Desktop-0.1.0-x64
+          path: desktop/MiroTalk-Desktop-0.1.0-x64.zip
+          if-no-files-found: error
+          retention-days: 14

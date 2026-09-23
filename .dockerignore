@@ -4,6 +4,9 @@
 
 # npm
 node_modules
+desktop/node_modules
+desktop/build
+desktop/dist
 npm-debug.log
 yarn-error.log
 

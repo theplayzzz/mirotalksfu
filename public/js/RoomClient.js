@@ -2270,7 +2270,7 @@ class RoomClient {
                 stream = initStream;
             } else {
                 stream = screen
-                    ? await navigator.mediaDevices.getDisplayMedia(mediaConstraints)
+                    ? await getMiroTalkDisplayMedia(mediaConstraints)
                     : await navigator.mediaDevices.getUserMedia(mediaConstraints);
 
                 // Handle Virtual Background and Blur using MediaPipe

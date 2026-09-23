@@ -1984,9 +1984,9 @@ module.exports = {
              * - These values should be tuned based on Node resources
              * - Consider network plugin overhead (Calico, Cilium etc.)
              */
-            initialAvailableOutgoingBitrate: 2500000, // 2.5 Mbps initial bitrate
+            initialAvailableOutgoingBitrate: 5000000, // 5 Mbps initial bitrate for Full HD screen sharing
             minimumAvailableOutgoingBitrate: 1000000, // 1 Mbps minimum guaranteed
-            maxIncomingBitrate: 3000000, // 3 Mbps max per producer
+            maxIncomingBitrate: 5000000, // 5 Mbps max per producer
 
             /**
              * Data Channel Settings (mediasoup 3.20.0+)

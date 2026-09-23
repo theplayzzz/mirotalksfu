@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+    <head>
+        <meta charset="utf-8" />
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; script-src 'self'; style-src 'self'" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Escolha o que compartilhar</title>
+        <link rel="stylesheet" href="picker.css" />
+        <script defer src="picker.js"></script>
+    </head>
+    <body>
+        <header>
+            <div>
+                <h1>Escolha o que compartilhar</h1>
+                <p>Janelas usam somente o áudio da aplicação. Telas inteiras usam o áudio do sistema.</p>
+            </div>
+            <button id="cancel" type="button">Cancelar</button>
+        </header>
+        <main id="sources" aria-live="polite"><p class="loading">Carregando janelas…</p></main>
+    </body>
+</html>

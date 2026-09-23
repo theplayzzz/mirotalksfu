@@ -1,0 +1,47 @@
+{
+  "name": "mirotalk-desktop",
+  "version": "0.1.0",
+  "description": "MiroTalk SFU desktop proof of concept with Windows per-process audio capture",
+  "license": "AGPL-3.0",
+  "main": "src/main.js",
+  "scripts": {
+    "build:native": "node-gyp rebuild --release --runtime=electron --target=44.4.4 --dist-url=https://electronjs.org/headers",
+    "test": "node --test test/*.test.js",
+    "test:native": "electron test/native-smoke.js",
+    "pack:win": "npm run build:native && electron-builder --win dir --x64",
+    "dist:win": "npm run build:native && electron-builder --win portable --x64"
+  },
+  "dependencies": {
+    "node-addon-api": "8.5.0"
+  },
+  "devDependencies": {
+    "electron": "44.4.4",
+    "electron-builder": "26.15.3",
+    "node-gyp": "13.0.2"
+  },
+  "build": {
+    "appId": "br.com.grupogrowon.mirotalkdesktop",
+    "productName": "MiroTalk Desktop",
+    "asar": true,
+    "asarUnpack": [
+      "build/Release/process_loopback.node"
+    ],
+    "files": [
+      "src/**/*",
+      "build/Release/process_loopback.node",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "MiroTalk-Desktop-${version}-${arch}.${ext}"
+    }
+  }
+}
