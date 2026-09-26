@@ -79,6 +79,22 @@
 .pinned-video-container {
     position: relative;
     overflow: hidden;
+    border-radius: 14px;
+}
+
+.Camera.video-tile-active::after,
+.pinned-video-container.video-tile-active::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    border: 1px solid rgba(199, 107, 120, 0.58);
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.pinned-video-container .username {
+    display: flex !important;
 }
 
 .pinned-video-container .user-hand {

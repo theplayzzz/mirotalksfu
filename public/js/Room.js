@@ -1381,14 +1381,28 @@ async function whoAreYou() {
         allowOutsideClick: false,
         allowEscapeKey: false,
         background: swalBackground,
-        title: BRAND.app?.name,
+        title: '<img class="init-brand-image" src="/images/linkdonotle-banner.png" alt="LinkDoNotle" />',
         html: initUser,
         confirmButtonText: 'Join meeting',
+        backdrop: 'rgba(3, 4, 9, 0.24)',
         customClass: { popup: 'init-modal-size', confirmButton: 'init-join-confirm' },
         showClass: { popup: 'animate__animated animate__fadeInDown' },
         hideClass: { popup: 'animate__animated animate__fadeOutUp' },
         willOpen: () => {
             hide(loadingDiv);
+            const joinBackground = getId('joinBackground');
+            const backgroundVideo = getId('joinBackgroundVideo');
+            joinBackground.classList.add('active');
+            backgroundVideo.src = '/videos/linkdonotle-background.mp4';
+            backgroundVideo.play().catch(() => {});
+        },
+        didClose: () => {
+            const joinBackground = getId('joinBackground');
+            const backgroundVideo = getId('joinBackgroundVideo');
+            joinBackground.classList.remove('active');
+            backgroundVideo.pause();
+            backgroundVideo.removeAttribute('src');
+            backgroundVideo.load();
         },
         didOpen: () => {
             const nameInput = getId('usernameInput');
@@ -4989,10 +5003,9 @@ function hideClassElements(className) {
 }
 
 function setCamerasBorderNone() {
-    const cameras = rc.getEcN('Camera');
-    for (let i = 0; i < cameras.length; i++) {
-        cameras[i].style.setProperty('border', 'none', 'important');
-    }
+    document.querySelectorAll('.Camera.video-tile-active, .pinned-video-container.video-tile-active').forEach((tile) => {
+        tile.classList.remove('video-tile-active');
+    });
 }
 
 function hideVideoMenuBar(videoBarId) {
