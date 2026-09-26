@@ -580,12 +580,23 @@ class RoomClient {
         this.createRoom(this.room_id).then(async () => {
             const data = {
                 room_id: this.room_id,
+                room_password: this.RoomPassword,
                 peer_info: this.peer_info,
             };
             await this.join(data);
             this.initSockets();
             this._isConnected = true;
             successCallback();
+        }).catch((error) => {
+            if (error?.code === 'INVALID_ROOM_PASSWORD') {
+                Swal.fire({ icon: 'error', title: 'Incorrect room password', confirmButtonText: 'Try again' })
+                    .then(() => window.location.assign('/join/link'));
+                return;
+            }
+            console.error('Create room failed:', error);
+            popupHtmlMessage(
+                null, image.network, 'Join Room', error.message || 'Could not join room', 'center', '/join/link', false
+            );
         });
     }
 
@@ -597,8 +608,10 @@ class RoomClient {
         await this.socket
             .request('createRoom', {
                 room_id,
+                room_password: this.RoomPassword,
             })
             .catch((err) => {
+                if (err?.code === 'INVALID_ROOM_PASSWORD' || err?.code === 'ROOM_NOT_ALLOWED') throw err;
                 console.log('Create room:', err);
             });
     }
@@ -645,6 +658,11 @@ class RoomClient {
                 if (room === 'isJoinLocked') {
                     console.warn('00-WARNING ----> Room is Locked for new participants');
                     return this.roomJoinLocked();
+                }
+
+                if (room === 'invalidPassword') {
+                    return Swal.fire({ icon: 'error', title: 'Incorrect room password', confirmButtonText: 'Try again' })
+                        .then(() => window.location.assign('/join/link'));
                 }
 
                 if (room === 'isLocked') {

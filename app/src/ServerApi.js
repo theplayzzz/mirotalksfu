@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const CryptoJS = require('crypto-js');
 
 const config = require('./config');
+const singleRoom = require('./SingleRoomPolicy');
 const { v4: uuidV4 } = require('uuid');
 
 const JWT_KEY = config.security?.jwt?.key || 'mirotalksfu_jwt_secret';
@@ -100,15 +101,15 @@ module.exports = class ServerApi {
     }
 
     getMeetingURL() {
-        return 'https://' + this._host + '/join/' + uuidV4();
+        return 'https://' + this._host + '/join/' + (singleRoom.enabled ? singleRoom.roomId : uuidV4());
     }
 
     getJoinURL(data) {
         // Get data
         const { room, roomPassword, name, avatar, audio, video, screen, chat, hide, notify, duration, token } = data;
 
-        const roomValue = room || uuidV4();
-        const roomPasswordValue = roomPassword || false;
+        const roomValue = singleRoom.enabled ? singleRoom.roomId : room || uuidV4();
+        const roomPasswordValue = singleRoom.enabled ? false : roomPassword || false;
         const nameValue = name || 'User-' + this.getRandomNumber();
         const avatarValue = avatar || false;
         const audioValue = audio || false;

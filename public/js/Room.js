@@ -275,6 +275,7 @@ let chatMessagesId = 0;
 let room_id = getRoomId();
 let room_password = getRoomPassword();
 let entry_room_password = '';
+let room_password_required = false;
 let room_duration = getRoomDuration();
 let peer_name = getPeerName();
 let peer_avatar = getPeerAvatar();
@@ -1278,6 +1279,7 @@ async function whoAreYou() {
         const response = await axios.get('/config', {
             timeout: 5000,
         });
+        room_password_required = response.data.singleRoom?.roomId === room_id;
         const serverButtons = response.data.message;
         if (serverButtons) {
             // Merge serverButtons into BUTTONS, keeping the existing keys in BUTTONS if they are not present in serverButtons
@@ -1393,6 +1395,7 @@ async function whoAreYou() {
             const passwordInput = getId('roomPasswordInput');
             nameInput.value = default_name;
             passwordInput.value = room_password || '';
+            if (room_password_required) passwordInput.placeholder = 'Room password';
             showMobileAudioGuidance();
             nameInput.focus();
         },
@@ -1406,6 +1409,12 @@ async function whoAreYou() {
             const passwordInput = getId('roomPasswordInput');
             let name = nameInput.value.trim();
             const password = passwordInput.value;
+
+            if (room_password_required && !password) {
+                Swal.showValidationMessage('Please enter the room password');
+                passwordInput.focus();
+                return false;
+            }
 
             if (!name) {
                 Swal.showValidationMessage('Please enter your name or email');
@@ -1768,7 +1777,7 @@ function shareRoomByEmail() {
 
             const newLine = '\r\n\r\n';
             const roomPassword =
-                isRoomLocked && (room_password || rc.RoomPassword)
+                !room_password_required && isRoomLocked && (room_password || rc.RoomPassword)
                     ? 'Password: ' + (room_password || rc.RoomPassword) + newLine
                     : '';
             const emailSubject = `Please join our ${BRAND.app.name} Video Chat Meeting`;
