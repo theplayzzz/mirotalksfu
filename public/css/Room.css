@@ -4,11 +4,11 @@
     --room-stage-bg: var(--body-bg);
     --room-panel-raised: var(--settings-bg);
     --room-control-bg: color-mix(in srgb, var(--select-bg) 78%, transparent);
-    --room-control-hover: color-mix(in srgb, var(--select-bg) 86%, white);
+    --room-control-hover: color-mix(in srgb, var(--select-bg) 88%, var(--room-accent) 12%);
     --room-border: color-mix(in srgb, var(--dd-color) 14%, transparent);
     --room-border-strong: color-mix(in srgb, var(--dd-color) 24%, transparent);
-    --room-accent: var(--dd-color);
-    --room-accent-soft: color-mix(in srgb, var(--dd-color) 16%, transparent);
+    --room-accent: color-mix(in srgb, var(--room-switch-accent) 78%, white);
+    --room-accent-soft: color-mix(in srgb, var(--room-accent) 16%, transparent);
     --room-switch-accent: var(--color-accent);
     --room-switch-ink: white;
     --room-danger-soft: rgba(255, 75, 75, 0.14);
@@ -360,8 +360,10 @@ body {
     color: #fff;
     padding: 30px;
     text-align: center;
+    border: 1px solid rgba(184, 88, 105, 0.22);
     border-radius: 14px;
-    background: var(--btns-bg-color);
+    background: linear-gradient(145deg, rgba(16, 14, 21, 0.95), rgba(29, 21, 30, 0.95));
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 #loadingDiv h1 {
     padding: 10px;
@@ -401,8 +403,8 @@ body {
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    border: 4px solid rgba(255, 255, 255, 0.1);
-    border-top-color: #fff;
+    border: 4px solid rgba(184, 88, 105, 0.14);
+    border-top-color: #c8707f;
     animation: spin 1s linear infinite;
 }
 
@@ -411,8 +413,8 @@ body {
     position: absolute;
     inset: 6px;
     border-radius: 50%;
-    border: 4px solid rgba(255, 255, 255, 0.05);
-    border-top-color: rgba(255, 255, 255, 0.6);
+    border: 4px solid rgba(255, 255, 255, 0.06);
+    border-top-color: rgba(227, 150, 163, 0.68);
     animation: spin 1.5s linear reverse infinite;
 }
 
@@ -481,6 +483,7 @@ body {
 
 .init-modal-size .swal2-html-container {
     margin: 0;
+    overflow: visible;
 }
 
 .init-modal-size .swal2-title {
@@ -490,7 +493,36 @@ body {
 }
 
 .init-modal-size .swal2-actions {
-    margin: 14px 0 0;
+    margin: 16px 0 0;
+}
+
+.init-modal-size .swal2-confirm.init-join-confirm {
+    min-height: 44px;
+    margin: 0;
+    padding: 10px 22px;
+    border: 1px solid rgba(234, 146, 158, 0.36);
+    border-radius: 10px;
+    background: linear-gradient(135deg, #b85869, #a9475a);
+    box-shadow: 0 8px 20px rgba(130, 38, 59, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    color: #fff;
+    font-size: 0.88rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    transition:
+        background-color var(--motion-base) ease,
+        box-shadow var(--motion-base) ease,
+        transform var(--motion-fast) ease;
+}
+
+.init-modal-size .swal2-confirm.init-join-confirm:hover {
+    background: linear-gradient(135deg, #b44d60, #9c3850);
+    box-shadow: 0 10px 24px rgba(130, 38, 59, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    transform: translateY(-1px);
+}
+
+.init-modal-size .swal2-confirm.init-join-confirm:focus-visible {
+    outline: 2px solid #e397a3;
+    outline-offset: 3px;
 }
 
 .init-user {
@@ -522,6 +554,8 @@ body {
 }
 
 .initComands {
+    --init-control-size: 36px;
+    position: relative;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -555,19 +589,18 @@ body {
 .init-user button:hover,
 .init-device-settings-toggle:hover {
     color: white;
-    border-color: var(--room-border-strong);
+    border-color: color-mix(in srgb, var(--room-accent) 28%, transparent);
     background: var(--room-control-hover);
 }
 
 .init-user button:focus-visible,
-.init-device-settings-toggle:focus-visible,
-.init-join-input:focus-visible {
-    outline: 2px solid var(--dd-color);
+.init-device-settings-toggle:focus-visible {
+    outline: 2px solid var(--room-accent);
     outline-offset: 2px;
 }
 
 .init-device-settings {
-    position: relative;
+    position: static;
     display: inline-flex;
 }
 
@@ -584,27 +617,24 @@ body {
     display: none;
 }
 
-.init-device-settings[open] {
-    display: grid;
-    grid-template-columns: 36px minmax(0, 300px);
-    align-items: start;
-    justify-content: center;
-    gap: 7px;
-    flex: 1 0 100%;
+.initComands:has(.init-device-settings[open]) {
+    padding-bottom: 132px;
+}
+
+.initComands:has(.init-device-settings[open] #initVideoSelect:not(.hidden)) {
+    padding-bottom: 170px;
 }
 
 .init-device-settings[open] > .init-device-settings-menu {
-    position: static;
     display: grid;
-    width: 100%;
-    box-shadow: none;
 }
 
 .init-device-settings-menu {
     position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
+    top: calc(var(--init-control-size) + 8px);
+    left: 50%;
     z-index: 20;
+    transform: translateX(-50%);
     display: grid;
     gap: 8px;
     width: min(300px, calc(100vw - 64px));
@@ -613,6 +643,11 @@ body {
     border-radius: 12px;
     background: #161622;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.init-device-settings[open] > .init-device-settings-toggle {
+    border-color: color-mix(in srgb, var(--room-accent) 45%, transparent);
+    background: var(--room-accent-soft);
 }
 
 .init-user select {
@@ -656,8 +691,9 @@ body {
 }
 
 .init-join-input:focus {
-    border-color: var(--dd-color);
-    box-shadow: 0 0 0 3px rgba(91, 124, 250, 0.16);
+    outline: none;
+    border-color: #c76b78;
+    box-shadow: 0 0 0 2px rgba(199, 107, 120, 0.24);
 }
 
 .init-sr-only {
@@ -684,6 +720,7 @@ body {
     }
 
     .initComands {
+        --init-control-size: 34px;
         gap: 6px;
     }
 
@@ -692,10 +729,6 @@ body {
         width: 34px;
         min-width: 34px;
         height: 34px;
-    }
-
-    .init-device-settings[open] {
-        grid-template-columns: 34px minmax(0, 1fr);
     }
 }
 
@@ -1347,8 +1380,8 @@ body {
 #bottomButtons #startAudioDeviceMenu .device-menu-action-btn:hover,
 #bottomButtons #startVideoDeviceMenu .device-menu-action-btn:hover,
 #bottomButtons #settingsExtraMenu .device-menu-action-btn:hover {
-    background: var(--btns-bg-color) !important;
-    border-color: var(--btns-color);
+    background: var(--room-control-hover) !important;
+    border-color: color-mix(in srgb, var(--room-accent) 30%, transparent);
     transform: translateY(-1px) !important;
 }
 
@@ -1582,7 +1615,7 @@ body {
 }
 #bottomButtons #chatButton.is-active:hover,
 #bottomButtons #participantsButton.is-active:hover {
-    background: color-mix(in srgb, var(--dd-color, #4678f9) 22%, transparent) !important;
+    background: color-mix(in srgb, var(--room-accent) 22%, transparent) !important;
 }
 
 /*--------------------------------------------------------------
@@ -2655,7 +2688,7 @@ body {
 }
 
 .dropdown-toggle {
-    color: #66beff !important;
+    color: var(--room-accent) !important;
 }
 
 /* Pin the kebab to the row's top-right so it never drifts with the floated content */
@@ -2694,7 +2727,7 @@ body {
 
 .participant-list-dropdown-toggle:hover,
 .participant-list-dropdown-toggle[aria-expanded='true'] {
-    background: rgba(102, 190, 255, 0.18);
+    background: var(--room-accent-soft);
 }
 
 .participant-list-dropdown-toggle:focus-visible {
@@ -3045,8 +3078,8 @@ body {
 
 /* Change background color of buttons on hover */
 .tab button:hover {
-    border-color: var(--room-border);
-    background: var(--room-control-bg);
+    border-color: color-mix(in srgb, var(--room-accent) 28%, transparent);
+    background: var(--room-control-hover);
     transform: none;
 }
 
@@ -3212,13 +3245,13 @@ body {
 }
 
 .theme-card.active {
-    border-color: var(--dd-color, #66beff);
-    background: rgba(255, 255, 255, 0.1);
-    box-shadow: 0 0 12px rgba(102, 190, 255, 0.2);
+    border-color: var(--room-accent);
+    background: var(--room-accent-soft);
+    box-shadow: 0 0 12px rgba(184, 88, 105, 0.2);
 }
 
 .theme-card.active i {
-    color: var(--dd-color, #66beff);
+    color: var(--room-accent);
 }
 
 .theme-card.active span {
@@ -3336,7 +3369,7 @@ body {
 }
 
 .active {
-    background-color: #3498db;
+    background-color: #b85869;
 }
 
 .inactive {
@@ -3395,7 +3428,7 @@ body {
     flex: 1;
     min-width: 0;
     height: 5px;
-    accent-color: #3498db;
+    accent-color: var(--room-switch-accent);
     background-color: var(--body-bg);
     border-radius: 10px;
     cursor: pointer;
@@ -3448,7 +3481,7 @@ body {
 --------------------------------------------------------------*/
 
 .transcription-room {
-    --transcription-accent: var(--room-switch-accent, #4678f9);
+    --transcription-accent: var(--room-switch-accent, #b85869);
     --transcription-toolbar-surface: rgba(18, 18, 21, 0.88);
     --transcription-control-surface: rgba(255, 255, 255, 0.06);
     z-index: 5;
@@ -3937,7 +3970,7 @@ body {
 /* Emoji Picker (Room) */
 
 .roomEmoji {
-    --room-emoji-accent: var(--room-switch-accent, #4678f9);
+    --room-emoji-accent: var(--room-switch-accent, #b85869);
     --room-emoji-toolbar-surface: rgba(18, 18, 21, 0.88);
     --room-emoji-control-surface: rgba(255, 255, 255, 0.06);
     z-index: 18;
@@ -4339,8 +4372,8 @@ body {
 
 .mirotalk-file-dropzone.has-file {
     border-style: solid;
-    border-color: rgba(102, 190, 255, 0.5);
-    background: radial-gradient(circle at top, rgba(102, 190, 255, 0.14), transparent 55%), rgba(255, 255, 255, 0.05);
+    border-color: rgba(184, 88, 105, 0.5);
+    background: radial-gradient(circle at top, rgba(184, 88, 105, 0.14), transparent 55%), rgba(255, 255, 255, 0.05);
 }
 
 .mirotalk-file-dropzone-icon {
@@ -4457,7 +4490,7 @@ body {
 }
 
 .swal2-timer-progress-bar {
-    background-color: #1d8ecd !important;
+    background-color: #b85869 !important;
 }
 
 .img-about {
@@ -4519,7 +4552,7 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 8px;
     color: #ffffff;
-    background: #0270d7;
+    background: #a9475a;
     font-size: 1rem;
     font-weight: 600;
     transition:
@@ -4531,7 +4564,7 @@ body {
 
 #about .about-primary-action:hover {
     color: #ffffff;
-    background: #025caf;
+    background: #94384b;
     transform: translateY(-1px);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
 }
@@ -4550,7 +4583,7 @@ body {
     color: #ffffff;
     font-size: 1.2rem;
     border-radius: 10px;
-    background: linear-gradient(65deg, #0270d7 0, #0f8afd 100%);
+    background: linear-gradient(65deg, #a9475a 0, #c8707f 100%);
     transition: background 0.23s;
     cursor: pointer;
 }
@@ -4559,7 +4592,7 @@ body {
     font-weight: bold;
     filter: brightness(1.1) saturate(1.2);
     transform: scale(1.05);
-    box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+    box-shadow: 0 6px 20px rgba(169, 71, 90, 0.4);
 }
 
 .about-details {
@@ -4723,7 +4756,7 @@ button:hover {
 --------------------------------------------------------------*/
 
 #lobby {
-    --lobby-accent: var(--tab-btn-active, #66beff);
+    --lobby-accent: var(--room-switch-accent, #b85869);
     --lobby-surface: var(--body-bg);
     --lobby-surface-strong: color-mix(in srgb, var(--body-bg) 82%, var(--select-bg) 18%);
     --lobby-border: color-mix(in srgb, var(--border) 72%, rgba(255, 255, 255, 0.08));
@@ -5012,7 +5045,7 @@ button:hover {
     background:
         radial-gradient(
             circle at top,
-            color-mix(in srgb, var(--tab-btn-active, #66beff) 14%, transparent),
+            color-mix(in srgb, var(--room-accent) 14%, transparent),
             transparent 38%
         ),
         color-mix(in srgb, var(--settings-bg) 94%, rgba(255, 255, 255, 0.03)) !important;
@@ -5259,7 +5292,7 @@ button:hover {
     width: 5.75rem;
     height: 5.75rem;
     border: 4px solid rgba(255, 255, 255, 0.08);
-    border-top-color: #66c2ff;
+    border-top-color: #d18894;
     border-right-color: rgba(147, 226, 255, 0.92);
     border-radius: 50%;
     box-shadow:
@@ -5322,7 +5355,7 @@ button:hover {
 
 .lobby-join-waiting__hint i {
     flex: 0 0 auto;
-    color: #66c2ff;
+    color: #d18894;
 }
 
 @keyframes lobbyJoinSpin {
@@ -5422,7 +5455,7 @@ button:hover {
 }
 
 #sendFileDiv {
-    --file-transfer-accent: #6fb4ff;
+    --file-transfer-accent: #c8707f;
     --file-transfer-accent-soft: rgba(111, 180, 255, 0.18);
 }
 
@@ -5709,7 +5742,7 @@ button:hover {
 --------------------------------------------------------------*/
 
 #whiteboard {
-    --wb-accent: var(--room-switch-accent, #4678f9);
+    --wb-accent: var(--room-switch-accent, #b85869);
     --wb-toolbar-surface: rgba(18, 18, 21, 0.88);
     --wb-control-surface: rgba(255, 255, 255, 0.06);
     z-index: 4;
@@ -6024,8 +6057,8 @@ button:hover {
 }
 
 .whiteboardColorPicker:hover {
-    box-shadow: 0 0 0 2px rgba(102, 190, 255, 0.18);
-    border: 2px solid #66beff;
+    box-shadow: 0 0 0 2px rgba(184, 88, 105, 0.18);
+    border: 2px solid var(--room-accent);
     transform: scale(1.12);
 }
 .whiteboardColorPicker::-webkit-color-swatch {
@@ -6191,15 +6224,15 @@ button:hover {
 }
 
 .wb-shortcuts-text {
-    color: #66beff;
+    color: var(--room-accent);
     font-weight: 600;
     font-size: 0.9rem;
     letter-spacing: 0.02em;
-    background: linear-gradient(135deg, rgba(102, 190, 255, 0.11), rgba(102, 190, 255, 0.06));
+    background: linear-gradient(135deg, rgba(184, 88, 105, 0.11), rgba(184, 88, 105, 0.06));
     padding: 4px 10px;
     border-radius: 10px;
     display: inline-block;
-    box-shadow: 0 1px 4px rgba(102, 190, 255, 0.07);
+    box-shadow: 0 1px 4px rgba(184, 88, 105, 0.07);
 }
 
 .wb-shortcuts-list {
@@ -6852,7 +6885,7 @@ hr {
 }
 
 .breakout-toolbar-room {
-    color: #66beff;
+    color: var(--room-accent);
     font-size: 13px;
     font-weight: 600;
     white-space: nowrap;
@@ -6943,7 +6976,7 @@ hr {
 /* Breakout Room Dialog */
 
 .breakout-panel {
-    --breakout-accent: var(--room-switch-accent, #4678f9);
+    --breakout-accent: var(--room-switch-accent, #b85869);
     --breakout-danger: #ff6b6b;
     --breakout-toolbar-surface: rgba(18, 18, 21, 0.88);
     --breakout-control-surface: rgba(255, 255, 255, 0.045);
@@ -7257,14 +7290,14 @@ hr {
 }
 
 .breakout-room-name-input:focus {
-    border-color: rgba(102, 190, 255, 0.5);
+    border-color: rgba(184, 88, 105, 0.5);
 }
 
 .breakout-room-count {
-    color: #66beff;
+    color: var(--room-accent);
     font-size: 10px;
     font-weight: 600;
-    background: rgba(102, 190, 255, 0.12);
+    background: rgba(184, 88, 105, 0.12);
     padding: 2px 6px;
     border-radius: 8px;
     min-width: 45px;
@@ -7307,7 +7340,7 @@ hr {
 }
 
 .breakout-room-duration-input:focus {
-    border-color: rgba(102, 190, 255, 0.5);
+    border-color: rgba(184, 88, 105, 0.5);
 }
 
 .breakout-duration-picker-wrapper {
@@ -7677,7 +7710,7 @@ hr {
 }
 
 .breakout-accent {
-    color: #66beff;
+    color: var(--room-accent);
     font-size: 14px;
 }
 
@@ -7719,12 +7752,12 @@ hr {
     display: flex;
     align-items: center;
     gap: 5px;
-    color: #66beff;
+    color: var(--room-accent);
     font-size: 13px;
     font-weight: 600;
     padding: 2px 10px;
     border-radius: 8px;
-    background: rgba(102, 190, 255, 0.1);
+    background: rgba(184, 88, 105, 0.1);
 }
 
 .breakout-timer-warning {
@@ -7755,7 +7788,7 @@ hr {
     width: 72px;
     height: 72px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(102, 190, 255, 0.06), transparent 68%);
+    background: radial-gradient(circle, rgba(184, 88, 105, 0.06), transparent 68%);
     animation: breakoutOrbitSpin 2.2s linear infinite;
 }
 
@@ -7766,11 +7799,11 @@ hr {
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, #8ed2ff, #1e88e5 72%);
+    background: radial-gradient(circle at 30% 30%, #d995a2, #a9475a 72%);
     transform: translate(-50%, -50%);
     box-shadow:
-        0 0 0 7px rgba(102, 190, 255, 0.08),
-        0 0 22px rgba(30, 136, 229, 0.3);
+        0 0 0 7px rgba(184, 88, 105, 0.08),
+        0 0 22px rgba(169, 71, 90, 0.3);
 }
 
 .breakout-spinner-dot {
@@ -7781,8 +7814,8 @@ hr {
     height: 10px;
     margin: -5px;
     border-radius: 50%;
-    background: #8ed2ff;
-    box-shadow: 0 0 12px rgba(102, 190, 255, 0.55);
+    background: #d995a2;
+    box-shadow: 0 0 12px rgba(184, 88, 105, 0.55);
 }
 
 .breakout-spinner-dot--one {
@@ -7825,7 +7858,7 @@ hr {
     border: 1px solid color-mix(in srgb, var(--border) 76%, rgba(255, 255, 255, 0.08)) !important;
     border-radius: 1.45rem !important;
     background:
-        radial-gradient(circle at top, rgba(102, 190, 255, 0.2), transparent 42%),
+        radial-gradient(circle at top, rgba(184, 88, 105, 0.2), transparent 42%),
         color-mix(in srgb, var(--settings-bg) 94%, rgba(255, 255, 255, 0.03)) !important;
     box-shadow:
         0 24px 60px rgba(0, 0, 0, 0.32),
@@ -7838,7 +7871,7 @@ hr {
 }
 
 .breakout-swal--join {
-    background: radial-gradient(circle at top, rgba(102, 190, 255, 0.24), transparent 42%), var(--body-bg) !important;
+    background: radial-gradient(circle at top, rgba(184, 88, 105, 0.24), transparent 42%), var(--body-bg) !important;
 }
 
 .breakout-swal--launch {
@@ -7903,7 +7936,7 @@ hr {
 }
 
 .breakout-popup-icon--join {
-    background: linear-gradient(135deg, rgba(102, 190, 255, 0.95), rgba(30, 136, 229, 0.95));
+    background: linear-gradient(135deg, rgba(184, 88, 105, 0.95), rgba(169, 71, 90, 0.95));
 }
 
 .breakout-popup-icon--help {
@@ -7990,13 +8023,13 @@ hr {
     flex-shrink: 0;
     padding: 0.24rem 0.6rem;
     border-radius: 999px;
-    background: rgba(102, 190, 255, 0.12);
-    color: #bfe5ff;
+    background: rgba(184, 88, 105, 0.12);
+    color: #e7bac2;
     font-weight: 700;
 }
 
 .breakout-popup-summary i {
-    color: #8ed2ff;
+    color: #d995a2;
 }
 
 .breakout-popup-summary--end {
@@ -8018,9 +8051,9 @@ hr {
     margin: 0 auto;
     padding: 0.55rem 0.85rem;
     border-radius: 999px;
-    border: 1px solid rgba(102, 190, 255, 0.22);
-    background: rgba(102, 190, 255, 0.1);
-    color: #bfe5ff;
+    border: 1px solid rgba(184, 88, 105, 0.22);
+    background: rgba(184, 88, 105, 0.1);
+    color: #e7bac2;
     font-size: 0.82rem;
     font-weight: 700;
 }
@@ -8093,8 +8126,8 @@ hr {
 }
 
 .breakout-swal-confirm--join {
-    background: linear-gradient(180deg, rgba(102, 190, 255, 0.98), rgba(30, 136, 229, 0.98)) !important;
-    box-shadow: 0 14px 26px rgba(30, 136, 229, 0.28) !important;
+    background: linear-gradient(180deg, rgba(184, 88, 105, 0.98), rgba(169, 71, 90, 0.98)) !important;
+    box-shadow: 0 14px 26px rgba(169, 71, 90, 0.28) !important;
 }
 
 .breakout-swal-confirm--help {
@@ -8126,7 +8159,7 @@ hr {
 .breakout-swal-confirm:focus-visible,
 .breakout-swal-deny:focus,
 .breakout-swal-deny:focus-visible {
-    box-shadow: 0 0 0 3px rgba(102, 190, 255, 0.18) !important;
+    box-shadow: 0 0 0 3px rgba(184, 88, 105, 0.18) !important;
 }
 
 @media (max-width: 640px) {

@@ -5,9 +5,9 @@
     --container-bg: #181a20;
     --card-bg: #1e2128;
     --card-bg-hover: #252830;
-    --accent: #3b82f6;
-    --accent-hover: #2563eb;
-    --accent-glow: rgba(59, 130, 246, 0.15);
+    --accent: #b85869;
+    --accent-hover: #a9475a;
+    --accent-glow: rgba(184, 88, 105, 0.15);
     --text: #e8ecf1;
     --text-muted: #8b95a5;
     --border: #2a2d35;
@@ -70,7 +70,7 @@ body {
     font-weight: 600;
     padding: 4px 10px;
     border-radius: 20px;
-    border: 1px solid rgba(59, 130, 246, 0.25);
+    border: 1px solid rgba(184, 88, 105, 0.25);
 }
 
 .refresh-btn {
@@ -247,7 +247,7 @@ body {
     font-size: 0.8em;
     font-weight: 600;
     white-space: nowrap;
-    border: 1px solid rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(184, 88, 105, 0.2);
 }
 
 .peer-badge i {
@@ -295,7 +295,7 @@ body {
 
 .join-btn:hover {
     background: var(--accent-hover);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+    box-shadow: 0 4px 12px rgba(184, 88, 105, 0.35);
 }
 
 /* Empty state */

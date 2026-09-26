@@ -1,5 +1,5 @@
 .pls-container {
-    --poll-accent: var(--room-switch-accent, #4678f9);
+    --poll-accent: var(--room-switch-accent, #b85869);
     --poll-toolbar-surface: rgba(18, 18, 21, 0.88);
     --poll-control-surface: rgba(255, 255, 255, 0.06);
     z-index: 5;

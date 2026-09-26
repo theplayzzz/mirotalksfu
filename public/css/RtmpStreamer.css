@@ -253,7 +253,7 @@ video {
 }
 
 .input-shell:focus-within {
-    border-color: var(--color-focus, rgba(102, 190, 255, 0.65));
+    border-color: var(--color-focus, rgba(199, 107, 120, 0.7));
     background: rgba(255, 255, 255, 0.07);
 }
 
@@ -407,8 +407,8 @@ button:disabled {
 }
 
 .popup {
-    --popup-color: #69a7ff;
-    --popup-color-soft: rgba(105, 167, 255, 0.16);
+    --popup-color: #d18894;
+    --popup-color-soft: rgba(184, 88, 105, 0.16);
     z-index: var(--z-toast, 1100);
     position: fixed;
     top: 18px;
@@ -446,8 +446,8 @@ button:disabled {
 }
 
 .popup.info {
-    --popup-color: #69a7ff;
-    --popup-color-soft: rgba(105, 167, 255, 0.16);
+    --popup-color: #d18894;
+    --popup-color-soft: rgba(184, 88, 105, 0.16);
 }
 
 .popup.visible {

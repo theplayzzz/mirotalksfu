@@ -601,7 +601,7 @@ label {
     text-decoration: none;
     text-transform: uppercase;
     background-color: #1d2026;
-    color: #0270d7 !important;
+    color: #a9475a !important;
     border: none;
     height: auto;
     left: 8px;
@@ -627,7 +627,7 @@ label {
     text-align: right;
 }
 .text-primary {
-    color: #0270d7;
+    color: #a9475a;
 }
 .has-top-divider {
     position: relative;
@@ -1074,11 +1074,11 @@ label {
     height: 32px;
 }
 .button-primary {
-    background: linear-gradient(65deg, #0270d7 0, #0f8afd 100%);
+    background: linear-gradient(65deg, #a9475a 0, #c8707f 100%);
     border-radius: 10px;
 }
 .button-primary:hover {
-    background: linear-gradient(65deg, #0275e1 0%, #198ffd 100%);
+    background: linear-gradient(65deg, #9c3850 0%, #b85869 100%);
     border-radius: 10px;
     filter: brightness(1.1) saturate(1.2);
     box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
@@ -1271,7 +1271,7 @@ label {
     top: 41.9%;
     width: 28.03%;
     height: 37.37%;
-    background: linear-gradient(to left top, #00bffb, rgba(0, 191, 251, 0));
+    background: linear-gradient(to left top, #e3838f, rgba(227, 131, 143, 0));
     -webkit-transform: rotateZ(45deg);
     transform: rotateZ(45deg);
 }
@@ -1285,7 +1285,7 @@ label {
     top: 64.1%;
     width: 37.87%;
     height: 50.5%;
-    background: linear-gradient(to left top, #0270d7, rgba(2, 112, 215, 0));
+    background: linear-gradient(to left top, #a9475a, rgba(166, 62, 86, 0));
     -webkit-transform: rotateZ(-45deg);
     transform: rotateZ(-45deg);
 }
@@ -1299,7 +1299,7 @@ label {
     top: -56.8%;
     width: 56.81%;
     height: 75.75%;
-    background: linear-gradient(to left top, #00bffb, rgba(0, 191, 251, 0));
+    background: linear-gradient(to left top, #e3838f, rgba(227, 131, 143, 0));
 }
 .hero-figure-box-03::before {
     background: linear-gradient(to left, #15181d 0%, rgba(21, 24, 29, 0) 60%);
@@ -1311,7 +1311,7 @@ label {
     top: -8%;
     width: 45.45%;
     height: 60.6%;
-    background: linear-gradient(to left top, #0270d7, rgba(2, 112, 215, 0));
+    background: linear-gradient(to left top, #a9475a, rgba(166, 62, 86, 0));
     -webkit-transform: rotateZ(-135deg);
     transform: rotateZ(-135deg);
 }
@@ -1355,7 +1355,7 @@ label {
     top: 81.6%;
     width: 19.51%;
     height: 26.01%;
-    background: #0270d7;
+    background: #a9475a;
     -webkit-transform: rotateZ(-22deg);
     transform: rotateZ(-22deg);
 }
@@ -1369,7 +1369,7 @@ label {
     top: -17.9%;
     width: 6.63%;
     height: 8.83%;
-    background: #00bffb;
+    background: #e3838f;
     -webkit-transform: rotateZ(-52deg);
     transform: rotateZ(-52deg);
 }
@@ -1383,7 +1383,7 @@ label {
     top: 4.3%;
     width: 3.03%;
     height: 4.04%;
-    background: rgba(0, 191, 251, 0.32);
+    background: rgba(227, 131, 143, 0.32);
     -webkit-transform: rotateZ(-50deg);
     transform: rotateZ(-50deg);
 }
@@ -1462,7 +1462,7 @@ label {
     justify-content: center;
     padding: 1rem;
     border-radius: 1rem;
-    background: radial-gradient(circle at bottom, #539ce2 0%, #1870d7 50%, #1d2026 100%);
+    background: radial-gradient(circle at bottom, #b85869 0%, #7f3045 50%, #1d2026 100%);
 }
 @media (min-width: 641px) {
     .features-wrap:first-of-type {
@@ -1963,9 +1963,9 @@ main {
 
 .gen-room-btn:hover {
     color: rgba(255, 255, 255, 0.95);
-    background: linear-gradient(65deg, rgba(2, 112, 215, 0.15) 0%, rgba(15, 138, 253, 0.1) 100%);
+    background: linear-gradient(65deg, rgba(166, 62, 86, 0.15) 0%, rgba(15, 138, 253, 0.1) 100%);
     filter: brightness(1.1) saturate(1.2);
-    box-shadow: 0 4px 12px rgba(2, 112, 215, 0.25);
+    box-shadow: 0 4px 12px rgba(166, 62, 86, 0.25);
     transform: translateY(calc(-50% - 2px));
 }
 
@@ -2359,7 +2359,7 @@ main {
 }
 
 .last-room a:hover {
-    color: #097dea;
+    color: #d18894;
     transition: all 0.3s ease-in-out;
 }
 
@@ -2435,7 +2435,7 @@ main {
 
 .blue {
     font-weight: bold;
-    color: #00bfff;
+    color: #d18894;
 }
 
 .tac {
@@ -2471,7 +2471,7 @@ main {
 #joinRoomForm {
     display: none;
     margin-top: 0;
-    background: rgba(70, 120, 249, 0.08);
+    background: rgba(184, 88, 105, 0.08);
     border-radius: 14px;
     padding: 32px 24px;
     transition:
@@ -2481,7 +2481,7 @@ main {
 
 #joinRoomForm:focus-within,
 #joinRoomForm:hover {
-    border-color: #376df9;
+    border-color: #b85869;
 }
 
 /*--------------------------------------------------------------
@@ -2501,7 +2501,7 @@ main {
     border: 1px solid var(--landing-border);
     border-radius: 8px;
     background:
-        linear-gradient(to bottom right, transparent 60%, rgba(22, 140, 255, 0.1)), var(--landing-surface) !important;
+        linear-gradient(to bottom right, transparent 60%, rgba(184, 88, 105, 0.1)), var(--landing-surface) !important;
     box-shadow:
         0 24px 70px rgba(0, 0, 0, 0.32),
         inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -2596,7 +2596,7 @@ main {
 
 .support-card:hover {
     transform: translateY(-4px) !important;
-    border-color: rgba(50, 184, 232, 0.28) !important;
+    border-color: rgba(199, 107, 120, 0.28) !important;
     box-shadow:
         0 14px 32px rgba(0, 0, 0, 0.24),
         inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
@@ -2619,7 +2619,7 @@ main {
 }
 
 .support-card:hover .support-card-icon {
-    background: rgba(50, 184, 232, 0.1) !important;
+    background: rgba(199, 107, 120, 0.1) !important;
     border-color: var(--landing-border-strong);
     transform: scale(1.1);
 }
@@ -2720,7 +2720,7 @@ main {
 
 #pastSponsors .past-sponsors-toggle-icon {
     font-size: 0.85rem;
-    color: #4a74f5;
+    color: #d18894;
     transform: rotate(-90deg);
     transition: transform 0.25s ease;
 }
@@ -2772,12 +2772,12 @@ main {
     --landing-surface: #191e26;
     --landing-surface-raised: #202630;
     --landing-border: rgba(255, 255, 255, 0.1);
-    --landing-border-strong: rgba(88, 178, 255, 0.42);
+    --landing-border-strong: rgba(199, 107, 120, 0.42);
     --landing-text: #f4f7fb;
     --landing-text-muted: #aeb8c8;
-    --landing-primary: #168cff;
-    --landing-primary-bright: #32b8e8;
-    --landing-accent: #35d0a0;
+    --landing-primary: #a9475a;
+    --landing-primary-bright: #b85869;
+    --landing-accent: #d18894;
 }
 
 body,
@@ -2789,7 +2789,7 @@ body,
     background-image:
         linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
-        linear-gradient(145deg, rgba(22, 140, 255, 0.1), transparent 38%);
+        linear-gradient(145deg, rgba(184, 88, 105, 0.1), transparent 38%);
     background-size:
         48px 48px,
         48px 48px,
@@ -2812,7 +2812,7 @@ body {
 }
 
 .header-logo-image:hover {
-    filter: brightness(1.12) saturate(1.08) drop-shadow(0 8px 22px rgba(22, 140, 255, 0.35));
+    filter: brightness(1.12) saturate(1.08) drop-shadow(0 8px 22px rgba(184, 88, 105, 0.35));
     box-shadow: none;
     transform: translateY(-2px);
 }
@@ -2873,7 +2873,7 @@ body {
     gap: 40px;
     border: 1px solid var(--landing-border);
     border-radius: 8px;
-    background: linear-gradient(105deg, rgba(22, 140, 255, 0.12), transparent 44%), var(--landing-surface);
+    background: linear-gradient(105deg, rgba(184, 88, 105, 0.12), transparent 44%), var(--landing-surface);
     box-shadow:
         0 24px 70px rgba(0, 0, 0, 0.32),
         inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -2918,7 +2918,7 @@ body {
     outline: none;
     border-color: var(--landing-primary);
     box-shadow:
-        0 0 0 3px rgba(22, 140, 255, 0.18),
+        0 0 0 3px rgba(184, 88, 105, 0.18),
         inset 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
@@ -2942,12 +2942,12 @@ body {
 
 .button-primary {
     background: linear-gradient(100deg, var(--landing-primary), var(--landing-primary-bright));
-    box-shadow: 0 10px 26px rgba(22, 140, 255, 0.24);
+    box-shadow: 0 10px 26px rgba(184, 88, 105, 0.24);
 }
 
 .button-primary:hover {
-    background: linear-gradient(100deg, #2495ff, #41c1eb);
-    box-shadow: 0 12px 30px rgba(22, 140, 255, 0.34);
+    background: linear-gradient(100deg, #b44d60, #9c3850);
+    box-shadow: 0 12px 30px rgba(184, 88, 105, 0.34);
 }
 
 .button-secondary {
@@ -2982,7 +2982,7 @@ body {
 
 .gen-room-btn:hover {
     border-left-color: rgba(255, 255, 255, 0.32);
-    background: linear-gradient(100deg, #2495ff, #41c1eb);
+    background: linear-gradient(100deg, #b44d60, #9c3850);
     box-shadow:
         inset 1px 0 rgba(255, 255, 255, 0.1),
         inset 0 1px rgba(255, 255, 255, 0.16);
@@ -3015,7 +3015,7 @@ body {
 .gen-room-btn:focus-visible,
 .schedule-meeting-btn:focus-visible,
 a:focus-visible {
-    outline: 3px solid rgba(53, 208, 160, 0.85);
+    outline: 3px solid rgba(209, 136, 148, 0.85);
     outline-offset: 3px;
 }
 
@@ -3052,7 +3052,7 @@ a:focus-visible {
 }
 
 .feature-inner:hover {
-    border-color: rgba(50, 184, 232, 0.28);
+    border-color: rgba(199, 107, 120, 0.28);
     background-color: rgba(32, 38, 48, 0.88);
     transform: translateY(-4px);
 }
@@ -3060,7 +3060,7 @@ a:focus-visible {
 .feature-icon {
     min-height: 182px;
     border-radius: 6px;
-    background: linear-gradient(145deg, rgba(22, 140, 255, 0.2), rgba(53, 208, 160, 0.08));
+    background: linear-gradient(145deg, rgba(184, 88, 105, 0.2), rgba(209, 136, 148, 0.08));
 }
 
 .feature-title {

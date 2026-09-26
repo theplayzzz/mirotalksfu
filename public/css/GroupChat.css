@@ -9,7 +9,7 @@
 
 /* Chat Room */
 .chat-container {
-    --chat-accent: var(--room-switch-accent, #4678f9);
+    --chat-accent: var(--room-switch-accent, #b85869);
     --chat-toolbar-surface: rgba(18, 18, 21, 0.88);
     --chat-control-surface: rgba(255, 255, 255, 0.06);
     z-index: 5;
@@ -93,8 +93,8 @@
 }
 
 .chat-peer-badge.assistant {
-    background: rgba(59, 130, 246, 0.2);
-    color: #60a5fa;
+    background: rgba(184, 88, 105, 0.2);
+    color: #d18894;
 }
 
 .chat-peer-badge.assistant-green {
@@ -204,11 +204,11 @@
 }
 
 .chat-action-icon-btns #chatHideParticipantsList {
-    background: #1e3a8a;
+    background: #713347;
 }
 
 .chat-action-icon-btns #chatHideParticipantsList:hover {
-    background: #1d4ed8;
+    background: #924057;
 }
 
 .people-list .chat-list > li {
@@ -367,7 +367,7 @@
 }
 
 .all-participants-img:hover {
-    background-color: #1d8ecd;
+    background-color: #b85869;
     transition: all 0.3s ease-in-out;
 }
 
@@ -505,13 +505,13 @@
 
 /* Participants toggle button */
 .chat-header-participants-btn {
-    background: #1e3a8a !important;
+    background: #713347 !important;
     color: #fff !important;
 }
 
 .chat-header-participants-btn:hover {
     color: #fff !important;
-    background: #1d4ed8 !important;
+    background: #924057 !important;
 }
 
 .chat-header-participants-btn:active {
@@ -603,8 +603,8 @@
 }
 
 .chat .chat-history .my-message {
-    background: linear-gradient(135deg, #1e3a5f, #1a2d47);
-    border: 1px solid rgba(59, 130, 246, 0.15);
+    background: linear-gradient(135deg, #603342, #3f2731);
+    border: 1px solid rgba(184, 88, 105, 0.15);
     border-bottom-right-radius: 4px;
 }
 
@@ -906,7 +906,7 @@
     color: #e47297;
 }
 .me {
-    color: #1d8ecd;
+    color: #b85869;
 }
 
 .float-right {
