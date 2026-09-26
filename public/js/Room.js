@@ -274,6 +274,7 @@ let chatMessagesId = 0;
 
 let room_id = getRoomId();
 let room_password = getRoomPassword();
+let entry_room_password = '';
 let room_duration = getRoomDuration();
 let peer_name = getPeerName();
 let peer_avatar = getPeerAvatar();
@@ -747,7 +748,6 @@ async function initEnumerateAudioDevices() {
         .then(async (stream) => {
             await enumerateAudioDevices(stream);
             await getMicrophoneVolumeIndicator(stream);
-            isAudioAllowed = true;
         })
         .catch(() => {
             isAudioAllowed = false;
@@ -1093,7 +1093,6 @@ function getRoomPassword() {
         if (queryNoRoomPassword) {
             roomPassword = false;
         }
-        console.log('Direct join', { password: roomPassword });
         return roomPassword;
     }
     return false;
@@ -1307,17 +1306,10 @@ async function whoAreYou() {
         show(initVirtualBackgroundButton);
     }
 
-    if (peer_name) {
-        hide(loadingDiv);
-        checkMedia();
-        if (!BUTTONS.main.startScreenButton) isScreenAllowed = false;
-        getPeerInfo();
-        joinRoom(peer_name, room_id);
-        return;
-    }
+    checkMedia();
 
-    let default_name = window.localStorage.peer_name ? window.localStorage.peer_name : '';
-    if (getCookie(room_id + '_name')) {
+    let default_name = peer_name || (window.localStorage.peer_name ? window.localStorage.peer_name : '');
+    if (!peer_name && getCookie(room_id + '_name')) {
         default_name = getCookie(room_id + '_name');
     }
 
@@ -1388,12 +1380,8 @@ async function whoAreYou() {
         allowEscapeKey: false,
         background: swalBackground,
         title: BRAND.app?.name,
-        input: 'text',
-        inputPlaceholder: 'Enter your email or name',
-        inputAttributes: { maxlength: 254, id: 'usernameInput' },
-        inputValue: default_name,
-        html: initUser, // Inject HTML
-        confirmButtonText: `Join meeting`,
+        html: initUser,
+        confirmButtonText: 'Join meeting',
         customClass: { popup: 'init-modal-size' },
         showClass: { popup: 'animate__animated animate__fadeInDown' },
         hideClass: { popup: 'animate__animated animate__fadeOutUp' },
@@ -1401,30 +1389,57 @@ async function whoAreYou() {
             hide(loadingDiv);
         },
         didOpen: () => {
+            const nameInput = getId('usernameInput');
+            const passwordInput = getId('roomPasswordInput');
+            nameInput.value = default_name;
+            passwordInput.value = room_password || '';
             showMobileAudioGuidance();
+            nameInput.focus();
         },
-        inputValidator: (name) => {
+        preConfirm: () => {
             if (isVideoAllowed && !isInitVideoLoaded) {
-                return 'Please wait for video to initialize...';
+                Swal.showValidationMessage('Please wait for video to initialize...');
+                return false;
             }
-            if (!name) return 'Please enter your email or name';
+
+            const nameInput = getId('usernameInput');
+            const passwordInput = getId('roomPasswordInput');
+            let name = nameInput.value.trim();
+            const password = passwordInput.value;
+
+            if (!name) {
+                Swal.showValidationMessage('Please enter your name or email');
+                nameInput.focus();
+                return false;
+            }
+
             const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name);
             if ((isEmail && name.length > 254) || (!isEmail && name.length > 32)) {
-                return isEmail ? 'Email must be max 254 char' : 'Name must be max 32 char';
+                Swal.showValidationMessage(isEmail ? 'Email must be max 254 characters' : 'Name must be max 32 characters');
+                return false;
             }
+
             name = filterXSS(name);
-            if (isHtml(name)) return 'Invalid name!';
+            if (isHtml(name)) {
+                Swal.showValidationMessage('Invalid name');
+                return false;
+            }
+
             if (!getCookie(room_id + '_name')) {
                 window.localStorage.peer_name = name;
             }
             setCookie(room_id + '_name', name, 30);
             peer_name = name;
+            entry_room_password = password;
 
             if (isValidEmail(peer_name)) {
                 getId('notifyEmailInput').value = peer_name;
             }
+
+            return { name: name, password: password };
         },
-    }).then(async () => {
+    }).then(async (result) => {
+        if (!result.isConfirmed) return;
         if (!usernameEmoji.classList.contains('hidden')) {
             usernameEmoji.classList.add('hidden');
         }
@@ -1449,10 +1464,6 @@ async function whoAreYou() {
         elemDisplay('initVideo', false);
         initVideoContainerShow(false);
         hide(initVideoSelect);
-    }
-    if (!isAudioAllowed) {
-        hide(initMicrophoneSelect);
-        hide(initSpeakerSelect);
     }
 }
 
@@ -1515,8 +1526,7 @@ function showMobileAudioGuidance() {
 
 function handleAudio() {
     isAudioAllowed = isAudioAllowed ? false : true;
-    initAudioButton.className = 'fas fa-microphone' + (isAudioAllowed ? '' : '-slash');
-    setColor(initAudioButton, isAudioAllowed ? 'white' : 'red');
+    setInitAudioButtonState(isAudioAllowed);
     setColor(startAudioButton, isAudioAllowed ? 'white' : 'red');
     checkInitAudio(isAudioAllowed);
     lS.setInitConfig(lS.MEDIA_TYPE.audio, isAudioAllowed);
@@ -1546,7 +1556,7 @@ async function handleAudioVideo() {
     lS.setInitConfig(lS.MEDIA_TYPE.audio, isAudioVideoAllowed);
     lS.setInitConfig(lS.MEDIA_TYPE.video, isAudioVideoAllowed);
     lS.setInitConfig(lS.MEDIA_TYPE.audioVideo, isAudioVideoAllowed);
-    initAudioButton.className = 'fas fa-microphone' + (isAudioVideoAllowed ? '' : '-slash');
+    setInitAudioButtonState(isAudioVideoAllowed);
     initVideoButton.className = 'fas fa-video' + (isAudioVideoAllowed ? '' : '-slash');
     initAudioVideoButton.className = 'fas fa-eye' + (isAudioVideoAllowed ? '' : '-slash');
     if (!isAudioVideoAllowed) {
@@ -1594,8 +1604,6 @@ async function checkInitVideo(isVideoAllowed) {
 }
 
 function checkInitAudio(isAudioAllowed) {
-    initMicrophoneSelect.disabled = !isAudioAllowed;
-    initSpeakerSelect.disabled = !isAudioAllowed;
     isAudioAllowed ? sound('joined') : sound('left');
 }
 
@@ -1805,8 +1813,10 @@ function joinRoom(peer_name, room_id) {
             joinRoomWithScreen,
             isSpeechSynthesisSupported,
             transcription,
-            roomIsReady
+            roomIsReady,
+            entry_room_password
         );
+        entry_room_password = '';
         handleRoomClientEvents();
     }
 }
@@ -3022,6 +3032,15 @@ function handleButtons() {
 // HANDLE INIT USER
 // ####################################################
 
+function setInitAudioButtonState(enabled) {
+    initAudioButton.className = 'fas fa-microphone' + (enabled ? '' : '-slash');
+    const label = enabled ? 'Mute microphone' : 'Enable microphone';
+    initAudioButton.setAttribute('aria-label', label);
+    initAudioButton.setAttribute('title', label);
+    initAudioButton.setAttribute('aria-pressed', String(enabled));
+    setColor(initAudioButton, enabled ? 'white' : 'red');
+}
+
 function setButtonsInit() {
     if (!isMobileDevice) {
         setTippy('initAudioButton', 'Toggle the audio', 'top');
@@ -3034,7 +3053,12 @@ function setButtonsInit() {
         setTippy('initUsernameEmojiButton', 'Toggle username emoji', 'top');
         setTippy('initExitButton', 'Leave meeting', 'top');
     }
-    if (!isAudioAllowed) hide(initAudioButton);
+    if (!BUTTONS.main.startAudioButton) {
+        hide(initAudioButton);
+    } else {
+        show(initAudioButton);
+        setInitAudioButtonState(isAudioAllowed);
+    }
     if (!isVideoAllowed) hide(initVideoButton);
     if (!isAudioAllowed || !isVideoAllowed) hide(initAudioVideoButton);
     if ((!isAudioAllowed && !isVideoAllowed) || isMobileDevice) hide(initVideoAudioRefreshButton);

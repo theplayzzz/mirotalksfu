@@ -255,7 +255,8 @@ class RoomClient {
         joinRoomWithScreen,
         isSpeechSynthesisSupported,
         transcription,
-        successCallback
+        successCallback,
+        entryRoomPassword = false
     ) {
         this.room_id = room_id;
         this.peer_id = socket.id;
@@ -410,7 +411,7 @@ class RoomClient {
 
         // Room Password
         this.RoomIsLocked = false;
-        this.RoomPassword = false;
+        this.RoomPassword = entryRoomPassword || false;
         this.RoomPasswordValid = false;
 
         // Room Lobby
@@ -2059,7 +2060,6 @@ class RoomClient {
         const baseUrl = `${window.location.origin}/join`;
         const queryParams = {
             room: this.room_id,
-            roomPassword: this.RoomPassword,
             name: this.peer_name,
             audio: peer_audio,
             video: peer_video,
@@ -2067,6 +2067,7 @@ class RoomClient {
             notify: 0,
         };
         if (peer_token) queryParams.token = peer_token;
+        if (room_password) queryParams.roomPassword = room_password;
         const url = `${baseUrl}?${Object.entries(queryParams)
             .map(([key, value]) => `${key}=${value}`)
             .join('&')}`;
@@ -10831,8 +10832,8 @@ class RoomClient {
     }
 
     unlockTheRoom() {
-        if (room_password) {
-            this.RoomPassword = room_password;
+        if (this.RoomPassword || room_password) {
+            this.RoomPassword = this.RoomPassword || room_password;
             let data = {
                 action: 'checkPassword',
                 password: this.RoomPassword,
