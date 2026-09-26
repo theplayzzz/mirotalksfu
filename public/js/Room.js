@@ -1377,11 +1377,22 @@ async function whoAreYou() {
         console.error('AXIOS OIDC Error fetching profile', error.message || error);
     }
 
+    const stopJoinBackground = () => {
+        const joinBackground = getId('joinBackground');
+        const backgroundVideo = getId('joinBackgroundVideo');
+        joinBackground?.classList.remove('active');
+        if (backgroundVideo) {
+            backgroundVideo.pause();
+            backgroundVideo.removeAttribute('src');
+            backgroundVideo.load();
+        }
+    };
+
     Swal.fire({
         allowOutsideClick: false,
         allowEscapeKey: false,
         background: swalBackground,
-        title: '<img class="init-brand-image" src="/images/linkdonotle-banner.png" alt="LinkDoNotle" />',
+        title: '<img class="init-brand-image" src="/images/linkdonotle-banner.png?v=2" alt="LinkDoNotle" />',
         html: initUser,
         confirmButtonText: 'Join meeting',
         backdrop: 'rgba(3, 4, 9, 0.24)',
@@ -1396,14 +1407,7 @@ async function whoAreYou() {
             backgroundVideo.src = '/videos/linkdonotle-background.mp4';
             backgroundVideo.play().catch(() => {});
         },
-        didClose: () => {
-            const joinBackground = getId('joinBackground');
-            const backgroundVideo = getId('joinBackgroundVideo');
-            joinBackground.classList.remove('active');
-            backgroundVideo.pause();
-            backgroundVideo.removeAttribute('src');
-            backgroundVideo.load();
-        },
+        didClose: stopJoinBackground,
         didOpen: () => {
             const nameInput = getId('usernameInput');
             const passwordInput = getId('roomPasswordInput');
@@ -1463,6 +1467,8 @@ async function whoAreYou() {
         },
     }).then(async (result) => {
         if (!result.isConfirmed) return;
+        // A later room popup can replace the join dialog before didClose runs.
+        stopJoinBackground();
         if (!usernameEmoji.classList.contains('hidden')) {
             usernameEmoji.classList.add('hidden');
         }

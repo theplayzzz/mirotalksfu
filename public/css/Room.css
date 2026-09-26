@@ -484,7 +484,8 @@ body {
     transition: opacity 350ms ease, visibility 350ms ease;
 }
 
-.join-background.active {
+/* Keep the video visible only while the entry dialog is on screen. */
+body:has(.init-modal-size) .join-background.active {
     visibility: visible;
     opacity: 1;
 }
