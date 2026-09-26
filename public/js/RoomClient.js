@@ -3419,7 +3419,8 @@ class RoomClient {
                 this.popupPeerInfo(p.id, this.peer_info);
                 this.checkPeerInfoStatus(this.peer_info);
 
-                if (isScreen && this.videoMediaContainer.childElementCount > 1) pn.click();
+                // A newly started screen must not replace the participant's current pin.
+                // Pinning remains an explicit per-user action through the pin button.
 
                 if (!this.isMobileDevice) {
                     this.setTippy(pn.id, 'Toggle Pin', 'bottom');
@@ -4215,7 +4216,8 @@ class RoomClient {
 
                 if (!remoteIsScreen && remotePrivacyOn) this.setVideoPrivacyStatus(remotePeerId, remotePrivacyOn);
 
-                if (remoteIsScreen && !isHideALLVideosActive) pn.click();
+                // Do not auto-pin a newly received screen. Preserve any screen the user
+                // is already watching and let them choose a new pin explicitly.
 
                 if (isHideALLVideosActive) {
                     isHideALLVideosActive = false;
