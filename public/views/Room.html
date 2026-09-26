@@ -171,6 +171,10 @@
 
         <div id="disconnectOverlay" class="disconnect-overlay" aria-hidden="true"></div>
 
+        <div id="joinBackground" class="join-background" aria-hidden="true">
+            <video id="joinBackgroundVideo" muted loop playsinline preload="none"></video>
+        </div>
+
         <div id="loadingDiv" class="center" role="status" aria-live="polite" aria-busy="true">
             <div class="loading-spinner" aria-hidden="true">
                 <div class="spinner-ring"></div>
@@ -196,20 +200,36 @@
                     <div id="imageGrid" class="image-grid fadein"></div>
                     <span id="initErrorMessage" class="show-error"></span>
                 </div>
-                <div class="initComands">
-                    <button id="initVideoAudioRefreshButton" class="fas fa-rotate"></button>
-                    <button id="initAudioVideoButton" class="fas fa-eye"></button>
-                    <button id="initVideoButton" class="fas fa-video"></button>
-                    <button id="initAudioButton" class="fas fa-microphone"></button>
-                    <button id="initStartScreenButton" class="fas fa-desktop hidden"></button>
-                    <button id="initStopScreenButton" class="fas fa-stop-circle orange hidden"></button>
-                    <button id="initVideoMirrorButton" class="fas fa-arrow-right-arrow-left"></button>
-                    <button id="initVirtualBackgroundButton" class="fa-solid fa-image hidden"></button>
-                    <button id="initUsernameEmojiButton" class="fas fa-smile"></button>
-                    <button id="initExitButton" class="fas fa-sign-out-alt red"></button>
-                    <select id="initVideoSelect" class="form-select text-light bg-dark"></select>
-                    <select id="initMicrophoneSelect" class="form-select text-light bg-dark"></select>
-                    <select id="initSpeakerSelect" class="form-select text-light bg-dark"></select>
+                <div class="initComands" role="toolbar" aria-label="Call options">
+                    <button id="initVideoAudioRefreshButton" type="button" class="fas fa-rotate" aria-label="Refresh devices" title="Refresh devices"></button>
+                    <button id="initAudioVideoButton" type="button" class="fas fa-eye" aria-label="Toggle audio and video" title="Toggle audio and video"></button>
+                    <button id="initVideoButton" type="button" class="fas fa-video" aria-label="Toggle camera" title="Toggle camera"></button>
+                    <button id="initAudioButton" type="button" class="fas fa-microphone-slash" aria-label="Enable microphone" title="Enable microphone" aria-pressed="false"></button>
+                    <button id="initStartScreenButton" type="button" class="fas fa-desktop hidden" aria-label="Share screen" title="Share screen"></button>
+                    <button id="initStopScreenButton" type="button" class="fas fa-stop-circle orange hidden" aria-label="Stop screen sharing" title="Stop screen sharing"></button>
+                    <button id="initVideoMirrorButton" type="button" class="fas fa-arrow-right-arrow-left" aria-label="Mirror camera" title="Mirror camera"></button>
+                    <button id="initVirtualBackgroundButton" type="button" class="fa-solid fa-image hidden" aria-label="Virtual background" title="Virtual background"></button>
+                    <button id="initUsernameEmojiButton" type="button" class="fas fa-smile" aria-label="Choose a name emoji" title="Choose a name emoji"></button>
+                    <button id="initExitButton" type="button" class="fas fa-sign-out-alt red" aria-label="Leave meeting" title="Leave meeting"></button>
+                    <details id="initDeviceSettings" class="init-device-settings">
+                        <summary class="init-device-settings-toggle" aria-label="Audio and video devices" title="Audio and video devices">
+                            <i class="fas fa-sliders" aria-hidden="true"></i>
+                        </summary>
+                        <div class="init-device-settings-menu">
+                            <label class="init-sr-only" for="initVideoSelect">Camera</label>
+                            <select id="initVideoSelect" class="form-select text-light bg-dark" aria-label="Camera"></select>
+                            <label class="init-sr-only" for="initMicrophoneSelect">Microphone</label>
+                            <select id="initMicrophoneSelect" class="form-select text-light bg-dark" aria-label="Microphone"></select>
+                            <label class="init-sr-only" for="initSpeakerSelect">Speaker</label>
+                            <select id="initSpeakerSelect" class="form-select text-light bg-dark" aria-label="Speaker"></select>
+                        </div>
+                    </details>
+                </div>
+                <div class="init-join-fields">
+                    <label class="init-sr-only" for="usernameInput">Your name or email</label>
+                    <input id="usernameInput" name="username" class="init-join-input" type="text" maxlength="254" autocomplete="username" placeholder="Enter your name or email" />
+                    <label class="init-sr-only" for="roomPasswordInput">Room password</label>
+                    <input id="roomPasswordInput" name="room_password" class="init-join-input" type="password" autocomplete="current-password" placeholder="Room password (if locked)" />
                 </div>
             </div>
             <div id="usernameEmoji" class="usernameEmoji fadein center hidden"></div>

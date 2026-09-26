@@ -255,7 +255,8 @@ class RoomClient {
         joinRoomWithScreen,
         isSpeechSynthesisSupported,
         transcription,
-        successCallback
+        successCallback,
+        entryRoomPassword = false
     ) {
         this.room_id = room_id;
         this.peer_id = socket.id;
@@ -410,7 +411,7 @@ class RoomClient {
 
         // Room Password
         this.RoomIsLocked = false;
-        this.RoomPassword = false;
+        this.RoomPassword = entryRoomPassword || false;
         this.RoomPasswordValid = false;
 
         // Room Lobby
@@ -483,6 +484,7 @@ class RoomClient {
         this.screenProducerId = null;
         this.audioProducerId = null;
         this.audioConsumers = new Map();
+        this.locallyMutedPeerIds = new Set();
 
         this.masterOutputVolume = 1; // 0..1 master speaker volume, multiplied with each per-peer volume
 
@@ -579,12 +581,23 @@ class RoomClient {
         this.createRoom(this.room_id).then(async () => {
             const data = {
                 room_id: this.room_id,
+                room_password: this.RoomPassword,
                 peer_info: this.peer_info,
             };
             await this.join(data);
             this.initSockets();
             this._isConnected = true;
             successCallback();
+        }).catch((error) => {
+            if (error?.code === 'INVALID_ROOM_PASSWORD') {
+                Swal.fire({ icon: 'error', title: 'Incorrect room password', confirmButtonText: 'Try again' })
+                    .then(() => window.location.assign('/join/link'));
+                return;
+            }
+            console.error('Create room failed:', error);
+            popupHtmlMessage(
+                null, image.network, 'Join Room', error.message || 'Could not join room', 'center', '/join/link', false
+            );
         });
     }
 
@@ -596,8 +609,10 @@ class RoomClient {
         await this.socket
             .request('createRoom', {
                 room_id,
+                room_password: this.RoomPassword,
             })
             .catch((err) => {
+                if (err?.code === 'INVALID_ROOM_PASSWORD' || err?.code === 'ROOM_NOT_ALLOWED') throw err;
                 console.log('Create room:', err);
             });
     }
@@ -644,6 +659,11 @@ class RoomClient {
                 if (room === 'isJoinLocked') {
                     console.warn('00-WARNING ----> Room is Locked for new participants');
                     return this.roomJoinLocked();
+                }
+
+                if (room === 'invalidPassword') {
+                    return Swal.fire({ icon: 'error', title: 'Incorrect room password', confirmButtonText: 'Try again' })
+                        .then(() => window.location.assign('/join/link'));
                 }
 
                 if (room === 'isLocked') {
@@ -2065,7 +2085,6 @@ class RoomClient {
         const baseUrl = `${window.location.origin}/join`;
         const queryParams = {
             room: this.room_id,
-            roomPassword: this.RoomPassword,
             name: this.peer_name,
             audio: peer_audio,
             video: peer_video,
@@ -2073,6 +2092,7 @@ class RoomClient {
             notify: 0,
         };
         if (peer_token) queryParams.token = peer_token;
+        if (room_password) queryParams.roomPassword = room_password;
         const url = `${baseUrl}?${Object.entries(queryParams)
             .map(([key, value]) => `${key}=${value}`)
             .join('&')}`;
@@ -2929,6 +2949,8 @@ class RoomClient {
         return {
             audio: true,
             video: videoConstraints,
+            windowAudio: 'window',
+            systemAudio: 'include',
         };
     }
 
@@ -4226,7 +4248,7 @@ class RoomClient {
                         remoteIsScreen &&
                         this.setTippy(dw.id, 'Enable screen drawing', 'bottom');
                     this.setTippy(cm.id, 'Hide', 'bottom');
-                    this.setTippy(au.id, 'Mute', 'bottom');
+                    this.setTippy(au.id, au.getAttribute('aria-label') || 'Silenciar somente para mim', 'bottom');
                     this.setTippy(pv.id, '🔊 Volume', 'bottom');
                 }
 
@@ -4248,6 +4270,7 @@ class RoomClient {
             case mediaType.audio:
                 elem = document.createElement('audio');
                 elem.setAttribute('id', id);
+                elem.dataset.peerId = remotePeerId;
                 elem.setAttribute('volumeBar', remotePeerId + '___pVolume');
                 elem.autoplay = true;
                 elem.volume = 1.0;
@@ -4266,6 +4289,7 @@ class RoomClient {
 
                 // Use helper function to set audio volume
                 this.setAV(id, audioConsumerId, remotePeerAudioVolume, true);
+                this.applyOutputVolume(elem);
                 this.handleCV(audioConsumerId);
 
                 this.setPeerAudio(remotePeerId, remotePeerAudio);
@@ -4537,7 +4561,7 @@ class RoomClient {
             this.setTippy(sm.id, 'Send message', 'bottom');
             this.setTippy(sf.id, 'Send file', 'bottom');
             this.setTippy(sv.id, 'Send video', 'bottom');
-            this.setTippy(au.id, 'Mute', 'bottom');
+            this.setTippy(au.id, au.getAttribute('aria-label') || 'Silenciar somente para mim', 'bottom');
             this.setTippy(pv.id, '🔊 Volume', 'bottom');
             this.setTippy(pn.id, 'Pin', 'bottom');
             this.setTippy(gl.id, 'Geolocation', 'bottom');
@@ -4968,10 +4992,34 @@ class RoomClient {
 
     setPeerAudio(peer_id, status) {
         console.log('Set peer audio enabled: ' + status);
-        const audioStatus = this.getPeerAudioBtn(peer_id); // producer, consumers
         const audioVolume = this.getPeerAudioVolumeBar(peer_id); // consumers
-        if (audioStatus) audioStatus.className = status ? html.audioOn : html.audioOff;
+        this.getPeerAudioButtons(peer_id).forEach((button) => {
+            button.dataset.remoteAudioOn = String(status);
+        });
+        this.refreshLocalPeerAudioButton(peer_id);
         if (audioVolume) status ? show(audioVolume) : hide(audioVolume);
+    }
+
+    getPeerAudioButtons(peer_id) {
+        return Array.from(document.querySelectorAll('button[id]')).filter(
+            (button) => button.id === peer_id + '__audio'
+        );
+    }
+
+    refreshLocalPeerAudioButton(peer_id) {
+        const locallyMuted = this.locallyMutedPeerIds.has(peer_id);
+        const label = locallyMuted ? 'Voltar a ouvir somente para mim' : 'Silenciar somente para mim';
+        this.getPeerAudioButtons(peer_id).forEach((button) => {
+            button.className = locallyMuted
+                ? html.volume
+                : button.dataset.remoteAudioOn === 'true'
+                  ? html.audioOn
+                  : html.audioOff;
+            button.setAttribute('aria-label', label);
+            button.setAttribute('aria-pressed', String(locallyMuted));
+            button.title = label;
+            if (button._tippy) button._tippy.setContent(label);
+        });
     }
 
     setIsAudio(peer_id, status) {
@@ -5680,7 +5728,27 @@ class RoomClient {
             btnPn.addEventListener('click', () => {
                 if (this.isMobileDevice) return;
                 this.sound('click');
-                this.isVideoPinned = !this.isVideoPinned;
+                const unpinThisVideo = this.isVideoPinned && this.pinnedVideoPlayerId === elemId;
+                if (this.isVideoPinned && !unpinThisVideo) {
+                    const previousButton = this.getId(`${this.pinnedVideoPlayerId}__pin`);
+                    if (previousButton) {
+                        const wasApplyingViewMode = this.isApplyingParticipantViewMode;
+                        this.isApplyingParticipantViewMode = true;
+                        try {
+                            previousButton.click();
+                        } finally {
+                            this.isApplyingParticipantViewMode = wasApplyingViewMode;
+                        }
+                    } else {
+                        const previousTile = this.videoPinMediaContainer.firstElementChild;
+                        if (previousTile) {
+                            previousTile.className = 'Camera';
+                            this.videoMediaContainer.appendChild(previousTile);
+                        }
+                        this.removeVideoPinMediaContainer();
+                    }
+                }
+                this.isVideoPinned = !unpinThisVideo;
                 if (this.isVideoPinned) {
                     if (!videoPlayer.classList.contains('videoCircle')) {
                         videoPlayer.style.objectFit = 'contain';
@@ -5694,17 +5762,14 @@ class RoomClient {
                     this.pinnedVideoPlayerId = elemId;
                     setColor(btnPn, 'lime');
                 } else {
-                    if (this.pinnedVideoPlayerId != videoPlayer.id) {
-                        this.isVideoPinned = true;
-                        if (this.isScreenAllowed) return;
-                        return this.msgPopup('toast', 'Another video seems pinned, unpin it before to pin this one');
-                    }
                     if (!isScreen && !isBroadcastingEnabled) videoPlayer.style.objectFit = 'var(--videoObjFit)';
                     this.videoPinMediaContainer.removeChild(cam);
                     cam.className = 'Camera';
                     this.videoMediaContainer.appendChild(cam);
                     this.removeVideoPinMediaContainer();
                     setColor(btnPn, 'white');
+                    const name = cam.querySelector('.username');
+                    if (name) name.style.display = isButtonsVisible || localStorageSettings.keep_buttons_visible ? 'flex' : 'none';
                     if (!this.isApplyingParticipantViewMode && typeof setParticipantViewMode === 'function') {
                         clearTimeout(this.participantViewRestoreTimer);
                         this.participantViewRestoreTimer = null;
@@ -6011,9 +6076,7 @@ class RoomClient {
                 if (videoBar.classList.contains('hidden')) {
                     show(videoBar);
                     animateCSS(videoBar, 'fadeInDown');
-                    if (participantsCount > 1) {
-                        videoPlayer.style.setProperty('border', 'var(--videoBar-active)', 'important');
-                    }
+                    if (participantsCount > 1) videoPlayer.classList.add('video-tile-active');
                 } else {
                     setCamerasBorderNone();
                     hide(videoBar);
@@ -10837,8 +10900,8 @@ class RoomClient {
     }
 
     unlockTheRoom() {
-        if (room_password) {
-            this.RoomPassword = room_password;
+        if (this.RoomPassword || room_password) {
+            this.RoomPassword = this.RoomPassword || room_password;
             let data = {
                 action: 'checkPassword',
                 password: this.RoomPassword,
@@ -11204,7 +11267,8 @@ class RoomClient {
         if (!audioPlayer) return;
 
         const peerVolume = audioPlayer.dataset.peerVolume !== undefined ? Number(audioPlayer.dataset.peerVolume) : 1;
-        const volume = Math.min(1, Math.max(0, (isNaN(peerVolume) ? 1 : peerVolume) * this.masterOutputVolume));
+        const normalVolume = Math.min(1, Math.max(0, (isNaN(peerVolume) ? 1 : peerVolume) * this.masterOutputVolume));
+        const volume = this.locallyMutedPeerIds.has(audioPlayer.dataset.peerId) ? 0 : normalVolume;
 
         const gainNode = this.getOutputGainNode(audioPlayer, volume);
         if (gainNode) {
@@ -11409,10 +11473,6 @@ class RoomClient {
         try {
             this.clearVideoFocusMode();
 
-            if (this.isVideoPinned && this.pinnedVideoPlayerId) {
-                const pinnedButton = this.getId(`${this.pinnedVideoPlayerId}__pin`);
-                if (pinnedButton) pinnedButton.click();
-            }
             pinButton.click();
             this.toggleVideoPin(participantViewMode.value);
         } finally {
@@ -11830,20 +11890,21 @@ class RoomClient {
     // ###################################################
 
     handleAU(uid, peer_id) {
-        let btnAU = this.getId(uid);
-        if (btnAU) {
-            btnAU.addEventListener('click', (e) => {
-                if (e.target.className === html.audioOn) {
-                    isPresenter
-                        ? this.peerAction('me', peer_id, 'mute')
-                        : this.userLog('warning', 'Only the presenter can mute the participants', 'top-end');
-                } else {
-                    isPresenter
-                        ? this.peerAction('me', peer_id, 'unmute')
-                        : this.userLog('warning', 'Only the presenter can unmute the participants', 'top-end');
-                }
+        const button = this.getId(uid);
+        if (!button) return;
+        button.addEventListener('click', () => {
+            if (peer_id === this.peer_id) {
+                (this.peer_info.peer_audio ? stopAudioButton : startAudioButton).click();
+                return;
+            }
+            const locallyMuted = !this.locallyMutedPeerIds.has(peer_id);
+            if (locallyMuted) this.locallyMutedPeerIds.add(peer_id);
+            else this.locallyMutedPeerIds.delete(peer_id);
+            this.remoteAudioEl.querySelectorAll('audio').forEach((audioPlayer) => {
+                if (audioPlayer.dataset.peerId === peer_id) this.applyOutputVolume(audioPlayer);
             });
-        }
+            this.refreshLocalPeerAudioButton(peer_id);
+        });
     }
 
     // ####################################################
@@ -12910,11 +12971,9 @@ class RoomClient {
     }
 
     followMePin(peerId) {
-        if (this.isVideoPinned) {
-            this.followMeUnpin();
-        }
         const videoEl = this.getVideoElementByPeerId(peerId);
         if (videoEl) {
+            if (this.isVideoPinned && this.pinnedVideoPlayerId === videoEl.id) return;
             const btnPn = this.getId(`${videoEl.id}__pin`);
             if (btnPn) {
                 btnPn.click();
@@ -13016,12 +13075,6 @@ class RoomClient {
 
         if (!btnPn) {
             return this.userLog('info', 'No video available to pin for this participant', 'top-end');
-        }
-
-        // Unpin the currently pinned video, otherwise pinning another one is rejected
-        if (this.isVideoPinned && this.pinnedVideoPlayerId !== videoEl.id) {
-            const pinnedBtn = this.getId(`${this.pinnedVideoPlayerId}__pin`);
-            if (pinnedBtn) pinnedBtn.click();
         }
 
         btnPn.click();

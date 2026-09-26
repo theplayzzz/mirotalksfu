@@ -24,7 +24,7 @@
     width: 100%;
     margin: 0 auto;
     padding: 48px;
-    background: linear-gradient(160deg, rgba(15, 15, 25, 0.95) 40%, rgba(70, 120, 249, 0.12) 100%);
+    background: linear-gradient(160deg, rgba(15, 15, 25, 0.95) 40%, rgba(184, 88, 105, 0.12) 100%);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 20px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -42,15 +42,15 @@
     height: 72px;
     margin: 0 auto 24px;
     border-radius: 50%;
-    background: rgba(70, 120, 249, 0.1);
-    border: 1px solid rgba(70, 120, 249, 0.2);
+    background: rgba(184, 88, 105, 0.1);
+    border: 1px solid rgba(184, 88, 105, 0.2);
     display: flex;
     align-items: center;
     justify-content: center;
 }
 .login-icon i {
     font-size: 30px;
-    color: #4678f9;
+    color: #c8707f;
 }
 
 /* Success variant */
@@ -130,11 +130,11 @@
         box-shadow 0.25s ease;
 }
 .login-input-group:focus-within {
-    border-color: rgba(70, 120, 249, 0.4);
-    background: rgba(70, 120, 249, 0.04);
+    border-color: rgba(184, 88, 105, 0.4);
+    background: rgba(184, 88, 105, 0.04);
 }
 .login-input-group:focus-within > i:first-child {
-    color: #4678f9;
+    color: #c8707f;
 }
 .login-input-group > i:first-child {
     color: rgba(255, 255, 255, 0.35);
@@ -204,8 +204,8 @@
 .login-input-group select.form-input:focus,
 .login-input-group select.form-input:focus-visible {
     outline: none;
-    border-color: rgba(70, 120, 249, 0.5);
-    box-shadow: 0 0 0 2px rgba(70, 120, 249, 0.15);
+    border-color: rgba(184, 88, 105, 0.5);
+    box-shadow: 0 0 0 2px rgba(184, 88, 105, 0.15);
 }
 .login-input-group select.form-input option {
     background: #1a1a2e;
@@ -217,11 +217,11 @@
 .join-room-btn:focus-visible,
 .random-room-btn:focus-visible,
 .password-toggle:focus-visible {
-    outline: 2px solid #4678f9;
+    outline: 2px solid #c8707f;
     outline-offset: 2px;
 }
 .login-input-group:focus-within {
-    box-shadow: 0 0 0 2px rgba(70, 120, 249, 0.15);
+    box-shadow: 0 0 0 2px rgba(184, 88, 105, 0.15);
 }
 
 /* Password toggle button */
@@ -249,7 +249,7 @@
     background: rgba(255, 255, 255, 0.06);
 }
 .password-toggle[aria-pressed='true'] {
-    color: var(--color-accent, #4678f9);
+    color: var(--color-accent, #c8707f);
 }
 
 /* Login button */
@@ -260,7 +260,7 @@
     margin-bottom: 0;
     border: none;
     border-radius: 16px;
-    background: linear-gradient(135deg, #4678f9, #3b5de7);
+    background: linear-gradient(135deg, #b85869, #a9475a);
     color: #fff;
     font-size: 16px;
     font-weight: 600;
@@ -271,10 +271,10 @@
         opacity 0.15s ease;
 }
 .login-btn:hover:not(:disabled) {
-    box-shadow: 0 4px 16px rgba(70, 120, 249, 0.3);
+    box-shadow: 0 4px 16px rgba(184, 88, 105, 0.3);
 }
 .login-btn:active:not(:disabled) {
-    box-shadow: 0 2px 8px rgba(70, 120, 249, 0.15);
+    box-shadow: 0 2px 8px rgba(184, 88, 105, 0.15);
 }
 .login-btn:disabled {
     opacity: 0.7;
@@ -294,7 +294,7 @@
 /* Join Room form background */
 #joinRoomForm {
     display: none;
-    background: linear-gradient(160deg, rgba(15, 15, 25, 0.95) 40%, rgba(70, 120, 249, 0.12) 100%);
+    background: linear-gradient(160deg, rgba(15, 15, 25, 0.95) 40%, rgba(184, 88, 105, 0.12) 100%);
     border-radius: 20px;
     padding: 48px;
     margin: -48px;
@@ -348,9 +348,9 @@
         background 0.2s ease;
 }
 .random-room-btn:hover {
-    border-color: rgba(70, 120, 249, 0.35);
-    color: #4678f9;
-    background: rgba(70, 120, 249, 0.06);
+    border-color: rgba(184, 88, 105, 0.35);
+    color: #c8707f;
+    background: rgba(184, 88, 105, 0.06);
 }
 .random-room-btn:active {
     transform: scale(0.95);
@@ -380,13 +380,13 @@
 
 /* Schedule meeting button (login page) */
 .schedule-meeting-login-btn {
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    background: linear-gradient(135deg, #b85869, #a9475a);
 }
 .schedule-meeting-login-btn:hover {
-    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 4px 16px rgba(184, 88, 105, 0.3);
 }
 .schedule-meeting-login-btn:active {
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+    box-shadow: 0 2px 8px rgba(184, 88, 105, 0.15);
 }
 
 /* Divider */

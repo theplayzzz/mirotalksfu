@@ -13,7 +13,7 @@
     --wb-bg: linear-gradient(135deg, #0e0e14, #1e1e28);
     --select-bg: #161622;
     --select-border-radius: 12px;
-    --select-focus-color: rgba(102, 190, 255, 0.5);
+    --select-focus-color: rgba(199, 107, 120, 0.6);
     --left-msg-bg: #141420;
     --right-msg-bg: #1a1a26;
     --private-msg-bg: #6b1226;
@@ -46,19 +46,19 @@
 
     --dd-color: #e8e8ec;
 
-    --videoBar-active: 1px solid rgba(102, 190, 255, 0.32);
+    --videoBar-active: 1px solid rgba(199, 107, 120, 0.32);
 
     /* Design tokens (additive, non-breaking) */
 
     /* Semantic colors */
-    --color-accent: #4678f9;
-    --color-accent-strong: #3b5de7;
-    --color-accent-soft: rgba(70, 120, 249, 0.12);
+    --color-accent: #b85869;
+    --color-accent-strong: #a9475a;
+    --color-accent-soft: rgba(184, 88, 105, 0.13);
     --color-success: #2ece89;
     --color-warning: #fbbf24;
     --color-danger: #ff4b4b;
     --color-danger-strong: #dc3545;
-    --color-focus: rgba(102, 190, 255, 0.65);
+    --color-focus: rgba(199, 107, 120, 0.7);
 
     /* Foreground */
     --fg-1: rgba(255, 255, 255, 0.95);

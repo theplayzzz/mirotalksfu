@@ -24,7 +24,7 @@
     width: 100%;
     margin: 0 auto;
     padding: 56px 48px 48px;
-    background: linear-gradient(160deg, rgba(15, 15, 25, 0.95) 40%, rgba(70, 120, 249, 0.12) 100%);
+    background: linear-gradient(160deg, rgba(15, 15, 25, 0.95) 40%, rgba(184, 88, 105, 0.12) 100%);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 20px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -37,8 +37,8 @@
     height: 72px;
     margin: 0 auto 24px;
     border-radius: 50%;
-    background: rgba(70, 120, 249, 0.1);
-    border: 1px solid rgba(70, 120, 249, 0.2);
+    background: rgba(184, 88, 105, 0.1);
+    border: 1px solid rgba(184, 88, 105, 0.2);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -46,16 +46,16 @@
 }
 .waiting-icon i {
     font-size: 30px;
-    color: #4678f9;
+    color: #c8707f;
 }
 
 @keyframes iconPulse {
     0%,
     100% {
-        box-shadow: 0 0 0 0 rgba(70, 120, 249, 0.25);
+        box-shadow: 0 0 0 0 rgba(184, 88, 105, 0.25);
     }
     50% {
-        box-shadow: 0 0 0 16px rgba(70, 120, 249, 0);
+        box-shadow: 0 0 0 16px rgba(184, 88, 105, 0);
     }
 }
 
@@ -82,13 +82,13 @@
 /* Room name badge */
 .waiting-room-name {
     display: inline-block;
-    background: rgba(70, 120, 249, 0.12);
-    border: 1px solid rgba(70, 120, 249, 0.2);
+    background: rgba(184, 88, 105, 0.12);
+    border: 1px solid rgba(184, 88, 105, 0.2);
     border-radius: 12px;
     padding: 6px 16px;
     font-size: 13px;
     font-weight: 600;
-    color: #7ba4fc;
+    color: #d18894;
     letter-spacing: 0.3px;
     margin-bottom: 24px;
     word-break: break-all;
@@ -121,7 +121,7 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #4678f9;
+    background: #c8707f;
     animation: dotBounce 1.4s ease-in-out infinite;
 }
 .waiting-spinner-dot:nth-child(2) {
@@ -161,7 +161,7 @@
 
 /* Pulse on check */
 .waiting-spinner-dot.checking {
-    background: #6d9bff;
+    background: #d18894;
 }
 
 /* Divider */
@@ -188,8 +188,8 @@
     min-width: 34px;
     border: none;
     border-radius: 50%;
-    background: rgba(70, 120, 249, 0.12);
-    color: #4678f9;
+    background: rgba(184, 88, 105, 0.12);
+    color: #c8707f;
     font-size: 13px;
     cursor: pointer;
     display: flex;
@@ -198,11 +198,11 @@
     transition: all 0.2s ease;
 }
 .waiting-audio-btn:hover {
-    background: rgba(70, 120, 249, 0.22);
-    color: #6d9bff;
+    background: rgba(184, 88, 105, 0.22);
+    color: #d18894;
 }
 .waiting-audio-btn:focus-visible {
-    outline: 2px solid #4678f9;
+    outline: 2px solid #c8707f;
     outline-offset: 2px;
 }
 .waiting-audio-bar {
@@ -215,7 +215,7 @@
 .waiting-audio-progress {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #4678f9, #6d9bff);
+    background: linear-gradient(90deg, #c8707f, #d18894);
     border-radius: 2px;
     transition: width 0.3s linear;
 }
@@ -227,14 +227,14 @@
     margin: 0;
 }
 .host-login-link a {
-    color: #4678f9;
+    color: #c8707f;
     text-decoration: none;
     font-weight: 600;
     margin-left: 6px;
     transition: color 0.2s;
 }
 .host-login-link a:hover {
-    color: #6d9bff;
+    color: #d18894;
     text-decoration: underline;
 }
 

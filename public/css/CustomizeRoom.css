@@ -9,10 +9,10 @@
     --cr-text: #f4f7f6;
     --cr-muted: #a7b0ae;
     --cr-subtle: #77817f;
-    --cr-accent: #63e6be;
-    --cr-accent-ink: #09261e;
+    --cr-accent: #d18894;
+    --cr-accent-ink: #241217;
     --cr-danger: #ff9a9a;
-    --cr-focus: rgba(99, 230, 190, 0.24);
+    --cr-focus: rgba(184, 88, 105, 0.24);
     --cr-radius: 8px;
     --cr-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
 }
@@ -503,7 +503,7 @@ summary:focus-visible {
     position: absolute;
     inset: 0 0 auto;
     height: 3px;
-    background: linear-gradient(90deg, var(--cr-accent), #75c7ff);
+    background: linear-gradient(90deg, var(--cr-accent), #a9475a);
 }
 
 .cr-summary-status {
@@ -522,7 +522,7 @@ summary:focus-visible {
     height: 7px;
     border-radius: 50%;
     background: var(--cr-accent);
-    box-shadow: 0 0 0 5px rgba(99, 230, 190, 0.1);
+    box-shadow: 0 0 0 5px rgba(184, 88, 105, 0.1);
 }
 
 .cr-preview {

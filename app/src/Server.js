@@ -93,6 +93,7 @@ const checkXSS = require('./XSS');
 const mime = require('mime-types');
 const Host = require('./Host');
 const Room = require('./Room');
+const singleRoom = require('./SingleRoomPolicy');
 const Peer = require('./Peer');
 const { assignFallbackPresenter, isConfiguredPresenter } = require('./PresenterManager');
 const ServerApi = require('./ServerApi');
@@ -864,7 +865,10 @@ function startServer() {
 
     // UI buttons configuration
     app.get('/config', (req, res) => {
-        res.status(200).json({ message: config?.ui?.buttons || false });
+        res.status(200).json({
+            message: config?.ui?.buttons || false,
+            singleRoom: singleRoom.enabled ? { roomId: singleRoom.roomId } : false,
+        });
     });
 
     // Brand configuration
@@ -879,6 +883,7 @@ function startServer() {
 
     // main page
     app.get('/', OIDCAuth, (req, res) => {
+        if (singleRoom.enabled) return res.redirect('/join/' + singleRoom.roomId);
         //log.debug('/ - hostCfg ----->', hostCfg);
         if (!OIDC.enabled && hostCfg.protected) {
             hostCfg.authenticated = false;
@@ -899,6 +904,7 @@ function startServer() {
 
     // set new room name and join
     app.get('/newroom', OIDCAuth, (req, res) => {
+        if (singleRoom.enabled) return res.redirect('/join/' + singleRoom.roomId);
         //log.info('/newroom - hostCfg ----->', hostCfg);
 
         if (!OIDC.enabled && hostCfg.protected) {
@@ -912,11 +918,13 @@ function startServer() {
 
     // Get Active rooms
     app.get('/activeRooms', OIDCAuth, (req, res) => {
+        if (singleRoom.enabled) return res.redirect('/join/' + singleRoom.roomId);
         htmlInjector.injectHtml(views.activeRooms, res);
     });
 
     // Get Customize room
     app.get('/customizeRoom', OIDCAuth, (req, res) => {
+        if (singleRoom.enabled) return res.redirect('/join/' + singleRoom.roomId);
         htmlInjector.injectHtml(views.customizeRoom, res);
     });
 
@@ -1061,7 +1069,7 @@ function startServer() {
         if (Object.keys(req.query).length > 0) {
             //log.debug('/join/params - hostCfg ----->', hostCfg);
 
-            log.debug('Direct Join', req.query);
+            log.debug('Direct Join', { ...req.query, roomPassword: req.query.roomPassword ? '[redacted]' : undefined });
 
             // http://localhost:3010/join?room=test&name=mirotalksfu&audio=0&video=0&screen=0&notify=0&chat=1
             // http://localhost:3010/join?room=test&roomPassword=0&name=mirotalksfu&audio=1&video=1&screen=0&hide=0&notify=1&duration=00:00:30
@@ -1069,6 +1077,8 @@ function startServer() {
 
             const { room, roomPassword, name, audio, video, screen, hide, notify, chat, duration, token, isPresenter } =
                 checkXSS(req.query);
+
+            if (singleRoom.enabled && room !== singleRoom.roomId) return res.redirect('/join/' + singleRoom.roomId);
 
             if (!room) {
                 log.warn('/join/params room empty', room);
@@ -1160,6 +1170,7 @@ function startServer() {
     app.get('/join/:roomId', async (req, res) => {
         //
         const { roomId } = checkXSS(req.params);
+        if (singleRoom.enabled && roomId !== singleRoom.roomId) return res.redirect('/join/' + singleRoom.roomId);
 
         if (!roomId) {
             log.warn('/join/:roomId empty', roomId);
@@ -1219,6 +1230,7 @@ function startServer() {
 
     // handle who are you: Presenter or Guest
     app.get('/whoAreYou/:roomId', (req, res) => {
+        if (singleRoom.enabled && req.params.roomId !== singleRoom.roomId) return res.redirect('/join/' + singleRoom.roomId);
         htmlInjector.injectHtml(views.whoAreYou, res);
     });
 
@@ -2359,7 +2371,7 @@ function startServer() {
             }
         });
 
-        socket.on('createRoom', async ({ room_id }, callback) => {
+        socket.on('createRoom', async ({ room_id, room_password }, callback) => {
             // Security: reject invalid room ids (XSS / path traversal / empty).
             if (!Validator.isValidRoomName(room_id)) {
                 log.warn('[createRoom] - Invalid room name', { room_id });
@@ -2372,6 +2384,21 @@ function startServer() {
                 log.warn('[createRoom] - Rate limit exceeded', { ip, room_id });
                 return callback({
                     error: `Too many room creation requests. Please try again after ${minutesLabel(createRoomLimiterMinutes)}.`,
+                });
+            }
+
+            if (!singleRoom.allows(room_id)) {
+                return callback({
+                    error: 'Only the Link room is available',
+                    code: 'ROOM_NOT_ALLOWED',
+                    retryable: false,
+                });
+            }
+            if (singleRoom.enabled && !singleRoom.matches(room_password)) {
+                return callback({
+                    error: 'Incorrect room password',
+                    code: 'INVALID_ROOM_PASSWORD',
+                    retryable: false,
                 });
             }
 
@@ -2394,6 +2421,12 @@ function startServer() {
         });
 
         socket.on('join', async (dataObject, cb) => {
+            if (singleRoom.enabled) {
+                if (!singleRoom.allows(socket.room_id) || dataObject?.room_id !== singleRoom.roomId) {
+                    return cb('notAllowed');
+                }
+                if (!singleRoom.matches(dataObject?.room_password)) return cb('invalidPassword');
+            }
             if (!roomExists(socket)) {
                 return cb({
                     error: 'Room does not exist',
@@ -2408,7 +2441,8 @@ function startServer() {
                 dataObject.peer_geo = await getPeerGeoLocation(peer_ip);
             }
 
-            const data = checkXSS(dataObject);
+            const { room_password, ...joinPayload } = dataObject;
+            const data = checkXSS(joinPayload);
 
             log.debug('User joined', data);
 
@@ -3240,7 +3274,10 @@ function startServer() {
                 return;
             }
 
-            log.debug('Room action:', data);
+            log.debug(
+                'Room action:',
+                ['checkPassword', 'lock'].includes(data.action) ? { ...data, password: '[redacted]' } : data
+            );
 
             const isPresenter = isPeerPresenter(socket.room_id, socket.id, data.peer_name, data.peer_uuid);
 
@@ -3267,7 +3304,7 @@ function startServer() {
                         room: null,
                         password: 'KO',
                     };
-                    if (data.password == room.getPassword()) {
+                    if (singleRoom.enabled ? singleRoom.matches(data.password) : data.password == room.getPassword()) {
                         roomData.room = room.toJson();
                         roomData.password = 'OK';
                     }
@@ -3275,6 +3312,10 @@ function startServer() {
                     break;
                 case 'unlock':
                     if (!isPresenter) return;
+                    if (singleRoom.enabled) {
+                        room.sendTo(socket.id, 'roomAction', 'lock');
+                        return;
+                    }
                     room.setLocked(false);
                     room.broadCast(socket.id, 'roomAction', data.action);
                     break;

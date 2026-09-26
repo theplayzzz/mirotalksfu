@@ -30,7 +30,7 @@
 
 .sch-icon {
     font-size: 12px;
-    color: rgba(59, 130, 246, 0.9);
+    color: rgba(184, 88, 105, 0.9);
 }
 
 .sch-required {
@@ -61,8 +61,8 @@
 }
 
 .sch-input:focus {
-    border-color: rgba(59, 130, 246, 0.6);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    border-color: rgba(184, 88, 105, 0.6);
+    box-shadow: 0 0 0 3px rgba(184, 88, 105, 0.15);
 }
 
 .sch-hint {
@@ -87,8 +87,8 @@
     max-width: 420px;
     height: 44px;
     border-radius: 10px;
-    border: 1px solid rgba(59, 130, 246, 0.5);
-    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(184, 88, 105, 0.5);
+    background: rgba(184, 88, 105, 0.15);
     color: #fff;
     font-size: 15px;
     font-weight: 600;
@@ -100,8 +100,8 @@
 }
 
 .schedule-meeting-btn:hover {
-    background: rgba(59, 130, 246, 0.3);
-    border-color: rgba(59, 130, 246, 0.7);
+    background: rgba(184, 88, 105, 0.3);
+    border-color: rgba(184, 88, 105, 0.7);
 }
 
 .schedule-meeting-btn:active {

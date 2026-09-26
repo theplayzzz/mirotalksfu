@@ -2,6 +2,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 const config = require('./config');
+const singleRoom = require('./SingleRoomPolicy');
 const RtmpStreaming = require('./RtmpStreaming');
 const Logger = require('./Logger');
 const log = new Logger('Room');
@@ -29,10 +30,10 @@ module.exports = class Room {
         // ##########################
         this._isBroadcasting = false;
         // ##########################
-        this._isLocked = false;
+        this._isLocked = singleRoom.enabled && room_id === singleRoom.roomId;
         this._isLobbyEnabled = false;
         this._isJoinLocked = false;
-        this._roomPassword = null;
+        this._roomPassword = this._isLocked ? singleRoom.password : null;
         this._hostOnlyRecording = false;
         // Server-side whiteboard lock state. Authoritative — does not depend on the client
         // clicking the lock button. Used to drop non-presenter whiteboard writes when set.
