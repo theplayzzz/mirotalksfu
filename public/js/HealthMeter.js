@@ -75,7 +75,7 @@
         return element && element.tagName === 'VIDEO' && !element.hasAttribute('name');
     }
 
-    async function readReceived(net) {
+    async function readReceived() {
         const rx = [];
         for (const [id, consumer] of rc.consumers) {
             if (consumer.kind !== 'video' || consumer.closed) continue;
@@ -85,9 +85,6 @@
 
             const before = state.previous.get(id);
             state.previous.set(id, s);
-            if (!net.pair) {
-                net.pair = reports(report, 'candidate-pair').find((p) => p.nominated && p.state === 'succeeded');
-            }
             if (!before) continue;
 
             const seconds = (s.timestamp - before.timestamp) / 1000;
@@ -127,7 +124,7 @@
         }
     }
 
-    async function readSent(net) {
+    async function readSent() {
         const tx = [];
         for (const [id, producer] of rc.producers) {
             if (producer.kind !== 'video' || producer.closed) continue;
@@ -137,9 +134,6 @@
                 const key = `${id}:${s.ssrc}`;
                 const before = state.previous.get(key);
                 state.previous.set(key, s);
-                if (!net.pair) {
-                    net.pair = reports(report, 'candidate-pair').find((p) => p.nominated && p.state === 'succeeded');
-                }
                 if (!before) continue;
 
                 const seconds = (s.timestamp - before.timestamp) / 1000;
@@ -171,23 +165,46 @@
         return tx;
     }
 
+    // ---- the network path (estimates made by the browser for the two transports) -------------------------------
+
+    async function pairOf(transport) {
+        if (!transport || transport.closed) return null;
+        const report = await transport.getStats();
+        return reports(report, 'candidate-pair').find((p) => p.nominated && p.state === 'succeeded') || null;
+    }
+
+    async function readNetwork() {
+        const net = {};
+        try {
+            const up = await pairOf(rc.producerTransport);
+            if (up) {
+                net.rtt = round((up.currentRoundTripTime || 0) * 1000);
+                net.aout = round((up.availableOutgoingBitrate || 0) / 1000);
+            }
+        } catch (error) {
+            // no send transport yet
+        }
+        try {
+            const down = await pairOf(rc.consumerTransport);
+            if (down) {
+                if (net.rtt === undefined) net.rtt = round((down.currentRoundTripTime || 0) * 1000);
+                net.ain = round((down.availableIncomingBitrate || 0) / 1000);
+            }
+        } catch (error) {
+            // no receive transport yet
+        }
+        return Object.keys(net).length ? net : undefined;
+    }
+
     // ---- one report ----------------------------------------------------------------------------------------
 
     async function tick() {
         if (state.busy || !hasRoom() || document.visibilityState === 'hidden') return;
         state.busy = true;
         try {
-            const net = {};
-            const rx = await readReceived(net);
-            const tx = await readSent(net);
-            const report = { dt: state.intervalMs, rx, tx };
-            if (net.pair) {
-                report.net = {
-                    rtt: round((net.pair.currentRoundTripTime || 0) * 1000),
-                    aout: round((net.pair.availableOutgoingBitrate || 0) / 1000),
-                    ain: round((net.pair.availableIncomingBitrate || 0) / 1000),
-                };
-            }
+            const rx = await readReceived();
+            const tx = await readSent();
+            const report = { dt: state.intervalMs, rx, tx, net: await readNetwork() };
             if (!state.envSent) {
                 state.envSent = true;
                 report.env = await environment();
@@ -196,7 +213,7 @@
             const live = new Set([...rc.consumers.keys(), ...rc.producers.keys()]);
             for (const key of state.previous.keys()) if (!live.has(String(key).split(':')[0])) state.previous.delete(key);
 
-            if (rx.length || tx.length || report.env) rc.socket.emit('healthReport', report);
+            if (rx.length || tx.length || report.env || report.net) rc.socket.emit('healthReport', report);
         } catch (error) {
             // never get in the way of the room
         } finally {
