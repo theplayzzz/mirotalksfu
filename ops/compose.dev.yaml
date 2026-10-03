@@ -52,6 +52,8 @@ services:
       REPLAY_MAX_SECONDS: "300"
     volumes:
       - /home/debian/mirotalk-dev/data:/data
+      # the SFU only reads the clips (the recorder writes them): a mistake in a route cannot change or delete one
+      - /home/debian/mirotalk-dev/data/replays:/data/replays:ro
     cpuset: "4"
     cpu_shares: 128
     mem_limit: 2g
