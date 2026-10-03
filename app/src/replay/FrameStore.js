@@ -609,4 +609,4 @@ async function* readRecords(file, from, to, { readSize = 1 << 20 } = {}) {
     }
 }
 
-module.exports = { FrameStore, readRecords, KIND_VIDEO, KIND_AUDIO, RECORD_HEADER };
+module.exports = { FrameStore, FrameHeap, readRecords, KIND_VIDEO, KIND_AUDIO, RECORD_HEADER };
