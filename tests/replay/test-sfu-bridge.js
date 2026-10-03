@@ -113,12 +113,19 @@ function fakes({ failRegister = false } = {}) {
         },
     };
 
+    const knows = [];
+    let registrations = 0;
     const client = {
         host: 'recorder.test',
         async registerShare(body) {
             log('registerShare', body);
             if (failRegister) throw new Error('recorder says no');
-            return { port: 41000 };
+            if (!knows.includes(body.shareId)) knows.push(body.shareId);
+            return { port: 41000 + registrations++ };
+        },
+        async listShares() {
+            if (client.listFails) throw new Error('no answer');
+            return { shares: knows.map((shareId) => ({ shareId, ended: false })) };
         },
         async patchShare(id, body) {
             log('patchShare', id, body);
@@ -142,7 +149,7 @@ function fakes({ failRegister = false } = {}) {
     };
     const producer = (id) => ({ id, observer: new EventEmitter() });
 
-    return { calls, mediasoup, client, roomRouter, producer, recorderRouter, worker, consumeCapabilities };
+    return { calls, mediasoup, client, roomRouter, producer, recorderRouter, worker, consumeCapabilities, knows };
 }
 
 const names = (calls) => calls.map((entry) => entry[0]);
@@ -542,6 +549,102 @@ describe('test-sfu-bridge (the SFU side of the replay recorder)', () => {
             await tick(40);
             bridge.available.should.be.true();
             bridge.getShare('video-1').consumers.video.paused.should.be.false();
+            await bridge.stop();
+        });
+    });
+
+    describe('a recorder that restarted', () => {
+        const setup = async (f) => {
+            let time = 1_000_000;
+            const bridge = make(f, {}, { now: () => time });
+            await bridge.start();
+            const video = f.producer('video-1');
+            const audio = f.producer('audio-1');
+            await bridge.addScreen({ roomId: 'link', router: f.roomRouter, peerName: 'A', peerUuid: 'u1', producer: video });
+            await bridge.addScreenAudio({ shareId: 'video-1', router: f.roomRouter, producer: audio });
+            return { bridge, video, audio, advance: (ms) => (time += ms) };
+        };
+
+        it('forgets its shares: the screen and its audio are connected to it again, on the new port', async () => {
+            const f = fakes();
+            const { bridge, advance } = await setup(f);
+            advance(20000);
+
+            f.knows.length = 0; // the recorder restarted: it lists nothing
+            f.calls.length = 0;
+            await bridge.sample();
+            await new Promise((resolve) => setImmediate(resolve));
+            await new Promise((resolve) => setImmediate(resolve));
+
+            f.recorderRouter.transports[0].closed.should.be.true();
+            f.recorderRouter.transports.should.have.length(2);
+            const registered = f.calls.find((entry) => entry[0] === 'registerShare');
+            registered[1].should.containEql({ shareId: 'video-1', roomId: 'link', peerName: 'A' });
+            f.calls.find((entry) => entry[0] === 'connect')[1].should.deepEqual({ ip: '10.9.0.5', port: 41001 }); // the new port
+            f.calls.filter((entry) => entry[0] === 'resume').should.have.length(2); // video and audio
+            const patch = f.calls.find((entry) => entry[0] === 'patchShare' && entry[2].audio);
+            patch[2].audio.should.containEql({ codec: 'audio/opus' });
+            bridge.list().should.have.length(1);
+            bridge.list()[0].hasAudio.should.be.true();
+            bridge.getShare('video-1').closed.should.be.false(); // the old transport closing did not end the share
+            await bridge.stop();
+        });
+
+        it('is not told about a share the recorder still knows', async () => {
+            const f = fakes();
+            const { bridge, advance } = await setup(f);
+            advance(20000);
+            f.calls.length = 0;
+
+            await bridge.sample();
+            await new Promise((resolve) => setImmediate(resolve));
+
+            names(f.calls).should.not.containEql('registerShare');
+            f.recorderRouter.transports.should.have.length(1);
+            await bridge.stop();
+        });
+
+        it('does not mistake a share that was registered a moment ago for a forgotten one', async () => {
+            const f = fakes();
+            const { bridge, advance } = await setup(f);
+            advance(3000); // the list of the recorder could have been made before the registration finished
+            f.knows.length = 0;
+            f.calls.length = 0;
+
+            await bridge.sample();
+            await new Promise((resolve) => setImmediate(resolve));
+
+            names(f.calls).should.not.containEql('registerShare');
+            await bridge.stop();
+        });
+
+        it('does not act on a recorder that does not answer the list', async () => {
+            const f = fakes();
+            const { bridge, advance } = await setup(f);
+            advance(20000);
+            f.client.listFails = true;
+            f.knows.length = 0;
+            f.calls.length = 0;
+
+            await bridge.sample();
+            await new Promise((resolve) => setImmediate(resolve));
+
+            names(f.calls).should.not.containEql('registerShare');
+            await bridge.stop();
+        });
+
+        it('connects a share again only once while the first attempt is under way', async () => {
+            const f = fakes();
+            const { bridge, advance } = await setup(f);
+            advance(20000);
+            f.knows.length = 0;
+            f.calls.length = 0;
+
+            await Promise.all([bridge.sample(), bridge.sample()]);
+            await new Promise((resolve) => setImmediate(resolve));
+            await new Promise((resolve) => setImmediate(resolve));
+
+            names(f.calls).filter((name) => name === 'registerShare').should.have.length(1);
             await bridge.stop();
         });
     });

@@ -238,10 +238,11 @@ class ReplayBridge extends EventEmitter {
             roomRouter: router,
             transport: null,
             consumers: {},
-            audioProducerId: null,
+            audioProducer: null,
             hasAudio: false,
             codec: null,
             port: 0,
+            registeredAt: 0,
             paused: false,
             closed: false,
             startedAt: this.now(),
@@ -285,16 +286,35 @@ class ReplayBridge extends EventEmitter {
         });
         if (share.closed) return;
 
-        share.transport = await this.router.createPlainTransport({
+        await this.connectShare(share);
+        if (share.closed) return;
+
+        this.armKeyFrameSafety(share);
+        this.emit('changed');
+        this.log.info('replay: recording a screen', { shareId: share.id, roomId: share.roomId, codec: share.codec });
+    }
+
+    /*
+     * The way from the recorder router to the recorder: a plain transport, the consumers of the screen (and of its
+     * audio, when it has one) and the registration. It is built once per share, and again when the recorder forgets
+     * the share (it restarted): the copy of the screen on the recorder router stays, only this part is rebuilt.
+     */
+    async connectShare(share) {
+        const transport = await this.router.createPlainTransport({
             listenInfo: { protocol: 'udp', ip: this.options.bindIp, portRange: { min: this.options.portMin, max: this.options.portMax } },
             rtcpMux: true,
             comedia: false,
             enableSrtp: false,
         });
-        share.transport.observer.once('close', () => this.closeShare(share.id, 'transport closed'));
+        share.transport = transport;
+        share.consumers = {};
+        // a transport that was replaced is closed on purpose and must not close the share
+        transport.observer.once('close', () => {
+            if (share.transport === transport) this.closeShare(share.id, 'transport closed');
+        });
 
         // paused: the recorder must be listening before the first packet is sent
-        const consumer = await share.transport.consume({
+        const consumer = await transport.consume({
             producerId: share.producer.id,
             rtpCapabilities: this.recorderCaps,
             paused: true,
@@ -311,41 +331,62 @@ class ReplayBridge extends EventEmitter {
         });
         if (share.closed) return;
         share.port = port;
+        share.registeredAt = this.now();
 
-        await share.transport.connect({ ip: await this.resolve(this.client.host), port });
+        await transport.connect({ ip: await this.resolve(this.client.host), port });
         share.paused = !this.state.available;
         if (!share.paused) await consumer.resume(); // mediasoup asks the sender for a key frame now
         else await this.client.patchShare(share.id, { paused: true }).catch(() => {});
 
-        this.armKeyFrameSafety(share);
-        this.emit('changed');
-        this.log.info('replay: recording a screen', { shareId: share.id, roomId: share.roomId, codec: share.codec });
+        if (share.audioProducer && !share.audioProducer.closed) await this.attachAudio(share);
     }
 
     async startAudio(share, router, producer) {
-        if (share.consumers.audio || !share.transport) return;
+        if (share.audioProducer || !share.transport) return;
         await router.pipeToRouter({ producerId: producer.id, router: this.router, listenInfo: this.pipeListenInfo() });
         if (share.closed) return;
 
+        share.audioProducer = producer;
+        producer.observer.once('close', () => {
+            if (share.audioProducer !== producer) return;
+            share.audioProducer = null;
+            share.hasAudio = false;
+            share.consumers.audio = null;
+            this.emit('changed');
+        });
+        await this.attachAudio(share);
+    }
+
+    async attachAudio(share) {
+        const producer = share.audioProducer;
         const consumer = await share.transport.consume({
             producerId: producer.id,
             rtpCapabilities: this.recorderCaps,
             paused: true,
         });
         share.consumers.audio = consumer;
-        share.audioProducerId = producer.id;
 
         await this.client.patchShare(share.id, { audio: describeStream(consumer) });
         if (share.closed) return;
         if (!share.paused) await consumer.resume();
         share.hasAudio = true;
-        producer.observer.once('close', () => {
-            share.hasAudio = false;
-            share.consumers.audio = null;
-            this.emit('changed');
-        });
         this.emit('changed');
         this.log.info('replay: recording the audio of a screen', { shareId: share.id });
+    }
+
+    // The recorder lost a share (it restarted): a new way to it, the old transport closed
+    async restartShare(share) {
+        const old = share.transport;
+        share.transport = null;
+        share.port = 0;
+        try {
+            old?.close();
+        } catch (error) {
+            // already closed
+        }
+        await this.connectShare(share);
+        this.log.warn('replay: connected a screen to the recorder again', { shareId: share.id });
+        this.emit('changed');
     }
 
     pipeListenInfo() {
@@ -428,6 +469,29 @@ class ReplayBridge extends EventEmitter {
         return peak;
     }
 
+    /*
+     * Does the recorder still know every share? It forgets them when it restarts (its ring stays on disk, its
+     * registrations do not): a share it does not list, that was registered a while ago, is connected again.
+     */
+    async reconcile() {
+        const live = [...this.shares.values()].filter((share) => !share.closed && share.port && this.now() - share.registeredAt > 8000);
+        if (!live.length) return;
+        let listed;
+        try {
+            listed = await this.client.listShares();
+        } catch (error) {
+            return; // the health check already counts a recorder that does not answer
+        }
+        const known = new Set((listed.shares || []).filter((item) => !item.ended).map((item) => item.shareId));
+        for (const share of live) {
+            if (known.has(share.id) || share.restarting) continue;
+            share.restarting = true;
+            this.enqueue(share, () => this.restartShare(share)).finally(() => {
+                share.restarting = false;
+            });
+        }
+    }
+
     async sample() {
         if (this.stopped) return;
         const cpuPercent = await this.measureWorkers();
@@ -441,6 +505,8 @@ class ReplayBridge extends EventEmitter {
         }
         this.cpuPercent = cpuPercent;
         this.diskFreeGb = diskFreeGb;
+
+        if (recorderOk) await this.reconcile();
 
         const next = decideAvailability(this.state, { cpuPercent, diskFreeGb, recorderOk }, this.options, this.now());
         const changed = next.available !== this.state.available || next.reason !== this.state.reason;
