@@ -1093,7 +1093,7 @@ function startServer() {
             const { room, roomPassword, name, audio, video, screen, hide, notify, chat, duration, token, isPresenter } =
                 checkXSS(req.query);
 
-            if (singleRoom.enabled && room !== singleRoom.roomId) return res.redirect('/join/' + singleRoom.roomId);
+            if (singleRoom.enabled && !singleRoom.allows(room)) return res.redirect('/join/' + singleRoom.roomId);
 
             if (!room) {
                 log.warn('/join/params room empty', room);
@@ -1185,7 +1185,7 @@ function startServer() {
     app.get('/join/:roomId', async (req, res) => {
         //
         const { roomId } = checkXSS(req.params);
-        if (singleRoom.enabled && roomId !== singleRoom.roomId) return res.redirect('/join/' + singleRoom.roomId);
+        if (singleRoom.enabled && !singleRoom.allows(roomId)) return res.redirect('/join/' + singleRoom.roomId);
 
         if (!roomId) {
             log.warn('/join/:roomId empty', roomId);
@@ -1245,7 +1245,7 @@ function startServer() {
 
     // handle who are you: Presenter or Guest
     app.get('/whoAreYou/:roomId', (req, res) => {
-        if (singleRoom.enabled && req.params.roomId !== singleRoom.roomId) return res.redirect('/join/' + singleRoom.roomId);
+        if (singleRoom.enabled && !singleRoom.allows(req.params.roomId)) return res.redirect('/join/' + singleRoom.roomId);
         htmlInjector.injectHtml(views.whoAreYou, res);
     });
 
@@ -2409,7 +2409,7 @@ function startServer() {
                     retryable: false,
                 });
             }
-            if (singleRoom.enabled && !singleRoom.matches(room_password)) {
+            if (singleRoom.enabled && !singleRoom.matches(room_password, room_id)) {
                 return callback({
                     error: 'Incorrect room password',
                     code: 'INVALID_ROOM_PASSWORD',
@@ -2437,10 +2437,10 @@ function startServer() {
 
         socket.on('join', async (dataObject, cb) => {
             if (singleRoom.enabled) {
-                if (!singleRoom.allows(socket.room_id) || dataObject?.room_id !== singleRoom.roomId) {
+                if (!singleRoom.allows(socket.room_id) || dataObject?.room_id !== socket.room_id) {
                     return cb('notAllowed');
                 }
-                if (!singleRoom.matches(dataObject?.room_password)) return cb('invalidPassword');
+                if (!singleRoom.matches(dataObject?.room_password, socket.room_id)) return cb('invalidPassword');
             }
             if (!roomExists(socket)) {
                 return cb({
@@ -3321,7 +3321,7 @@ function startServer() {
                         room: null,
                         password: 'KO',
                     };
-                    if (singleRoom.enabled ? singleRoom.matches(data.password) : data.password == room.getPassword()) {
+                    if (singleRoom.enabled ? singleRoom.matches(data.password, room.id) : data.password == room.getPassword()) {
                         roomData.room = room.toJson();
                         roomData.password = 'OK';
                     }
