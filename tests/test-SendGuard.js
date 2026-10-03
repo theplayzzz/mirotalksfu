@@ -161,6 +161,29 @@ describe('test-SendGuard (what the sender does about its own screen)', () => {
             run(nothing, { ...line, kbps: 1200, lost: 40 }, 2000, 20)[0].rung.should.equal(LADDER.length - 1);
         });
 
+        it('does not go back up to a rung the line is known not to carry, for 30 minutes', () => {
+            const line = { fps: 40, kbps: 7000, lost: 20, retx: 23, rtt: 600, lim: 'bandwidth', limBwMs: 2000, srcFps: 60, encMs: 5 };
+            const state = initialState(0);
+            run(state, line, 2000, 12)[0].should.containEql({ rung: 3, kbps: 4000 }); // the line carries ~5.6 Mbps
+            state.lineKbps.should.equal(5600);
+            // the picture is fine now (4 Mbps), and calm for a very long time: the next rung (6.5 Mbps) is more than the line carried
+            const calmAt4 = { fps: 59.5, kbps: 4000, lost: 0, rtt: 200, lim: 'none', limBwMs: 0, srcFps: 60, encMs: 3, retx: 0 };
+            run(state, calmAt4, 22000, 1500).should.deepEqual([]);
+            state.rung.should.equal(3);
+            // after 30 minutes the memory is gone and one rise is tried
+            const later = run(state, calmAt4, 22000 + 1500000, 400);
+            later[0].should.containEql({ rung: 2, why: 'room' });
+        });
+
+        it('goes back up as before when it did not come down because of the line', () => {
+            const state = initialState(0);
+            state.rung = 1;
+            state.changedAt = 0;
+            state.lineKbps = 0;
+            const roomy = { ...healthy, encMs: 3.4, fps: 59 };
+            run(state, roomy, 2000, 70)[0].should.containEql({ rung: 0, why: 'room' });
+        });
+
         it('waits 10 s between steps, so the numbers can show the effect of the last one', () => {
             const state = initialState(0);
             const actions = run(state, saturated, 2000, 60);

@@ -25,7 +25,10 @@
  *     straight to the rung that fits what the line is seen to carry (80% of what was sent minus what was lost), not
  *     one rung at a time: a sender on a 5 Mbps line is at 4 Mbps in one step instead of three.
  * And it goes back up one rung after a long quiet stretch (45 s, doubling up to 5 min each time a rise had to be
- * taken back at once), only when the encoder would still have room at the bigger size.
+ * taken back at once), only when the encoder would still have room at the bigger size and, for a sender that had to come
+ * down because of its line, only to a rung the line is known to carry (what it carried is remembered for 30 minutes):
+ * going back up to a rung that needs more than the line has would put the viewers through the same loss again every few
+ * minutes.
  *
  * A slow CAPTURE (the screen gives few frames while the encoder is idle and the picture is moving) cannot be helped by
  * the encoder's size: Chrome converts and scales every captured frame on the processor and may use at most half of the
@@ -57,6 +60,8 @@
     const BUSY_LIMIT = 0.85; // the encoder is the bottleneck above this share of the time
     const BUSY_ROOM = 0.6; // a bigger picture is only tried when the encoder would still be below this at that size
     const UPLINK_FILL = 0.8; // the share of what the line carries that a rung may ask for
+    const LINE_MEMORY_MS = 1800000; // what a line was seen to carry is remembered this long: no rise above it meanwhile
+    const LINE_RISE_FILL = 0.95; // a rise is only tried to a rung that asks for no more than this share of what the line carried
 
     // The capture ladder: the size asked of the capture itself is the size it started at divided by these
     const CAPTURE_SCALES = [1, 1.25, 1.5, 2];
@@ -152,6 +157,9 @@
             upAfterMs: UP_AFTER_MS,
             lastUpAt: 0,
             why: 'start',
+            // what the line of the sender was seen to carry when it had to come down because of it (kbps) and when
+            lineKbps: 0,
+            lineAt: 0,
             // the capture ladder: the size the capture started at, where it is now, the trial in progress, when it began
             // to be slow, which sizes are left alone until when and how many trials did not help
             base: null,
@@ -250,6 +258,10 @@
                 while (target < last && rungKbps(target, size.width, size.height) > capacity * UPLINK_FILL) target += 1;
             }
             next.rung = target;
+            if (reason === 'uplink' && capacity > 0) {
+                next.lineKbps = capacity;
+                next.lineAt = now;
+            }
             next.changedAt = now;
             next.busySince = 0;
             next.uplinkSince = 0;
@@ -257,9 +269,12 @@
             action = { kind: 'ladder', rung: next.rung, scale: LADDER[next.rung].scale, kbps: rungKbps(next.rung, size.width, size.height), why: reason };
             next.why = reason;
         } else if (cooled && next.rung > 0 && next.calmSince && now - next.calmSince >= next.upAfterMs) {
-            // would the encoder still have room at the bigger size? (its work grows with the number of pixels)
+            // would the encoder still have room at the bigger size? (its work grows with the number of pixels) and would the
+            // line carry it, if it is known not to carry much? (the bitrate the bigger rung asks for, against what it carried)
             const grow = (LADDER[next.rung].scale / LADDER[next.rung - 1].scale) ** 2;
-            if (a.busy * grow < BUSY_ROOM) {
+            const lineKnown = next.lineKbps > 0 && now - next.lineAt < LINE_MEMORY_MS;
+            const lineFits = !lineKnown || rungKbps(next.rung - 1, size.width, size.height) <= next.lineKbps * LINE_RISE_FILL;
+            if (a.busy * grow < BUSY_ROOM && lineFits) {
                 next.rung -= 1;
                 next.changedAt = now;
                 next.lastUpAt = now;
