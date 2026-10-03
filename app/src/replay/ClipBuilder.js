@@ -132,7 +132,9 @@ function finalizeArgs({ codec, hasAudio, output }) {
         // does not have to rewrite the whole file to move it.
         args.push('-c', 'copy', '-cues_to_front', '1', '-reserve_index_space', '131072', '-f', 'webm');
     } else {
-        // The picture is copied; Opus is not welcome in MP4 players, so the audio becomes AAC.
+        // The picture is copied; Opus is not welcome in MP4 players, so the audio becomes AAC. This is the one costly
+        // step of an H.264 clip: FFmpeg's AAC encoder (single threaded) needs 1.4 s for 5 minutes of silence and 6 s of
+        // pink noise or a pure tone, on one core. (-aac_coder fast looks tempting but takes 12 s on a pure tone.)
         args.push('-c:v', 'copy');
         if (hasAudio) args.push('-c:a', 'aac', '-b:a', '128k');
         args.push('-movflags', '+faststart', '-f', 'mp4');
@@ -141,40 +143,74 @@ function finalizeArgs({ codec, hasAudio, output }) {
     return args;
 }
 
-async function makeThumbnail({ ffmpegPath, input, atSeconds, output, log }) {
-    const args = [
-        '-hide_banner',
-        '-loglevel',
-        'error',
-        '-ss',
-        atSeconds.toFixed(3),
-        '-i',
-        input,
-        '-frames:v',
-        '1',
-        '-vf',
-        'scale=640:-2',
-        '-q:v',
-        '4',
-        '-update',
-        '1',
-        '-f',
-        'image2',
-        '-y',
-        output,
-    ];
-    try {
-        const child = spawnLowPriority(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'pipe'] });
-        const exit = await waitForExit(child);
-        if (exit.code !== 0) {
-            log.warn(`replay: thumbnail failed: ${lastLine(exit.stderr)}`);
+/** The record of a key frame of the snapshot, read by its own offset. */
+async function readKeyRecord(snapshot, key) {
+    const chunk = snapshot.chunks[key.chunkIndex];
+    for await (const record of readRecords(chunk.path, key.off, key.end)) return record;
+    return null;
+}
+
+/**
+ * Starts the thumbnail: a one-frame Matroska with the key frame goes to the stdin of an FFmpeg that decodes it, scales
+ * it to 640 px and writes the JPEG. No seeking in the big file, no probing of it: it costs one decode, and it runs
+ * while the clip itself is being written.
+ * @returns {{done: Promise<boolean>, kill: function}} done never rejects: a thumbnail is not worth failing a clip
+ */
+function startThumbnail({ ffmpegPath, codec, record, output, log }) {
+    let child = null;
+    const done = (async () => {
+        try {
+            const params = videoParams(codec, record.data);
+            child = spawnLowPriority(
+                ffmpegPath,
+                [
+                    '-hide_banner',
+                    '-loglevel',
+                    'error',
+                    '-f',
+                    'matroska',
+                    '-i',
+                    'pipe:0',
+                    '-frames:v',
+                    '1',
+                    '-vf',
+                    'scale=640:-2',
+                    '-q:v',
+                    '4',
+                    '-update',
+                    '1',
+                    '-f',
+                    'image2',
+                    '-y',
+                    output,
+                ],
+                { stdio: ['pipe', 'ignore', 'pipe'] }
+            );
+            const exited = waitForExit(child);
+            exited.catch(() => {});
+            const sink = streamSink(child.stdin);
+            const muxer = new MatroskaMuxer({ docType: 'matroska', video: params, sink });
+            await muxer.start();
+            await muxer.writeFrame({ track: 'video', tsMs: 0, key: true, data: record.data });
+            await muxer.finish();
+            await sink.end();
+            const exit = await exited;
+            if (exit.code !== 0) {
+                log.warn(`replay: thumbnail failed: ${lastLine(exit.stderr)}`);
+                return false;
+            }
+            return true;
+        } catch (error) {
+            log.warn(`replay: thumbnail failed: ${error.message}`);
             return false;
         }
-        return true;
-    } catch (error) {
-        log.warn(`replay: thumbnail failed: ${error.message}`);
-        return false;
-    }
+    })();
+    return {
+        done,
+        kill: () => {
+            if (child && child.exitCode === null) child.kill('SIGKILL');
+        },
+    };
 }
 
 /**
@@ -210,6 +246,7 @@ async function buildClip(o) {
     let child = null;
     let exited = null;
     let timer = null;
+    let thumbnail = null;
     try {
         // The key frame the file starts with tells the size and the codec parameters. It is read by its own offset:
         // in time order something else (a little audio that was written late) may come out first.
@@ -223,6 +260,19 @@ async function buildClip(o) {
             throw new Error('the ring does not start at a key frame');
         }
         const params = videoParams(codec, first.data);
+
+        // The thumbnail is made from a key frame near one second into the visible clip, while the clip is written.
+        const thumbRecord =
+            plan.thumbKey === plan.key ? first : await readKeyRecord(snapshot, plan.thumbKey).catch(() => null);
+        if (thumbRecord) {
+            thumbnail = startThumbnail({
+                ffmpegPath,
+                codec,
+                record: thumbRecord,
+                output: path.join(stagingDir, 'thumb.jpg'),
+                log,
+            });
+        }
 
         child = spawnLowPriority(ffmpegPath, finalizeArgs({ codec, hasAudio, output: outputPath }), {
             stdio: ['pipe', 'ignore', 'pipe'],
@@ -283,22 +333,7 @@ async function buildClip(o) {
             throw error;
         }
         const finalizedAt = now();
-
-        // Thumbnail from the key frame closest to one second into the visible clip: a seek to a key frame decodes
-        // one picture only.
-        let thumb = null;
-        const thumbAt = Math.max(0, (plan.thumbKey.ts - base) / 1000);
-        if (
-            await makeThumbnail({
-                ffmpegPath,
-                input: outputPath,
-                atSeconds: thumbAt,
-                output: path.join(stagingDir, 'thumb.jpg'),
-                log,
-            })
-        ) {
-            thumb = 'thumb.jpg';
-        }
+        const thumb = thumbnail && (await thumbnail.done) ? 'thumb.jpg' : null;
 
         const stat = await fsp.stat(outputPath);
         const createdAt = now();
@@ -330,6 +365,7 @@ async function buildClip(o) {
         );
         return { meta, timings: { totalMs: createdAt - startedAt, finalizeMs: finalizedAt - startedAt } };
     } catch (error) {
+        if (thumbnail) thumbnail.kill();
         if (child) {
             if (child.exitCode === null) child.kill('SIGKILL');
             // the reason that FFmpeg gave is more useful than the broken pipe that came out of it
