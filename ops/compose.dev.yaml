@@ -33,7 +33,7 @@ services:
       HOST_PROTECTED: "false"
       HOST_USER_AUTH: "false"
       # features under test in development
-      KEYFRAME_REQUEST_DELAY_MS: "400"
+      KEYFRAME_REQUEST_DELAY_MS: "1000"
       HEALTH_METER_ENABLED: "true"
       HEALTH_DIR: /data/health
       HEALTH_INTERVAL_S: "10"
