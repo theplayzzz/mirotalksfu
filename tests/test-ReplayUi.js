@@ -371,6 +371,44 @@ describe('test-ReplayUi', () => {
         });
     });
 
+    describe('what the new files must never do', () => {
+        const replayJs = read('js/Replay.js');
+        const galleryJs = read('js/ReplayGallery.js');
+        const logicJs = read('js/ReplayLogic.js');
+        const replayCss = read('css/Replay.css');
+        const galleryCss = read('css/ReplayGallery.css');
+        const galleryHtml = read('views/Replay.html');
+
+        // A leftover SweetAlert2 layer once froze the whole room: nothing new may use it.
+        it('stay clear of SweetAlert2', () => {
+            for (const source of [replayJs, galleryJs, logicJs, replayCss, galleryCss, galleryHtml]) {
+                source.should.not.match(/swal/i);
+            }
+        });
+
+        it('never put HTML made of names or messages into the page', () => {
+            for (const source of [replayJs, galleryJs]) {
+                source.should.not.match(/\.innerHTML\s*=/);
+                source.should.not.match(/insertAdjacentHTML|document\.write|outerHTML\s*=/);
+                source.should.not.match(/\beval\(|new Function\(/);
+            }
+        });
+
+        it('keep the gallery page free of inline scripts, handlers and styles (it works under a strict CSP)', () => {
+            galleryHtml.should.not.match(/<script(?![^>]*\bsrc=)/);
+            galleryHtml.should.not.match(/\son[a-z]+\s*=/);
+            galleryHtml.should.not.match(/\sstyle\s*=/);
+        });
+
+        it('keep the gallery from depending on a CDN for its icons or scripts', () => {
+            galleryHtml.should.not.match(/https?:\/\/(?!fonts\.googleapis\.com)/);
+        });
+
+        it('never leave a layer over the room: the toast container takes no clicks', () => {
+            replayCss.should.match(/\.replay-toasts\s*\{[^}]*pointer-events:\s*none/);
+        });
+    });
+
     describe('the hooks in the room files', () => {
         const roomClient = read('js/RoomClient.js');
         const roomHtml = read('views/Room.html');
