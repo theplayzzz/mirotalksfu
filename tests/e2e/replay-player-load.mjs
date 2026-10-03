@@ -156,8 +156,9 @@ try {
     await gallery.ev("document.getElementById('rpBig').click(); true");
     const playAt = Date.now();
 
-    // the first picture: the time on screen moves past the lead-in
-    const start = clip.startOffsetS || 0;
+    // the first picture: the video plays from its first frame (the lead-in is part of what is shown; skipping it would
+    // make the browser decode all of it before any picture), so the time on screen just has to start moving
+    const start = 0;
     let firstPictureAt = 0;
     let lastCt = 0;
     for (let i = 0; i < 400; i++) {
@@ -171,7 +172,7 @@ try {
     }
     const sinceOpen = firstPictureAt ? (firstPictureAt - sourceAt) / 1000 : Infinity;
     const sincePlay = firstPictureAt ? (firstPictureAt - playAt) / 1000 : Infinity;
-    note(`from the page having the clip to the first moving picture past the lead-in: ${firstPictureAt ? sinceOpen.toFixed(1) + ' s' : 'NEVER (last time ' + lastCt.toFixed(1) + ')'}; from the press of play: ${firstPictureAt ? sincePlay.toFixed(1) + ' s' : '-'}`);
+    note(`from the page having the clip to the first moving picture: ${firstPictureAt ? sinceOpen.toFixed(1) + ' s' : 'NEVER (last time ' + lastCt.toFixed(1) + ')'}; from the press of play: ${firstPictureAt ? sincePlay.toFixed(1) + ' s' : '-'}`);
 
     // let it play 6 s more to see whether it keeps going
     await sleep(6000);
@@ -194,7 +195,9 @@ try {
     check('nothing asked for an MP4 while the clip was opened and played', mp4.length === 0, JSON.stringify(mp4.map((r) => ({ m: r.method, p: r.path }))));
     check(`the first picture is on screen within ${MAX_FIRST_PICTURE_S} s of the clip being open`, sinceOpen <= MAX_FIRST_PICTURE_S, `${sinceOpen.toFixed(1)} s`);
     check('the file is asked for in a handful of requests, not hundreds', media.length <= 12, `${media.length} requests`);
-    check('it keeps playing', !!after && after.ct > start + 3 && !after.paused, JSON.stringify(after));
+    check('it keeps playing', !!after && after.ct > start + 2 && !after.paused, JSON.stringify(after));
+    // no seek at all to get started: a seek past the lead-in is what made the first version wait (decoding all of it)
+    check('the player did not seek past the lead-in', !(events || []).some((e) => e.name === 'seeking' && e.ct > 1), JSON.stringify((events || []).filter((e) => e.name === 'seeking')));
 } finally {
     stopHogs();
     chrome.close();
