@@ -109,6 +109,8 @@ const Discord = require('./Discord');
 const Mattermost = require('./Mattermost');
 const LivePix = require('./LivePix');
 const livePix = new LivePix();
+const HealthMeter = require('./HealthMeter');
+const healthMeter = new HealthMeter();
 const restrictAccessByIP = require('./middleware/IpWhitelist');
 const { applyEmbedHeaders, embedAllowedOrigins, embedCsp } = require('./middleware/EmbedHeaders');
 const packageJson = require('../../package.json');
@@ -870,6 +872,7 @@ function startServer() {
         res.status(200).json({
             message: config?.ui?.buttons || false,
             singleRoom: singleRoom.enabled ? { roomId: singleRoom.roomId } : false,
+            healthMeter: healthMeter.enabled ? { enabled: true, intervalS: healthMeter.intervalS } : false,
         });
     });
 
@@ -885,6 +888,7 @@ function startServer() {
 
     // LivePix donations summary for the join screen
     livePix.start();
+    healthMeter.start();
     app.get('/livepix/summary', (req, res) => {
         res.set('Cache-Control', 'no-store').json(livePix.getSummary());
     });
@@ -3697,6 +3701,22 @@ function startServer() {
             });
         });
 
+        // Each browser reports how its own screen shares are doing (see HealthMeter.js)
+        socket.on('healthReport', (report) => {
+            if (!healthMeter.enabled || !roomExists(socket)) return;
+
+            const { peer } = getRoomAndPeer(socket);
+
+            if (!peer) return;
+
+            healthMeter.record({
+                socketId: socket.id,
+                roomId: socket.room_id,
+                peerName: peer.peer_name ?? peer.peer_info?.peer_name,
+                report,
+            });
+        });
+
         socket.on('updatePeerInfo', (dataObject) => {
             if (!roomExists(socket)) return;
 
@@ -5091,6 +5111,8 @@ function startServer() {
         });
 
         socket.on('disconnect', (reason) => {
+            healthMeter.forget(socket.id);
+
             if (!roomExists(socket)) {
                 // Clean up socket listeners even if room doesn't exist
                 socket.removeAllListeners();
