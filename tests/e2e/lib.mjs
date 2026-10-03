@@ -78,7 +78,9 @@ export async function launchChrome({ chrome, tabCaptureTitle = 'E2ESRC', extraFl
     const proc = spawn(
         chrome,
         [
-            '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run',
+            // --mute-audio: the pages of a test play the sound of the screens they receive (a steady tone, the beeps of the
+            // clap board every 2 s) and a headless Chrome sends it to the speakers of whoever runs the test. Never again.
+            '--headless=new', '--mute-audio', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run',
             '--no-default-browser-check', '--use-fake-ui-for-media-stream', `--auto-select-tab-capture-source-by-title=${tabCaptureTitle}`,
             '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
             '--disable-backgrounding-occluded-windows', `--window-size=${width},${height}`, ...extraFlags, 'about:blank',
