@@ -1986,7 +1986,7 @@ module.exports = {
              */
             initialAvailableOutgoingBitrate: 10000000, // 10 Mbps starting estimate for Full HD
             minimumAvailableOutgoingBitrate: 1000000, // 1 Mbps minimum guaranteed
-            maxIncomingBitrate: 15000000, // 15 Mbps ceiling per producer
+            maxIncomingBitrate: 20000000, // 20 Mbps ceiling for everything one person sends (the whole send transport: screen layers, camera and audio)
 
             /**
              * Data Channel Settings (mediasoup 3.20.0+)

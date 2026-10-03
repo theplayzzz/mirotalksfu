@@ -111,6 +111,12 @@ const LivePix = require('./LivePix');
 const livePix = new LivePix();
 const HealthMeter = require('./HealthMeter');
 const healthMeter = new HealthMeter();
+
+// Screen shares can be sent in 1-3 simulcast layers (1/4, 1/2 and full size) so each viewer receives only the
+// quality it can show; with SELECTIVE_RECEPTION the viewers' browsers choose the layer of every screen from the
+// size of its tile and pause the video of the ones nobody is looking at (public/js/ScreenQuality.js).
+const screenLayers = Math.min(3, Math.max(1, parseInt(process.env.SCREEN_SIMULCAST_LAYERS, 10) || 1));
+const selectiveReception = process.env.SELECTIVE_RECEPTION === 'true';
 const restrictAccessByIP = require('./middleware/IpWhitelist');
 const { applyEmbedHeaders, embedAllowedOrigins, embedCsp } = require('./middleware/EmbedHeaders');
 const packageJson = require('../../package.json');
@@ -873,6 +879,7 @@ function startServer() {
             message: config?.ui?.buttons || false,
             singleRoom: singleRoom.enabled ? { roomId: singleRoom.roomId } : false,
             healthMeter: healthMeter.enabled ? { enabled: true, intervalS: healthMeter.intervalS } : false,
+            screen: { layers: screenLayers, selectiveReception },
         });
     });
 
@@ -2927,6 +2934,19 @@ function startServer() {
             try {
                 const params = await room.consume(socket.id, consumerTransportId, producerId, rtpCapabilities, type);
 
+                // Tell the viewer which layer it is really getting (see ScreenQuality.js)
+                const consumer = params ? peer.getConsumer(params.id) : null;
+                if (consumer && ['simulcast', 'svc'].includes(consumer.type) && !consumer.appData.layersNotify) {
+                    consumer.appData.layersNotify = true;
+                    consumer.on('layerschange', (layers) => {
+                        socket.emit('consumerLayers', {
+                            consumer_id: consumer.id,
+                            spatialLayer: layers ? layers.spatialLayer : null,
+                            temporalLayer: layers ? layers.temporalLayer : null,
+                        });
+                    });
+                }
+
                 log.debug('Consuming', {
                     producer_type: type,
                     producer_id: producerId,
@@ -3199,6 +3219,29 @@ function startServer() {
                     peerInfo,
                 });
                 callback({ error: error.message });
+            }
+        });
+
+        // A viewer chooses the layer, the priority and the pause of its video consumers from what is on its screen
+        socket.on('setConsumerPreferences', async (data, callback) => {
+            if (!roomExists(socket)) return callback?.({ error: 'Room not found' });
+
+            const peer = getPeer(socket);
+
+            if (!peer || isPeerInLobby(peer)) return callback?.({ error: 'Not allowed' });
+
+            const now = Date.now();
+            if (now - (socket.preferencesWindowStart || 0) > 1000) {
+                socket.preferencesWindowStart = now;
+                socket.preferencesInWindow = 0;
+            }
+            if (++socket.preferencesInWindow > 40) return callback?.({ error: 'Too many requests', code: 'RATE_LIMIT' });
+
+            try {
+                const applied = await peer.setConsumerPreferences(data?.consumer_id, data);
+                callback?.({ ok: true, ...applied });
+            } catch (error) {
+                callback?.({ error: error.message, code: error.code });
             }
         });
 

@@ -3081,6 +3081,8 @@ class RoomClient {
                 ];
             } else {
                 console.log('SCREEN ENCODING: VP8 or H264 with simulcast.');
+                // How many sizes the screen is sent in (1-3) comes from the server (SCREEN_SIMULCAST_LAYERS)
+                const sharingLayers = window.ScreenQuality?.screenLayers?.() || this.numSimulcastStreamsSharing;
                 encodings = [
                     {
                         scaleResolutionDownBy: 1,
@@ -3089,18 +3091,18 @@ class RoomClient {
                         dtx: true,
                     },
                 ];
-                if (this.numSimulcastStreamsSharing > 1) {
+                if (sharingLayers > 1) {
                     encodings.unshift({
                         scaleResolutionDownBy: 2,
-                        maxBitrate: 1000000,
+                        maxBitrate: 1500000,
                         scalabilityMode: this.sharingScalabilityMode || 'L1T3',
                         dtx: true,
                     });
                 }
-                if (this.numSimulcastStreamsSharing > 2) {
+                if (sharingLayers > 2) {
                     encodings.unshift({
                         scaleResolutionDownBy: 4,
-                        maxBitrate: 500000,
+                        maxBitrate: 600000,
                         scalabilityMode: this.sharingScalabilityMode || 'L1T3',
                         dtx: true,
                     });
@@ -3727,6 +3729,13 @@ class RoomClient {
             this.consumersProducer.set(producer_id, consumer.id);
 
             await this.handleConsumer(consumer.id, type, stream, peer_name, peer_info);
+
+            // Start at the layer that fits the tile, before the video is resumed (see ScreenQuality.js)
+            try {
+                await window.ScreenQuality?.onConsumerCreated(this, consumer, type);
+            } catch (error) {
+                console.warn('ScreenQuality', error.message);
+            }
 
             // https://mediasoup.discourse.group/t/create-server-side-consumers-with-paused-true/244
             const resumed = await this.resumeConsumerWithRetry(consumer.id, type);

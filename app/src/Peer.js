@@ -451,6 +451,52 @@ module.exports = class Peer {
         };
     }
 
+    /*
+     * What a viewer wants from one of its video consumers, decided by the browser from what is on its screen
+     * (public/js/ScreenQuality.js): which layer, how important it is when the network is short, and whether the
+     * video is paused because nobody is looking at it. Audio is never touched. Returns what was applied.
+     */
+    async setConsumerPreferences(consumer_id, preferences = {}) {
+        const { spatialLayer, temporalLayer, priority, paused } = preferences;
+        const consumer = typeof consumer_id === 'string' ? this.getConsumer(consumer_id) : null;
+
+        if (!consumer || consumer.closed) {
+            const error = new Error(`Consumer ${consumer_id} not found`);
+            error.code = 'CONSUMER_NOT_FOUND';
+            throw error;
+        }
+        if (consumer.kind !== 'video') {
+            const error = new Error('Only video consumers have preferences');
+            error.code = 'NOT_VIDEO';
+            throw error;
+        }
+
+        const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+        const applied = {};
+
+        if (['simulcast', 'svc'].includes(consumer.type) && (Number.isInteger(spatialLayer) || Number.isInteger(temporalLayer))) {
+            const { spatialLayers, temporalLayers } = parseScalabilityMode(consumer.rtpParameters.encodings[0].scalabilityMode);
+            const spatial = Number.isInteger(spatialLayer) ? clamp(spatialLayer, 0, spatialLayers - 1) : spatialLayers - 1;
+            const temporal = Number.isInteger(temporalLayer) ? clamp(temporalLayer, 0, temporalLayers - 1) : temporalLayers - 1;
+            await consumer.setPreferredLayers({ spatialLayer: spatial, temporalLayer: temporal });
+            applied.spatialLayer = spatial;
+            applied.temporalLayer = temporal;
+        }
+
+        if (Number.isInteger(priority)) {
+            applied.priority = clamp(priority, 1, 255);
+            await consumer.setPriority(applied.priority);
+        }
+
+        if (typeof paused === 'boolean' && paused !== consumer.paused) {
+            if (paused) await consumer.pause();
+            else await consumer.resume();
+        }
+        applied.paused = consumer.paused;
+
+        return applied;
+    }
+
     getConsumerParams(consumer) {
         const { producerId, id, kind, rtpParameters, type, producerPaused } = consumer;
         return { producerId, id, kind, rtpParameters, type, producerPaused };

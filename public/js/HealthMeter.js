@@ -79,6 +79,11 @@
         const rx = [];
         for (const [id, consumer] of rc.consumers) {
             if (consumer.kind !== 'video' || consumer.closed) continue;
+            // A screen paused on purpose (nobody looks at it) would count as frozen
+            if (window.ScreenQuality && window.ScreenQuality.isPaused(id)) {
+                state.previous.delete(id);
+                continue;
+            }
             const report = await consumer.getStats();
             const s = reports(report, 'inbound-rtp', 'video')[0];
             if (!s) continue;
