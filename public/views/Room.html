@@ -34,6 +34,7 @@
         <link rel="stylesheet" href="../css/Root.css" />
         <link rel="stylesheet" href="../css/Room.css" />
         <link rel="stylesheet" href="../css/LivePix.css" />
+        <link rel="stylesheet" href="../css/Replay.css" />
         <link rel="stylesheet" href="../css/VideoGrid.css" />
         <link rel="stylesheet" href="../css/GroupChat.css" />
         <link rel="stylesheet" href="../css/Polls.css" />
@@ -142,6 +143,9 @@
         <script defer src="../js/LivePix.js"></script>
         <script defer src="../js/HealthMeter.js"></script>
         <script defer src="../js/Room.js"></script>
+        <!-- After Room.js: Replay.js listens on the `socket` that Room.js creates -->
+        <script defer src="../js/ReplayLogic.js"></script>
+        <script defer src="../js/Replay.js"></script>
     </head>
     <body>
         <noscript>You need to enable JavaScript to run this app.</noscript>
@@ -372,6 +376,10 @@
                     </button>
                 </div>
             </div>
+            <button id="replayGalleryButton" class="hidden" type="button" aria-label="Galeria de replays">
+                <i class="fas fa-film" aria-hidden="true"></i>
+                <span id="replayGalleryBadge" class="replay-gallery-badge hidden" aria-hidden="true"></span>
+            </button>
             <div id="settingsSplit" class="split-btn">
                 <button id="settingsButton" class="hidden"><i class="fas fa-cogs"></i></button>
                 <div id="settingsExtraDropdown" class="dropdown dropup hidden">

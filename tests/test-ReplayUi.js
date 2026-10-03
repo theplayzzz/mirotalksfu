@@ -2,7 +2,12 @@
 
 require('should');
 
+const fs = require('fs');
+const path = require('path');
+
 const L = require('../public/js/ReplayLogic');
+
+const read = (file) => fs.readFileSync(path.join(__dirname, '..', 'public', file), 'utf8');
 
 describe('test-ReplayUi', () => {
     describe('time and text', () => {
@@ -363,6 +368,38 @@ describe('test-ReplayUi', () => {
                     throw new Error('blocked');
                 },
             }).should.equal('');
+        });
+    });
+
+    describe('the hooks in the room files', () => {
+        const roomClient = read('js/RoomClient.js');
+        const roomHtml = read('views/Room.html');
+
+        // The room builds its tiles in two places; losing these lines in a merge would silently remove the button.
+        it('RoomClient.handleConsumer hands the remote screen tile to Replay', () => {
+            const body = roomClient.slice(
+                roomClient.indexOf('async handleConsumer('),
+                roomClient.indexOf('    removeConsumer(consumer_id')
+            );
+            body.should.match(/remoteIsScreen\s*&&\s*window\.Replay\?\.attachScreen\(/);
+            body.should.match(/producerId: this\.consumers\.get\(id\)\?\.producerId/);
+        });
+
+        it('RoomClient.handleProducer hands the own screen tile to Replay', () => {
+            const body = roomClient.slice(
+                roomClient.indexOf('async handleProducer('),
+                roomClient.indexOf('async pauseProducer(')
+            );
+            body.should.match(/isScreen\s*&&\s*window\.Replay\?\.attachScreen\(/);
+        });
+
+        it('Room.html loads the replay files and has the gallery button', () => {
+            roomHtml.should.match(/css\/Replay\.css/);
+            roomHtml.should.match(/js\/ReplayLogic\.js/);
+            roomHtml.should.match(/js\/Replay\.js/);
+            roomHtml.should.match(/id="replayGalleryButton"/);
+            // Replay.js needs the global `socket` that Room.js creates.
+            roomHtml.indexOf('js/Replay.js').should.be.above(roomHtml.indexOf('js/Room.js'));
         });
     });
 });
