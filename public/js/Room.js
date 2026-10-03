@@ -2862,10 +2862,7 @@ function handleButtons() {
         // await rc.pauseProducer(RoomClient.mediaType.video);
     };
     startScreenButton.onclick = async () => {
-        const moderator = rc.getModerator();
-        if (moderator.screen_cant_share) {
-            return userLog('warning', 'The moderator does not allow you to share the screen', 'top-end', 6000);
-        }
+        // LinkDoNotle: everyone can always share the screen, no moderator lock
         await rc.produce(RoomClient.mediaType.screen);
     };
     stopScreenButton.onclick = () => {
@@ -3954,7 +3951,7 @@ function handleKeyboardShortcuts() {
             const key = event.key.toLowerCase(); // Convert to lowercase for simplicity
             console.log(`Detected shortcut: ${key}`);
 
-            const { audio_cant_unmute, video_cant_unhide, screen_cant_share } = rc._moderator;
+            const { audio_cant_unmute, video_cant_unhide } = rc._moderator;
             const notPresenter = isRulesActive && !isPresenter;
 
             switch (key) {
@@ -3973,7 +3970,7 @@ function handleKeyboardShortcuts() {
                     video ? stopVideoButton.click() : startVideoButton.click();
                     break;
                 case 's':
-                    if (notPresenter && !screen && (screen_cant_share || !BUTTONS.main.startScreenButton)) {
+                    if (notPresenter && !screen && !BUTTONS.main.startScreenButton) {
                         userLog('warning', 'The presenter has disabled your ability to share the screen', 'top-end');
                         break;
                     }
@@ -4481,7 +4478,7 @@ function loadSettingsFromLocalStorage() {
     isKeepButtonsVisible = localStorageSettings.keep_buttons_visible;
     isChatPinEnabled = localStorageSettings.chat_pin !== undefined ? localStorageSettings.chat_pin : true;
     isShortcutsEnabled = localStorageSettings.keyboard_shortcuts;
-    isBroadcastingEnabled = localStorageSettings.broadcasting;
+    isBroadcastingEnabled = false; // LinkDoNotle: broadcasting is never used, it blocks screen sharing
     showChatOnMsg.checked = rc.showChatOnMessage;
     transcriptShowOnMsg.checked = transcription.showOnMessage;
     transcriptSendToAll.checked = transcription.sendToAll;

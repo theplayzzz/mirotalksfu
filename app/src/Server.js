@@ -3301,6 +3301,8 @@ function startServer() {
             switch (data.action) {
                 case 'broadcasting':
                     if (!isPresenter) return;
+                    // LinkDoNotle: broadcasting hides screen sharing from non-presenters, keep it off
+                    data.room_broadcasting = false;
                     room.setIsBroadcasting(data.room_broadcasting);
                     room.broadCast(socket.id, 'roomAction', {
                         action: data.action,
@@ -3754,6 +3756,9 @@ function startServer() {
 
             const moderator = data.moderator;
 
+            // LinkDoNotle: screen sharing is always open to everyone, whoever the presenter is
+            if (moderator?.type === 'screen_cant_share') moderator.status = false;
+
             room.updateRoomModerator(moderator);
 
             switch (moderator.type) {
@@ -3790,6 +3795,9 @@ function startServer() {
             if (!isPresenter) return;
 
             const moderator = data.moderator;
+
+            // LinkDoNotle: screen sharing is always open to everyone, whoever the presenter is
+            if (moderator) moderator.screen_cant_share = false;
 
             room.updateRoomModeratorALL(moderator);
 

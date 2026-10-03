@@ -234,7 +234,7 @@ function handleRules(isPresenter, roomSetup = true) {
         // (broadcasting, lobby, recording, moderator) set by the original presenter is preserved.
         if (roomSetup) {
             // Room broadcasting
-            isBroadcastingEnabled = localStorageSettings.broadcasting;
+            isBroadcastingEnabled = false; // LinkDoNotle: never restore broadcasting, it blocks screen sharing
             switchBroadcasting.checked = isBroadcastingEnabled;
             rc.roomAction('broadcasting', true, false);
             if (isBroadcastingEnabled) rc.toggleRoomBroadcasting();
@@ -313,7 +313,7 @@ function loadModeratorData() {
     switchEveryoneHidden.checked = localStorageSettings.moderator_video_start_hidden;
     switchEveryoneCantUnmute.checked = localStorageSettings.moderator_audio_cant_unmute;
     switchEveryoneCantUnhide.checked = localStorageSettings.moderator_video_cant_unhide;
-    switchEveryoneCantShareScreen.checked = localStorageSettings.moderator_screen_cant_share;
+    switchEveryoneCantShareScreen.checked = false; // LinkDoNotle: screen sharing is always open
     switchEveryoneCantChatPrivately.checked = localStorageSettings.moderator_chat_cant_privately;
     switchEveryoneCantChatPublicly.checked = localStorageSettings.moderator_chat_cant_publicly;
     switchEveryoneCantChatChatGPT.checked = localStorageSettings.moderator_chat_cant_chatgpt;
