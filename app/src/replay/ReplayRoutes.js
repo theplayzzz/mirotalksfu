@@ -73,14 +73,16 @@ function secretMatches(provided, expected) {
 function createReplayRouter({ hub, access, client, singleRoom, pageFile, dataDir, retentionDays = 7, log = console }) {
     const router = express.Router();
 
+    // The app sets "trust proxy" because it only ever sits behind Caddy (it listens on the loopback), and Caddy puts the
+    // real address in X-Forwarded-For itself; express-rate-limit's warning about a permissive setting does not apply.
+    const limiterOptions = { standardHeaders: true, legacyHeaders: false, validate: { trustProxy: false } };
     const loginLimiter = rateLimit({
+        ...limiterOptions,
         windowMs: 10 * 60 * 1000,
         max: 10,
-        standardHeaders: true,
-        legacyHeaders: false,
         message: { error: 'Too many attempts, try again later', code: 'RATE_LIMIT' },
     });
-    const sessionLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false });
+    const sessionLimiter = rateLimit({ ...limiterOptions, windowMs: 60 * 1000, max: 60 });
 
     const secure = (req) => req.secure || String(req.get('x-forwarded-proto') || '').split(',')[0].trim() === 'https';
     const grant = (req, res) => res.set('Set-Cookie', access.cookieHeader(access.signAccess(), { secure: secure(req) }));

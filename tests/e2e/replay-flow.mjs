@@ -22,6 +22,8 @@ const FFPROBE = process.env.FFPROBE || 'ffprobe';
 const OUT_DIR = process.env.OUT_DIR || path.join(tmpdir(), 'replay-flow');
 mkdirSync(OUT_DIR, { recursive: true });
 
+// CODEC=h264 for an instance set to SCREEN_CODEC=h264: the clip is then an MP4 from the start (nothing to convert)
+const CODEC = process.env.CODEC || 'vp8';
 const FAST_CLIP_SECONDS = 30;
 const FAST_BUFFER_NEEDED = 40;
 const UI_CLIP_SECONDS = 60;
@@ -211,7 +213,7 @@ try {
     }, 45).then((b) => b.shares.find((s) => s.producerId === screen.id)).catch(() => null);
     check('the room is told the screen is being kept, with its audio', !!share, share ? JSON.stringify(share) : 'not listed');
     if (!share) throw new Error('the screen never showed up in replayBuffers: nothing else can be tested');
-    check('it is a VP8 screen shared by the right person', share.codec === 'vp8' && share.peerName === 'RF-Sharer', `${share.codec} ${share.peerName}`);
+    check(`it is a ${CODEC.toUpperCase()} screen shared by the right person`, share.codec === CODEC && share.peerName === 'RF-Sharer', `${share.codec} ${share.peerName}`);
 
     // 4. what recording costs the people watching: nothing. (A person who joins a screen that is already being shared
     // waits for the next full picture: usually 1-2 s, now and then ~10 s while the sender is still ramping up.)
@@ -256,7 +258,9 @@ try {
     check('the clip is ready', done.state === 'done', JSON.stringify(done).slice(0, 300));
     if (done.state !== 'done') throw new Error('no clip');
     note(`the clip took ${took} ms from the click to "done"`);
-    check('it is ready in under 3 s (the target)', took < 3000, `${took} ms`);
+    // (an H.264 screen's clip is an MP4: its sound is converted to AAC and the index moved to the front, a little longer)
+    const targetMs = CODEC === 'h264' ? 6000 : 3000;
+    check(`it is ready in under ${targetMs / 1000} s`, took < targetMs, `${took} ms`);
     const clip = done.clip;
     note(`clip ${clip.id}: ${JSON.stringify({ seconds: clip.seconds, durationS: clip.durationS, startOffsetS: clip.startOffsetS, codec: clip.codec, hasAudio: clip.hasAudio, files: clip.files })}`);
     check('the clip says whose screen it is and who saved it', clip.sharer === 'RF-Sharer' && clip.requestedBy === 'RF-Viewer', `${clip.sharer} / ${clip.requestedBy}`);
@@ -281,8 +285,10 @@ try {
     if (info) {
         const video = info.streams.find((s) => s.codec_type === 'video');
         const audio = info.streams.find((s) => s.codec_type === 'audio');
-        check('it has VP8 video', video && video.codec_name === 'vp8', video && `${video.codec_name} ${video.width}x${video.height}`);
-        check('it has Opus audio', audio && audio.codec_name === 'opus', audio && `${audio.codec_name} ${audio.channels} ch`);
+        check(`it has ${CODEC.toUpperCase()} video`, video && video.codec_name === CODEC, video && `${video.codec_name} ${video.width}x${video.height}`);
+        // an MP4 carries AAC (Opus in MP4 is not something every player opens), so an H.264 screen's clip has it
+        const audioCodec = CODEC === 'h264' ? 'aac' : 'opus';
+        check(`it has ${audioCodec === 'aac' ? 'AAC' : 'Opus'} audio`, audio && audio.codec_name === audioCodec, audio && `${audio.codec_name} ${audio.channels} ch`);
         const duration = Number(info.format.duration);
         check('its duration is what the metadata says', Math.abs(duration - clip.durationS) < 1.5, `${duration} s vs ${clip.durationS} s`);
         note(`container: ${info.format.format_name}, ${duration.toFixed(1)} s, ${(Number(info.format.bit_rate) / 1e6).toFixed(1)} Mbps`);
@@ -325,7 +331,7 @@ try {
     const range = await fetch(`${origin}/replay/media/${clip.id}/${original.name}`, { headers: { ...auth, range: 'bytes=0-99' } });
     check('the player can seek: a Range request gets 206 with the right header', range.status === 206 && /^bytes 0-99\//.test(range.headers.get('content-range') || '') && (await range.arrayBuffer()).byteLength === 100, `${range.status} ${range.headers.get('content-range')}`);
     const download1 = await fetch(`${origin}/replay/media/${clip.id}/${original.name}?download=1`, { headers: { ...auth, range: 'bytes=0-9' } });
-    check('the download link asks the browser to save the file, with a readable name', /^attachment; filename="replay-RF-Sharer-\d{8}-\d{6}\.webm"$/.test(download1.headers.get('content-disposition') || ''), download1.headers.get('content-disposition'));
+    check('the download link asks the browser to save the file, with a readable name', /^attachment; filename="replay-RF-Sharer-\d{8}-\d{6}\.(webm|mp4)"$/.test(download1.headers.get('content-disposition') || ''), download1.headers.get('content-disposition'));
     const thumb = await fetch(`${origin}/replay/media/${clip.id}/thumb.jpg`, { headers: auth });
     check('the thumbnail is a JPEG', thumb.status === 200 && thumb.headers.get('content-type') === 'image/jpeg' && (await thumb.arrayBuffer()).byteLength > 500, `${thumb.status} ${thumb.headers.get('content-type')}`);
 
@@ -344,15 +350,19 @@ try {
     const mp4Start = await (await fetch(`${origin}/replay/api/clips/${clip.id}/mp4`, { method: 'POST', headers: auth })).json();
     note(`MP4 start: ${JSON.stringify(mp4Start)}`);
     check('starting the MP4 answers with its state and an estimate', ['ready', 'queued', 'running'].includes(mp4Start.state), JSON.stringify(mp4Start));
-    const mp4Done = await waitFor('the MP4', async () => {
-        const events = await viewer.ev('window.__sse');
-        return events.find((e) => (e.type === 'mp4.ready' || e.type === 'mp4.error') && e.data.id === clip.id) || null;
-    }, 240, 500);
+    // an H.264 screen makes an MP4 from the start: the answer is "ready" at once and there is nothing to wait for
+    const already = mp4Start.state === 'ready';
+    const mp4Done = already
+        ? { type: 'mp4.ready', data: { id: clip.id } }
+        : await waitFor('the MP4', async () => {
+              const events = await viewer.ev('window.__sse');
+              return events.find((e) => (e.type === 'mp4.ready' || e.type === 'mp4.error') && e.data.id === clip.id) || null;
+          }, 240, 500);
     const events = await viewer.ev('window.__sse');
     const progress = events.filter((e) => e.type === 'mp4.progress' && e.data.id === clip.id).map((e) => e.data.progress);
-    note(`MP4 took ${Math.round((Date.now() - mp4Started) / 1000)} s; ${progress.length} progress events: ${JSON.stringify(progress.slice(0, 12))}`);
+    note(`MP4 ${already ? 'was ready from the start' : `took ${Math.round((Date.now() - mp4Started) / 1000)} s; ${progress.length} progress events: ${JSON.stringify(progress.slice(0, 12))}`}`);
     check('the MP4 is ready', mp4Done.type === 'mp4.ready', JSON.stringify(mp4Done.data));
-    check('progress was reported, between 0 and 1, never going back', progress.length >= 1 && progress.every((p, i) => p >= 0 && p <= 1 && (i === 0 || p >= progress[i - 1])), JSON.stringify(progress));
+    if (!already) check('progress was reported, between 0 and 1, never going back', progress.length >= 1 && progress.every((p, i) => p >= 0 && p <= 1 && (i === 0 || p >= progress[i - 1])), JSON.stringify(progress));
     const mp4File = path.join(OUT_DIR, 'clip.mp4');
     const mp4Got = await download(`${origin}/replay/media/${clip.id}/clip.mp4?download=1`, mp4File, auth);
     const mp4Info = probeJson(mp4File);
@@ -362,8 +372,9 @@ try {
         const audio = mp4Info.streams.find((s) => s.codec_type === 'audio');
         check('it is H.264 + AAC, which every player opens', video && video.codec_name === 'h264' && audio && audio.codec_name === 'aac', `${video && video.codec_name}/${audio && audio.codec_name}`);
         check('at the size asked for (720p by default)', video && video.height <= 720, video && `${video.width}x${video.height}`);
-        const expected = clip.seconds;
-        check('with the length that was asked for (the lead-in is cut off, not kept)', Math.abs(Number(mp4Info.format.duration) - expected) < 3, `${Number(mp4Info.format.duration).toFixed(1)} s vs ${expected} s`);
+        // converted: cut to what was asked; an MP4 that came from an H.264 screen keeps the lead-in (the player hides it)
+        const expected = already ? clip.durationS : clip.seconds;
+        check(already ? 'with the length of the file of the clip' : 'with the length that was asked for (the lead-in is cut off, not kept)', Math.abs(Number(mp4Info.format.duration) - expected) < 3, `${Number(mp4Info.format.duration).toFixed(1)} s vs ${expected} s`);
         const head = spawnSync(FFPROBE, ['-v', 'trace', mp4File], { encoding: 'utf8', maxBuffer: 1 << 28 }).stderr;
         const moov = head.indexOf("type:'moov'");
         const mdat = head.indexOf("type:'mdat'");
