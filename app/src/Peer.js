@@ -4,6 +4,11 @@ const { parseScalabilityMode } = require('mediasoup');
 const Logger = require('./Logger');
 const log = new Logger('Peer');
 
+// Minimum time (ms) between two key frame requests to a video sender, 0 = mediasoup's default (no limit).
+// Every viewer who joins, or loses packets, makes the sender produce a full frame, which is several times
+// bigger than a normal one; limiting the rate keeps one unstable viewer from making everyone else pay for it.
+const KEYFRAME_REQUEST_DELAY_MS = Math.min(5000, Math.max(0, parseInt(process.env.KEYFRAME_REQUEST_DELAY_MS, 10) || 0));
+
 module.exports = class Peer {
     constructor(socket_id, data) {
         const { peer_info } = data;
@@ -197,6 +202,11 @@ module.exports = class Peer {
             producer = await producerTransport.produce({
                 kind: producer_kind,
                 rtpParameters: producer_rtpParameters,
+                // Video only: minimum time between two key frame requests to the sender. The first request goes out
+                // at once, later ones inside the window are merged. 0 (default) keeps mediasoup's behaviour.
+                ...(producer_kind === 'video' && KEYFRAME_REQUEST_DELAY_MS > 0
+                    ? { keyFrameRequestDelay: KEYFRAME_REQUEST_DELAY_MS }
+                    : {}),
             });
 
             this.addProducer(producer.id, producer);
