@@ -101,6 +101,7 @@ class FrameStore {
      * @param {number} [options.flushIntervalMs] how often pending data is handed to the disk
      * @param {number} [options.stagingBytes] size of a write batch
      * @param {number} [options.maxQueuedBytes] memory allowed for data waiting for the disk
+     * @param {number} [options.snapshotTimeoutMs] how long a clip waits for the pending writes (10 s)
      * @param {object} [options.log]
      * @param {function} [options.now]
      */
@@ -113,6 +114,7 @@ class FrameStore {
         this.flushIntervalMs = options.flushIntervalMs ?? 250;
         this.stagingBytes = options.stagingBytes ?? 1 << 20;
         this.maxQueuedBytes = options.maxQueuedBytes ?? 128 * 1024 * 1024;
+        this.snapshotTimeoutMs = options.snapshotTimeoutMs ?? 10000;
         this.log = options.log || { warn() {}, error() {}, info() {}, debug() {} };
         this.now = options.now || Date.now;
 
@@ -424,7 +426,16 @@ class FrameStore {
      */
     async snapshot() {
         this._pumpHeap(true);
-        await this.flush();
+        // A clip must not wait forever for a stuck disk: after a while it is made from what has been written.
+        let timer = null;
+        const flushed = await Promise.race([
+            this.flush().then(() => true),
+            new Promise((resolve) => {
+                timer = setTimeout(() => resolve(false), this.snapshotTimeoutMs);
+            }),
+        ]);
+        clearTimeout(timer);
+        if (!flushed) this.log.warn('replay buffer: the disk is slow, the clip is made from what is already written');
         const chunks = [];
         let newestTs = -Infinity;
         for (const chunk of this.chunks) {

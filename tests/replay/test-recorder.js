@@ -8,7 +8,7 @@ const path = require('node:path');
 const sinon = require('sinon');
 
 const { startRecorder } = require('./lib/service');
-const { VirtualFeed, streamsFor, settle, sleep } = require('./lib/feed');
+const { VirtualFeed, streamsFor, settle, sleep, eventually } = require('./lib/feed');
 const media = require('./lib/media');
 const real = require('./lib/real');
 
@@ -128,7 +128,7 @@ describe('replay: recorder with real media (virtual time)', function () {
             svc = await startRecorder();
             await share('s1', 'vp8');
             const first = (await svc.api.post('/v1/clips', clipRequest('s1', 4))).body;
-            await sleep(1100); // ids and times differ by a second at least
+            await sleep(30); // createdAt (ms) orders the clips
             const second = (await svc.api.post('/v1/clips', clipRequest('s1', 6))).body;
             (await svc.api.get('/v1/clips')).body.clips.map((c) => c.id).should.deepEqual([second.id, first.id]);
 
@@ -208,9 +208,14 @@ describe('replay: recorder with real media (virtual time)', function () {
             afterEnd.status.should.equal(200); // the buffer is kept for REPLAY_KEEP_AFTER_END_S
             afterEnd.body.durationS.should.be.approximately(4 + afterEnd.body.startOffsetS, 0.3);
 
-            await sleep(1800);
+            await eventually(async () => (await svc.api.get('/v1/shares')).body.shares.length === 0, {
+                timeoutMs: 15000,
+                message: 'the buffer of the ended share to expire',
+            });
             (await svc.api.post('/v1/clips', clipRequest('s1', 4))).status.should.equal(404);
-            fs.existsSync(path.join(svc.dir, 'buffers', 's1')).should.be.false();
+            await eventually(() => !fs.existsSync(path.join(svc.dir, 'buffers', 's1')), {
+                message: 'the buffer directory to be deleted',
+            });
             (await svc.api.get('/v1/clips')).body.clips.should.have.length(2); // the clips themselves stay
         });
 
@@ -410,8 +415,11 @@ describe('replay: recorder with real media (virtual time)', function () {
                 feed: { retransmit: true, drop: (kind, i) => kind === 'video' && lost.has(i) },
             });
             await feed.send();
-            // the NACKs go out on the 10 ms tick, after the send is over: let them work
-            await sleep(400);
+            // the NACKs go out on the 10 ms tick, after the send is over: wait until the repairs are in
+            await eventually(async () => (await svc.api.get('/v1/shares')).body.shares[0].stats.video.recovered > 3, {
+                timeoutMs: 15000,
+                message: 'the lost packets to be recovered',
+            });
             await settle(svc.api, 's1', { quietMs: 400 });
             const stats = (await svc.api.get('/v1/shares')).body.shares[0].stats;
             feed.received.filter((p) => p.type === 'nack').length.should.be.above(0);
@@ -430,7 +438,10 @@ describe('replay: recorder with real media (virtual time)', function () {
                 feed: { retransmit: false, drop: (kind, i) => kind === 'video' && i === 150 },
             });
             await feed.send();
-            await sleep(500);
+            await eventually(async () => (await svc.api.get('/v1/shares')).body.shares[0].stats.video.lost > 0, {
+                timeoutMs: 15000,
+                message: 'the lost packet to be given up',
+            });
             await settle(svc.api, 's1', { quietMs: 400 });
             const stats = (await svc.api.get('/v1/shares')).body.shares[0].stats;
             stats.video.lost.should.equal(1);
@@ -476,7 +487,7 @@ describe('replay: recorder with real media (virtual time)', function () {
             const first = (await svc.api.post('/v1/clips', clipRequest('s1', 6))).body;
             const size = first.files.original.bytes;
             svc.recorder.opts.quotaGb = (size * 1.6) / 1024 ** 3; // room for one and a half clips
-            await sleep(1100);
+            await sleep(30);
             const second = (await svc.api.post('/v1/clips', clipRequest('s1', 6))).body;
             const ids = (await svc.api.get('/v1/clips')).body.clips.map((c) => c.id);
             ids.should.deepEqual([second.id]);
@@ -484,7 +495,7 @@ describe('replay: recorder with real media (virtual time)', function () {
             fs.existsSync(svc.clipDir(first.id)).should.be.false();
             // a clip bigger than the whole quota is still kept (it is the one that was just asked for)
             svc.recorder.opts.quotaGb = 100 / 1024 ** 3;
-            await sleep(1100);
+            await sleep(30);
             const third = (await svc.api.post('/v1/clips', clipRequest('s1', 6))).body;
             (await svc.api.get('/v1/clips')).body.clips.map((c) => c.id).should.deepEqual([third.id]);
         });
@@ -509,7 +520,7 @@ describe('replay: recorder with real media (virtual time)', function () {
             svc = await startRecorder({ minFreeGb: 5 });
             const { feed } = await share('s1', 'vp8', { send: { to: 10000 } });
             const old = (await svc.api.post('/v1/clips', clipRequest('s1', 5))).body;
-            await sleep(1100);
+            await sleep(30);
             const newer = (await svc.api.post('/v1/clips', clipRequest('s1', 5))).body;
 
             // statfs says: 1 GB free; deleting the first clip frees "2 GB", the second "9 GB" in this fiction

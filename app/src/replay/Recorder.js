@@ -242,6 +242,10 @@ class Recorder extends EventEmitter {
                 res.end();
             });
         });
+        // The SFU reuses its connections: keep idle ones open longer than its own idle timeout, so it never sends a
+        // request on a connection that is just being closed.
+        this.server.keepAliveTimeout = 65000;
+        this.server.headersTimeout = 66000;
         await new Promise((resolve, reject) => {
             this.server.once('error', reject);
             this.server.listen(this.opts.listenPort, this.opts.host, () => {

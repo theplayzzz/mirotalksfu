@@ -41,7 +41,8 @@ class EventSink {
         this.stats = { sent: 0, failed: 0, dropped: 0 };
         const lib = this.url && this.url.protocol === 'https:' ? https : http;
         this.lib = lib;
-        this.agent = this.url ? new lib.Agent({ keepAlive: true, maxSockets: 1 }) : null;
+        // idle connections are closed by us (4 s) before a server with the usual 5 s keep-alive closes them under our feet
+        this.agent = this.url ? new lib.Agent({ keepAlive: true, maxSockets: 1, timeout: 4000 }) : null;
     }
 
     get enabled() {

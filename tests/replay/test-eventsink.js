@@ -9,6 +9,14 @@ const { EventSink } = require('../../app/src/replay/EventSink');
 const log = { warn() {}, error() {}, info() {}, debug() {} };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function until(check, timeoutMs = 8000) {
+    const start = Date.now();
+    while (!check()) {
+        if (Date.now() - start > timeoutMs) throw new Error('timeout');
+        await sleep(10);
+    }
+}
+
 /** A little SFU: records the POSTs; `behavior(n)` decides the status (or 'hang') of the n-th request. */
 async function sfu(behavior = () => 200) {
     const received = [];
@@ -110,7 +118,8 @@ describe('replay: EventSink (events to the SFU)', function () {
         sink.send({ type: 'mp4.progress', id: 'x', progress: 0.2 });
         sink.send({ type: 'mp4.progress', id: 'y', progress: 0.9 });
         sink.send({ type: 'clip.deleted', id: 'z' });
-        await sleep(1200);
+        await until(() => server.received.some((r) => r.body.type === 'clip.deleted'));
+        await sleep(50);
         // the hanging one timed out and was not retried (best effort), then: the newest buffers, newest progress of x and y, the deletion
         const bodies = server.received.map((r) => r.body);
         bodies

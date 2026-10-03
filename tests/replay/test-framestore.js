@@ -13,6 +13,15 @@ const media = require('./lib/media');
 const T0 = 1791036902000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Polls until check() is true (deletions of chunk files are asynchronous). */
+async function until(check, timeoutMs = 8000) {
+    const start = Date.now();
+    while (!check()) {
+        if (Date.now() - start > timeoutMs) throw new Error('timeout waiting for the files');
+        await sleep(10);
+    }
+}
+
 async function readAll(snapshot) {
     const records = [];
     for (const chunk of snapshot.chunks) {
@@ -139,7 +148,8 @@ describe('replay: FrameStore (the ring on disk)', () => {
             maxBytes = Math.max(maxBytes, d.bytes);
         }
         await store.flush();
-        await sleep(100); // deletions are asynchronous
+        const logFiles = () => fs.readdirSync(path.join(dir, 'share1')).filter((f) => f.endsWith('.log'));
+        await until(() => logFiles().length === store.describe().chunks); // deletions are asynchronous
         // 30 s retained + the chunk being written + the one about to be dropped: at most 5 chunks
         maxChunks.should.be.below(6);
         const bytesPerSecond = 10 * 1000 + 6000 / 2 + 50 * 60 + 17 * 16 * 3;
@@ -172,8 +182,7 @@ describe('replay: FrameStore (the ring on disk)', () => {
         records.length.should.be.above(10);
         snapshot.release();
         snapshot.release(); // twice is harmless
-        await sleep(100);
-        fs.existsSync(first).should.be.false();
+        await until(() => !fs.existsSync(first));
         store.pinCount.should.equal(0);
     });
 
@@ -222,6 +231,23 @@ describe('replay: FrameStore (the ring on disk)', () => {
         store.stats.droppedOverload.should.be.above(0);
         sinon.restore();
         stuck.forEach((complete) => complete()); // the disk comes back and the queue drains
+    });
+
+    it('does not make a clip wait forever for a disk that does not answer', async () => {
+        create({ snapshotTimeoutMs: 200, holdMs: 0 });
+        await store.open();
+        feed(store, { seconds: 3 });
+        await store.snapshot().then((first) => first.release()); // some chunks are on disk
+        const stuck = [];
+        sinon.stub(fs, 'write').callsFake((fd, buf, off, len, pos, cb) => stuck.push(() => cb(null, len)));
+        feed(store, { seconds: 3, from: 3 });
+        const started = Date.now();
+        const snapshot = await store.snapshot(); // the new frames cannot be written: it gives up waiting
+        (Date.now() - started).should.be.within(150, 3000);
+        snapshot.chunks.length.should.be.above(0); // what was on disk before is still usable
+        snapshot.release();
+        sinon.restore();
+        stuck.forEach((complete) => complete());
     });
 
     it('survives a disk error: it drops what it cannot write, never throws, and retries with a new chunk', async () => {

@@ -320,6 +320,31 @@ async function ingest(args) {
     );
     const finished = new Promise((resolve) => child.once('message', (m) => m.type === 'done' && resolve(m)));
 
+    // --clips N: N clips of 10 s are asked for while the media keeps coming (the clip builder shares the process
+    // and the core with the packet path, so this is the load that matters in production)
+    const duringClips = [];
+    const clipTimers = [];
+    for (let i = 1; i <= (Number(args.clips) || 0); i++) {
+        const at = args.warmup * 1000 + ((args.seconds - args.warmup - 3) * 1000 * i) / (Number(args.clips) + 1);
+        clipTimers.push(
+            setTimeout(async () => {
+                const t = Date.now();
+                const clip = await api('POST', '/v1/clips', {
+                    shareId: `bench-${i % args.shares}`,
+                    seconds: 10,
+                    requestedByName: 'bench',
+                    requestedByHash: 'x',
+                    sharerHash: 'y',
+                });
+                duringClips.push({
+                    ms: Date.now() - t,
+                    ok: !!clip.id,
+                    mb: clip.id ? clip.files.original.bytes / 1048576 : 0,
+                });
+            }, at)
+        );
+    }
+
     const samples = [];
     let last = { usage: process.cpuUsage(), at: performance.now() };
     const started = performance.now();
@@ -346,6 +371,7 @@ async function ingest(args) {
 
     const result = await finished;
     clearInterval(sampler);
+    clipTimers.forEach((t) => clearTimeout(t));
     loop.disable();
     await new Promise((resolve) => setTimeout(resolve, 1500)); // the last packets
     const listed = (await api('GET', '/v1/shares')).shares;
@@ -411,6 +437,11 @@ async function ingest(args) {
         `UDP receive buffer per share: ${fmt(listed[0].stats.recvBufferBytes / 1024, 0)} KB granted by the OS (8192 KB asked; on Linux the limit is net.core.rmem_max of the host)`
     );
     if (clipLine) console.log(clipLine);
+    if (duringClips.length) {
+        console.log(
+            `clips asked for while recording: ${duringClips.map((c) => (c.ok ? `${c.ms} ms (${fmt(c.mb)} MB)` : 'FAILED')).join(', ')}`
+        );
+    }
     const verdict = avg('cpu') < 60 ? 'below' : 'ABOVE';
     console.log(`target: 10 shares of 12 Mbps below ~60% of one core -> ${verdict} (${fmt(avg('cpu'))}% average)`);
 
@@ -512,6 +543,9 @@ async function clipBench(args) {
     const plan = clip.selectRange(snapshot, seconds);
     const stagingDir = path.join(dir, 'clip');
     fs.mkdirSync(stagingDir);
+    // The build runs in the recorder's own process, next to the packet loop: how long does it block the loop?
+    const loop = monitorEventLoopDelay({ resolution: 1 });
+    loop.enable();
     const t = Date.now();
     const { meta, timings } = await clip.buildClip({
         snapshot,
@@ -532,6 +566,7 @@ async function clipBench(args) {
         log: { info() {}, warn() {}, error() {}, debug() {} },
     });
     const totalMs = Date.now() - t;
+    loop.disable();
     snapshot.release();
     await store.close();
 
@@ -544,6 +579,9 @@ async function clipBench(args) {
     );
     console.log(
         `clip: ${fmt(meta.files.original.bytes / 1048576, 0)} MB ${meta.files.original.name}, ${meta.durationS} s long, built in ${totalMs} ms (muxing + FFmpeg ${timings.finalizeMs} ms, thumbnail ${totalMs - timings.finalizeMs} ms)`
+    );
+    console.log(
+        `event loop while building: mean ${fmt(loop.mean / 1e6, 2)} ms, p99 ${fmt(loop.percentile(99) / 1e6, 2)} ms, max ${fmt(loop.max / 1e6, 2)} ms (the timer asks for 1 ms)`
     );
     console.log(`target: under 3000 ms -> ${totalMs < 3000 ? 'met' : 'NOT met'}`);
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

@@ -13,7 +13,7 @@ const media = require('./lib/media');
 
 const video = { codec: 'VP8', payloadType: 101, ssrc: 1111, clockRate: 90000 };
 const audio = { codec: 'opus', payloadType: 100, ssrc: 3333, clockRate: 48000, channels: 2 };
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const { eventually } = require('./lib/feed');
 
 describe('replay: recorder control API', function () {
     this.timeout(30000);
@@ -195,9 +195,12 @@ describe('replay: recorder control API', function () {
             await svc.api.post('/v1/shares', { shareId: 's', video });
             await svc.api.delete('/v1/shares/s');
             fs.existsSync(path.join(svc.dir, 'buffers', 's')).should.be.true();
-            await sleep(900);
-            (await svc.api.get('/v1/shares')).body.shares.should.have.length(0);
-            fs.existsSync(path.join(svc.dir, 'buffers', 's')).should.be.false();
+            await eventually(
+                async () =>
+                    (await svc.api.get('/v1/shares')).body.shares.length === 0 &&
+                    !fs.existsSync(path.join(svc.dir, 'buffers', 's')),
+                { timeoutMs: 10000, message: 'the buffer of the ended share to be deleted' }
+            );
         });
 
         it('refuses too many shares', async () => {
@@ -255,10 +258,19 @@ describe('replay: recorder control API', function () {
                 Buffer.from(Array.from({ length: 300 }, (_, i) => (i * 7) & 0xff)),
             ];
             for (let round = 0; round < 20; round++) for (const g of garbage) await send(g);
-            await sleep(300);
+            // UDP on a loaded machine: wait until the recorder has taken what it is going to take
+            let last = -1;
+            const detail = await eventually(
+                async () => {
+                    const stats = (await svc.api.get('/v1/shares')).body.shares[0].stats;
+                    const settled = stats.datagrams === last && stats.datagrams > 100;
+                    last = stats.datagrams;
+                    return settled ? stats : null;
+                },
+                { timeoutMs: 10000, intervalMs: 150, message: 'the datagrams to arrive' }
+            );
             socket.close();
             (await svc.api.get('/v1/health')).status.should.equal(200);
-            const detail = (await svc.api.get('/v1/shares')).body.shares[0].stats;
             detail.datagrams.should.be.above(100);
             (detail.malformed + detail.unknownSsrc).should.be.above(50);
         });

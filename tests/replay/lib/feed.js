@@ -210,4 +210,15 @@ async function settle(api, shareId, { minFrames = 1, quietMs = 150, timeoutMs = 
     }
 }
 
-module.exports = { VirtualFeed, streamsFor, settle, sleep };
+/** Polls until check() is truthy (it may be async); throws after timeoutMs. Tests use it instead of fixed sleeps. */
+async function eventually(check, { timeoutMs = 10000, intervalMs = 20, message = 'condition' } = {}) {
+    const start = Date.now();
+    for (;;) {
+        const value = await check();
+        if (value) return value;
+        if (Date.now() - start > timeoutMs) throw new Error(`timeout waiting for ${message}`);
+        await sleep(intervalMs);
+    }
+}
+
+module.exports = { VirtualFeed, streamsFor, settle, sleep, eventually };
