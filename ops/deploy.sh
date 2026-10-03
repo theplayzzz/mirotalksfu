@@ -5,6 +5,7 @@
 #   ops/deploy.sh dev  ghcr.io/theplayzzz/mirotalksfu@sha256:<digest>
 #   ops/deploy.sh dev  sha-1a2b3c4              a tag; what gets deployed is the digest it points to
 #   ops/deploy.sh prod <image> [--force] [--accept-drift]
+#   ops/deploy.sh prod <image> --check          only reports what would happen, changes nothing
 #
 # It checks the situation, backs up the compose file, pulls the image, points the compose file at the image
 # digest, recreates the container, waits until it is healthy and checks that the browser files it serves are
@@ -21,7 +22,7 @@ set -euo pipefail
 REGISTRY=ghcr.io/theplayzzz/mirotalksfu
 MIN_FREE_GB=10
 
-usage() { sed -n '3,19p' "$0"; exit 2; }
+usage() { sed -n '3,20p' "$0"; exit 2; }
 die() { echo "!! $*" >&2; exit 1; }
 docker() { sudo docker "$@"; }
 
@@ -31,10 +32,12 @@ IMAGE_ARG=${2:-}
 shift 2
 FORCE=0
 DRIFT=0
+CHECK=0
 for flag in "$@"; do
     case "$flag" in
         --force) FORCE=1 ;;
         --accept-drift) DRIFT=1 ;;
+        --check) CHECK=1 ;;
         *) usage ;;
     esac
 done
@@ -64,19 +67,36 @@ COMPOSE_IMAGE=$(grep -m1 -E '^[[:space:]]+image:' "$COMPOSE" | awk '{print $2}')
 COMPOSE_ID=$(docker image inspect -f '{{.Id}}' "$COMPOSE_IMAGE" 2>/dev/null || true)
 
 echo "connections to the room: $CONNECTIONS"
+echo "running container image: ${RUNNING_ID:-none}"
+echo "compose file names:      $COMPOSE_IMAGE (${COMPOSE_ID:-not present on this server})"
+PROBLEMS=0
 if [ "$CONNECTIONS" -gt 0 ]; then
     if [ "$ENVIRONMENT" = prod ] && [ "$FORCE" -ne 1 ]; then
-        die "people are connected to production; deploying would drop them (--force to deploy anyway)"
+        echo "!! people are connected to production; deploying would drop them (--force to deploy anyway)"
+        PROBLEMS=1
+    else
+        echo "(warning: people are connected, they will be dropped)"
     fi
-    echo "(warning: people are connected, they will be dropped)"
 fi
 
 if [ "$ENVIRONMENT" = prod ] && [ -n "$RUNNING_ID" ] && [ "$RUNNING_ID" != "$COMPOSE_ID" ] && [ "$DRIFT" -ne 1 ]; then
-    die "the running container ($RUNNING_ID) is not the image the compose file names ($COMPOSE_IMAGE, ${COMPOSE_ID:-not present}). Look at 'docker diff $CONTAINER' first; --accept-drift deploys anyway"
+    echo "!! the running container is not the image the compose file names: 'docker compose up' would swap it."
+    echo "   Look at 'docker diff $CONTAINER' first; --accept-drift deploys anyway"
+    PROBLEMS=1
 fi
 
 FREE_GB=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
-[ "$FREE_GB" -ge "$MIN_FREE_GB" ] || die "only ${FREE_GB} GB free on /, need $MIN_FREE_GB GB"
+if [ "$FREE_GB" -lt "$MIN_FREE_GB" ]; then
+    echo "!! only ${FREE_GB} GB free on /, need $MIN_FREE_GB GB"
+    PROBLEMS=1
+fi
+
+if [ "$CHECK" -eq 1 ]; then
+    echo "free disk: ${FREE_GB} GB"
+    [ "$PROBLEMS" -eq 0 ] && echo "== check: nothing in the way, a real run would go ahead" || echo "== check: a real run would stop at the lines marked with !!"
+    exit "$PROBLEMS"
+fi
+[ "$PROBLEMS" -eq 0 ] || exit 1
 
 # ---- 2. get the image and pin its digest ---------------------------------------------------------------------
 docker pull --quiet "$REF" > /dev/null
