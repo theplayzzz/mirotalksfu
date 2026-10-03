@@ -1,0 +1,638 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&display=swap');
+
+/*--------------------------------------------------------------
+# Replay in the room (docs/REPLAY.md, section 7)
+# The button on the screens, its badge, the popover, the toasts and the
+# gallery button. Colors come from the theme variables of Root.css and
+# Room.css; the fallbacks only matter if those are missing.
+#
+# The room also loads Bootstrap, w3.css and a global `button:hover`, so
+# every component below sets what it needs instead of inheriting it.
+--------------------------------------------------------------*/
+
+:root {
+    --replay-rec: #ff4b4b;
+    --replay-good: #2ece89;
+    --replay-accent: var(--room-accent, color-mix(in srgb, var(--color-accent, #b85869) 78%, white));
+    --replay-accent-soft: color-mix(in srgb, var(--replay-accent) 16%, transparent);
+    --replay-surface: var(--select-bg, #161622);
+    --replay-line: var(--room-border, rgba(255, 255, 255, 0.14));
+    --replay-line-strong: var(--room-border-strong, rgba(255, 255, 255, 0.24));
+    --replay-shadow: 0 18px 52px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --replay-ease: cubic-bezier(0.2, 0, 0, 1);
+    /* How far above the bottom of the window the toasts start, to stay clear of the buttons bar. */
+    --replay-toasts-bottom: calc(var(--bottom-btns-margin-bottom, 16px) + 84px);
+}
+
+/*--------------------------------------------------------------
+# Button on the hover bar of a shared screen
+--------------------------------------------------------------*/
+
+.videoMenuBar .replay-btn {
+    position: relative;
+}
+
+.videoMenuBar .replay-btn[hidden] {
+    display: none !important;
+}
+
+/* The small red dot: "this screen is being kept". */
+.videoMenuBar .replay-btn::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--replay-rec);
+    box-shadow: 0 0 0 2px var(--select-bg, #161622);
+    pointer-events: none;
+}
+
+.videoMenuBar .replay-btn.is-open,
+.videoMenuBar .replay-btn.is-open:hover {
+    background: var(--btns-bg-color, rgba(10, 10, 16, 0.8));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--replay-accent) 55%, transparent);
+    color: var(--replay-accent);
+}
+
+.videoMenuBar .replay-btn[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.videoMenuBar .replay-btn[aria-disabled='true']::after {
+    background: #8d8d99;
+}
+
+.videoMenuBar .replay-btn:focus-visible {
+    outline: 2px solid var(--replay-accent);
+    outline-offset: 2px;
+}
+
+/* The popover is open: its hover bar stays, so the button it points at does not vanish. */
+.videoMenuBar.replay-keep.hidden {
+    display: flex !important;
+}
+
+/*--------------------------------------------------------------
+# "● Replay" badge in the corner of the screen
+--------------------------------------------------------------*/
+
+.replay-badge {
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    z-index: 1;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    margin: 0;
+    padding: 0 10px 0 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 11px;
+    background: rgba(10, 10, 16, 0.7);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    color: rgba(255, 255, 255, 0.92);
+    font-family: 'Montserrat', sans-serif;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.replay-badge[hidden] {
+    display: none !important;
+}
+
+.replay-badge::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--replay-rec);
+    animation: replay-rec 2.6s ease-in-out infinite;
+}
+
+/* A tiny tile has no room for it next to the name. */
+@container camera (max-width: 190px) {
+    .replay-badge {
+        display: none;
+    }
+}
+
+/*--------------------------------------------------------------
+# Popover (never a modal)
+--------------------------------------------------------------*/
+
+.replay-popover {
+    --replay-arrow: 50%;
+    position: fixed;
+    z-index: 10000;
+    box-sizing: border-box;
+    width: 276px;
+    max-width: calc(100vw - 16px);
+    margin: 0;
+    padding: 14px 14px 12px;
+    border: 1px solid var(--replay-line-strong);
+    border-radius: 16px;
+    background: var(--replay-surface);
+    box-shadow: var(--replay-shadow);
+    color: #fff;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 14px;
+    line-height: 1.35;
+    text-align: left;
+    animation: replay-pop 0.16s var(--replay-ease) both;
+}
+
+.replay-popover:focus {
+    outline: none;
+}
+
+.replay-popover *,
+.replay-toast *,
+.replay-toasts * {
+    box-sizing: border-box;
+    font-family: 'Montserrat', sans-serif;
+}
+
+/* The little arrow that points at the button. */
+.replay-popover::before {
+    content: '';
+    position: absolute;
+    top: -7px;
+    left: var(--replay-arrow);
+    width: 12px;
+    height: 12px;
+    margin-left: -6px;
+    border-top: 1px solid var(--replay-line-strong);
+    border-left: 1px solid var(--replay-line-strong);
+    background: var(--replay-surface);
+    transform: rotate(45deg);
+}
+
+.replay-popover.is-above::before {
+    top: auto;
+    bottom: -7px;
+    border: 0;
+    border-right: 1px solid var(--replay-line-strong);
+    border-bottom: 1px solid var(--replay-line-strong);
+}
+
+.replay-pop-title {
+    display: block;
+    margin: 0;
+    padding-right: 4px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.replay-pop-sub {
+    display: block;
+    margin: 3px 0 0;
+    color: var(--fg-3, rgba(255, 255, 255, 0.62));
+    font-size: 12px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+.replay-pop-sub strong {
+    color: var(--fg-2, rgba(255, 255, 255, 0.82));
+    font-weight: 700;
+}
+
+.replay-opts {
+    display: grid;
+    gap: 6px;
+    margin: 12px 0 0;
+    padding: 0;
+}
+
+.replay-popover .replay-opt {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 40px;
+    margin: 0;
+    padding: 0 14px;
+    border: 1px solid var(--replay-line);
+    border-radius: 12px;
+    background: var(--room-control-bg, rgba(22, 22, 34, 0.78));
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        background-color 0.15s var(--replay-ease),
+        border-color 0.15s var(--replay-ease);
+}
+
+.replay-popover .replay-opt:hover,
+.replay-popover .replay-opt:focus-visible {
+    border-color: color-mix(in srgb, var(--replay-accent) 55%, transparent);
+    border-radius: 12px;
+    background: var(--room-control-hover, color-mix(in srgb, var(--replay-surface) 82%, var(--replay-accent) 18%));
+    color: #fff;
+}
+
+.replay-popover .replay-opt:focus-visible {
+    outline: 2px solid var(--replay-accent);
+    outline-offset: 1px;
+}
+
+.replay-popover .replay-opt[aria-disabled='true'],
+.replay-popover .replay-opt[aria-disabled='true']:hover {
+    border-color: var(--replay-line);
+    background: transparent;
+    color: var(--fg-muted, rgba(255, 255, 255, 0.48));
+    cursor: not-allowed;
+}
+
+.replay-pop-note {
+    margin: 10px 0 0;
+    padding: 9px 11px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--fg-3, rgba(255, 255, 255, 0.62));
+    font-size: 11.5px;
+    line-height: 1.45;
+    font-variant-numeric: tabular-nums;
+}
+
+.replay-pop-note strong {
+    color: var(--fg-1, rgba(255, 255, 255, 0.95));
+    font-weight: 700;
+}
+
+.replay-pop-note[hidden] {
+    display: none !important;
+}
+
+/*--------------------------------------------------------------
+# Toasts: bottom left, stacked, over nothing that matters
+--------------------------------------------------------------*/
+
+.replay-toasts {
+    position: fixed;
+    left: 16px;
+    bottom: var(--replay-toasts-bottom);
+    z-index: 10001;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(348px, calc(100vw - 32px));
+    margin: 0;
+    padding: 0;
+    pointer-events: none; /* only the toasts themselves take clicks: no invisible layer over the room */
+}
+
+/* The buttons bar can be a column on the left. */
+body:has(#bottomButtons[data-position='horizontal']) .replay-toasts {
+    left: 120px;
+    bottom: 20px;
+}
+
+.replay-toast {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    margin: 0;
+    padding: 12px 10px 12px 14px;
+    border: 1px solid var(--replay-line-strong);
+    border-radius: 14px;
+    background: var(--replay-surface);
+    box-shadow: var(--replay-shadow);
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.35;
+    pointer-events: auto;
+    animation: replay-in 0.24s var(--replay-ease) both;
+}
+
+.replay-toast.is-leaving {
+    opacity: 0;
+    transform: translateY(8px);
+    transition:
+        opacity 0.2s ease,
+        transform 0.2s ease;
+}
+
+.replay-toast-icon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+}
+
+.replay-toast-icon svg {
+    display: block;
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.replay-toast--generating .replay-toast-icon {
+    border: 3px solid color-mix(in srgb, var(--replay-accent) 25%, transparent);
+    border-top-color: var(--replay-accent);
+    animation: replay-spin 0.8s linear infinite;
+}
+
+.replay-toast--saved .replay-toast-icon {
+    background: color-mix(in srgb, var(--replay-good) 18%, transparent);
+    color: var(--replay-good);
+}
+
+.replay-toast--error .replay-toast-icon {
+    background: color-mix(in srgb, var(--replay-rec) 18%, transparent);
+    color: #ff7a7a;
+}
+
+.replay-toast-body {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.replay-toast-title {
+    display: block;
+    margin: 0;
+    color: #fff;
+    font-size: 13.5px;
+    font-weight: 700;
+}
+
+.replay-toast-detail {
+    display: block;
+    margin: 1px 0 0;
+    overflow: hidden;
+    color: var(--fg-3, rgba(255, 255, 255, 0.62));
+    font-size: 12px;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.replay-toast-bar {
+    position: relative;
+    display: block;
+    height: 3px;
+    margin: 9px 0 1px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+}
+
+.replay-toast-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 38%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--color-accent-strong, #a9475a), var(--replay-accent));
+    animation: replay-slide 1.3s ease-in-out infinite;
+}
+
+.replay-toast .replay-toast-link {
+    flex: none;
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--replay-accent-soft);
+    color: var(--replay-accent);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color 0.15s var(--replay-ease);
+}
+
+.replay-toast .replay-toast-link:hover {
+    background: color-mix(in srgb, var(--replay-accent) 28%, transparent);
+    color: #fff;
+    text-decoration: none;
+}
+
+.replay-toast .replay-toast-link:focus-visible,
+.replay-toast .replay-toast-close:focus-visible {
+    outline: 2px solid var(--replay-accent);
+    outline-offset: 2px;
+}
+
+.replay-toast .replay-toast-close {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--fg-3, rgba(255, 255, 255, 0.62));
+    cursor: pointer;
+}
+
+.replay-toast .replay-toast-close:hover {
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.replay-toast-close svg {
+    display: block;
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+}
+
+/* What other people save: small and quiet. */
+.replay-toast--other {
+    gap: 8px;
+    padding: 7px 6px 7px 12px;
+    border-color: var(--replay-line);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--replay-surface) 90%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    font-size: 12px;
+}
+
+.replay-toast--other .replay-toast-body {
+    color: var(--fg-2, rgba(255, 255, 255, 0.82));
+    font-weight: 500;
+}
+
+.replay-toast--other .replay-toast-body strong {
+    color: #fff;
+    font-weight: 700;
+}
+
+.replay-toast-tail {
+    white-space: nowrap;
+}
+
+.replay-toast--other .replay-toast-link {
+    display: inline;
+    padding: 0;
+    background: transparent;
+    font-size: 12px;
+}
+
+.replay-toast--other .replay-toast-link:hover {
+    background: transparent;
+    text-decoration: underline;
+}
+
+/*--------------------------------------------------------------
+# Gallery button in the bottom bar
+--------------------------------------------------------------*/
+
+#bottomButtons #replayGalleryButton {
+    position: relative;
+}
+
+.replay-gallery-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    z-index: 2;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--color-accent, #b85869);
+    box-shadow: 0 0 0 2px var(--btns-bg-color, #1c1e20);
+    color: #fff;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.replay-gallery-badge.hidden,
+.replay-gallery-badge[hidden] {
+    display: none;
+}
+
+/*--------------------------------------------------------------
+# Phone
+--------------------------------------------------------------*/
+
+@media screen and (max-width: 500px) {
+    :root {
+        --replay-toasts-bottom: calc(var(--bottom-btns-margin-bottom, 16px) + 66px);
+    }
+
+    .replay-toasts {
+        left: 8px;
+        width: calc(100vw - 16px);
+    }
+
+    .replay-popover .replay-opt {
+        min-height: 46px;
+    }
+}
+
+@media (hover: none) {
+    .replay-toast .replay-toast-close {
+        width: 36px;
+        height: 36px;
+    }
+}
+
+/*--------------------------------------------------------------
+# Motion
+--------------------------------------------------------------*/
+
+@keyframes replay-pop {
+    from {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.98);
+    }
+}
+
+@keyframes replay-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+}
+
+@keyframes replay-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes replay-slide {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(263%);
+    }
+}
+
+@keyframes replay-rec {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.35;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .replay-popover,
+    .replay-toast,
+    .replay-badge::before {
+        animation: none !important;
+    }
+
+    .replay-toast--generating .replay-toast-icon {
+        animation-duration: 3s !important;
+    }
+
+    .replay-toast-bar::after {
+        width: 100%;
+        animation: none !important;
+        opacity: 0.55;
+    }
+
+    .replay-toast.is-leaving,
+    .replay-popover .replay-opt {
+        transition: none !important;
+    }
+}

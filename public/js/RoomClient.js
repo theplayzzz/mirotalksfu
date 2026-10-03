@@ -3420,6 +3420,15 @@ class RoomClient {
                 this.handleHA(ha.id, d.id);
                 BUTTONS.producerVideo.drawingButton && isScreen && this.handleDW(dw.id, d.id);
                 this.handlePN(elem.id, pn.id, d.id, isScreen);
+                isScreen &&
+                    window.Replay?.attachScreen({
+                        tile: d,
+                        bar: vb,
+                        pin: pn,
+                        producerId: id,
+                        peerName: this.peer_name,
+                        own: true,
+                    });
                 this.handleZV(elem.id, d.id, this.peer_id);
                 this.handlePV(id, pv.id);
 
@@ -4232,6 +4241,14 @@ class RoomClient {
                 this.handleKO(ko.id, remotePeerId);
                 this.handleRole(role.id, remotePeerId, remotePeerPresenter);
                 this.handlePN(elem.id, pn.id, d.id, remoteIsScreen);
+                remoteIsScreen &&
+                    window.Replay?.attachScreen({
+                        tile: d,
+                        bar: vb,
+                        pin: pn,
+                        producerId: this.consumers.get(id)?.producerId,
+                        peerName: peer_name,
+                    });
                 this.handleZV(elem.id, d.id, remotePeerId);
                 this.popupPeerInfo(p.id, peer_info);
                 this.checkPeerInfoStatus(peer_info);

@@ -1,0 +1,632 @@
+<!doctype html>
+<!--
+  A stand-in for the room, to develop and test the replay button without the SFU (docs/REPLAY.md, section 7).
+  Served by tests/e2e/replay-mock.mjs at /__harness/room.html. It loads the REAL Root.css, Room.css, VideoGrid.css and
+  Replay.css, the real VideoGrid.js (tile sizes) and the real Replay.js; the bottom bar is cloned from the real
+  views/Room.html, and the tiles are built the way RoomClient.handleConsumer / handleProducer build them (copied below).
+  Only the room client and the socket are fake: events are fired from the tests with harness.socket.fire(event, payload).
+
+  Query: ?mobile=1 builds the tiles like a phone does (floating bar on the page, no pin button); ?bar=left puts the
+  buttons bar in a column on the left.
+-->
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"
+        />
+        <title>Replay room harness</title>
+
+        <link rel="stylesheet" href="/css/Root.css" />
+        <link rel="stylesheet" href="/css/Room.css" />
+        <link rel="stylesheet" href="/css/LivePix.css" />
+        <link rel="stylesheet" href="/css/Replay.css" />
+        <link rel="stylesheet" href="/css/VideoGrid.css" />
+        <!-- The room loads these from the same places (views/Room.html). Offline, the icons are blank and the rest works. -->
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
+        <link
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css"
+            rel="stylesheet"
+            integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC"
+            crossorigin="anonymous"
+        />
+        <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css" />
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.11.8/umd/popper.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/tippy.js/6.3.7/tippy-bundle.umd.min.js"></script>
+    </head>
+    <body>
+        <div id="videoPinMediaContainer"></div>
+        <div id="videoMediaContainer"></div>
+        <div id="localAudio"></div>
+        <div id="remoteAudios"></div>
+
+        <script>
+            'use strict';
+            // ---- the globals Room.js and RoomClient.js give to the scripts that run after them ----------------------
+            const params = new URLSearchParams(location.search);
+            const isMobileDevice = params.get('mobile') === '1';
+            const isDesktopDevice = !isMobileDevice;
+            const transcription = { speechTranscription: false, isHidden: true, isPinned: false };
+            let participantsCount = 2;
+
+            // The fake socket: records what the room emits, and lets a test fire the events the server sends.
+            const socket = (() => {
+                const handlers = new Map();
+                const link = {
+                    id: 'ME_SOCKET',
+                    connected: true,
+                    emitted: [],
+                    requests: 0,
+                    lastRequestId: '',
+                    // What the server answers to an event that has an ack: a function (event, data) => answer, or nothing
+                    // (no answer at all). A test can put its own here; defaultAck is the normal one.
+                    ack: (event) => link.defaultAck(event),
+                    defaultAck: (event) =>
+                        event === 'replayRequest'
+                            ? { ok: true, requestId: (link.lastRequestId = `req-${++link.requests}`) }
+                            : undefined,
+                    on(event, handler) {
+                        if (!handlers.has(event)) handlers.set(event, []);
+                        handlers.get(event).push(handler);
+                        return link;
+                    },
+                    off(event, handler) {
+                        handlers.set(
+                            event,
+                            (handlers.get(event) || []).filter((h) => h !== handler)
+                        );
+                        return link;
+                    },
+                    emit(event, data, ack) {
+                        link.emitted.push({ event, data, at: Date.now() });
+                        if (typeof ack === 'function') {
+                            const answer = link.ack(event, data);
+                            if (answer !== undefined) setTimeout(() => ack(answer), 0);
+                        }
+                        return link;
+                    },
+                    fire(event, payload) {
+                        for (const handler of handlers.get(event) || []) handler(payload);
+                    },
+                    listeners: (event) => (handlers.get(event) || []).length,
+                };
+                return link;
+            })();
+
+            // The room client: only what Replay.js reads (docs/REPLAY.md: socket, consumers, consumersProducer, producers,
+            // producerLabel) and what the copied hover code calls.
+            let rc = {
+                socket,
+                peer_id: 'ME_SOCKET',
+                peer_name: 'Eu',
+                isMobileDevice,
+                isDesktopDevice,
+                isVideoPinned: false,
+                consumers: new Map(),
+                consumersProducer: new Map(),
+                producers: new Map(),
+                producerLabel: new Map(),
+                getEcN: (name) => document.getElementsByClassName(name),
+                resizeVideoMenuBar() {},
+            };
+        </script>
+
+        <!-- Real tile sizing -->
+        <script src="/js/VideoGrid.js"></script>
+        <!-- Real replay code, loaded after the globals above like views/Room.html loads it after Room.js -->
+        <script src="/js/ReplayLogic.js"></script>
+        <script src="/js/Replay.js"></script>
+
+        <script>
+            'use strict';
+            // ---- small helpers the room has (Room.js), copied -------------------------------------------------------
+            function hide(elem) {
+                if (!elem.classList.contains('hidden')) elem.classList.toggle('hidden');
+            }
+            function show(elem) {
+                if (elem.classList.contains('hidden')) elem.classList.toggle('hidden');
+            }
+            function hideVideoMenuBar(videoBarId) {
+                const bars = rc.getEcN('videoMenuBar');
+                for (let i = 0; i < bars.length; i++) if (bars[i].id != videoBarId) hide(bars[i]);
+            }
+            function setCamerasBorderNone() {
+                document
+                    .querySelectorAll('.Camera.video-tile-active, .pinned-video-container.video-tile-active')
+                    .forEach((tile) => tile.classList.remove('video-tile-active'));
+            }
+            function animateCSS(element, animation, prefix = 'animate__') {
+                const name = `${prefix}${animation}`;
+                element.classList.add(`${prefix}animated`, name);
+                element.addEventListener('animationend', () => element.classList.remove(`${prefix}animated`, name), {
+                    once: true,
+                });
+            }
+            // RoomClient.handleVB, copied: the bar shows when the pointer enters the video and hides when it leaves.
+            function handleVB(videoId, videoBarId) {
+                const videoPlayer = document.getElementById(videoId);
+                const videoBar = document.getElementById(videoBarId);
+                if (!videoPlayer || !videoBar) return;
+                const eventType = isDesktopDevice ? 'mouseenter' : 'click';
+                videoPlayer.addEventListener(eventType, async () => {
+                    hideVideoMenuBar(videoBarId);
+                    rc.resizeVideoMenuBar();
+                    setCamerasBorderNone();
+                    if (videoBar.classList.contains('hidden')) {
+                        show(videoBar);
+                        animateCSS(videoBar, 'fadeInDown');
+                        if (participantsCount > 1) videoPlayer.classList.add('video-tile-active');
+                    } else {
+                        setCamerasBorderNone();
+                        hide(videoBar);
+                    }
+                });
+                if (isDesktopDevice) {
+                    videoPlayer.addEventListener('mouseleave', () => {
+                        setCamerasBorderNone();
+                        hideVideoMenuBar('ALL');
+                    });
+                }
+            }
+            // RoomClient.handlePN and toggleVideoPin ("speaker left", nothing else pinned), reduced to what a click on the
+            // pin button does: the tile moves to the pin container (75% of the window) and the grid keeps the rest.
+            function handlePN(elemId, pnId, camId) {
+                const btnPn = document.getElementById(pnId);
+                const cam = document.getElementById(camId);
+                const videoPlayer = document.getElementById(elemId);
+                if (!btnPn || !videoPlayer || !cam) return; // the pin button is not in the bar on a phone
+                btnPn.addEventListener('click', () => {
+                    const pinned = cam.className === 'pinned-video-container';
+                    if (!pinned) {
+                        videoPlayer.style.objectFit = 'contain';
+                        cam.className = 'pinned-video-container';
+                        cam.style.width = '100%';
+                        cam.style.height = '100%';
+                        rc.isVideoPinned = true;
+                        Object.assign(videoPinMediaContainer.style, {
+                            top: 0,
+                            left: 0,
+                            width: '75%',
+                            height: '100%',
+                            display: 'block',
+                        });
+                        Object.assign(videoMediaContainer.style, {
+                            display: 'flex',
+                            top: 0,
+                            left: '',
+                            right: '0%',
+                            width: '25%',
+                            height: '100%',
+                        });
+                        videoPinMediaContainer.appendChild(cam);
+                        btnPn.style.color = 'lime';
+                    } else {
+                        videoPinMediaContainer.removeChild(cam);
+                        cam.className = 'Camera';
+                        videoMediaContainer.appendChild(cam);
+                        videoPinMediaContainer.style.display = 'none';
+                        Object.assign(videoMediaContainer.style, {
+                            top: 0,
+                            left: '',
+                            right: '',
+                            width: '100%',
+                            height: '100%',
+                        });
+                        rc.isVideoPinned = false;
+                        btnPn.style.color = 'white';
+                    }
+                    resizeVideoMedia();
+                });
+            }
+            const button = (id, className) => Object.assign(document.createElement('button'), { id, className });
+
+            // ---- the pictures that stand for a shared screen ------------------------------------------------------
+            // A bright document next to a dark terminal: overlays must read on both.
+            function drawScreen(canvas, title, light) {
+                const ctx = canvas.getContext('2d');
+                const W = canvas.width;
+                const H = canvas.height;
+                let tick = 0;
+                const paint = () => {
+                    tick++;
+                    ctx.fillStyle = light ? '#f4f5f7' : '#16181d';
+                    ctx.fillRect(0, 0, W, H);
+                    ctx.fillStyle = light ? '#dfe3ea' : '#20242c';
+                    ctx.fillRect(0, 0, W, 54);
+                    for (const [i, color] of ['#ff5f57', '#febc2e', '#28c840'].entries()) {
+                        ctx.fillStyle = color;
+                        ctx.beginPath();
+                        ctx.arc(30 + i * 30, 27, 9, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.fillStyle = light ? '#444' : '#9aa3b2';
+                    ctx.font = '600 22px sans-serif';
+                    ctx.fillText(title, 140, 34);
+                    // left pane: a bright document
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(40, 90, W * 0.5 - 60, H - 130);
+                    ctx.fillStyle = '#d0d5dd';
+                    for (let line = 0; line < 18; line++)
+                        ctx.fillRect(
+                            70,
+                            130 + line * 34,
+                            (W * 0.5 - 120) * (0.45 + 0.5 * Math.abs(Math.sin(line * 1.7))),
+                            12
+                        );
+                    // right pane: a dark terminal
+                    ctx.fillStyle = '#0c0e12';
+                    ctx.fillRect(W * 0.5 + 20, 90, W * 0.5 - 60, H - 130);
+                    ctx.font = '20px monospace';
+                    for (let line = 0; line < 16; line++) {
+                        ctx.fillStyle = line % 4 === 0 ? '#2ece89' : '#8b95a7';
+                        ctx.fillText(`$ build step ${line + 1} ... ok`, W * 0.5 + 50, 135 + line * 34);
+                    }
+                    ctx.fillStyle = '#ff4b6e';
+                    ctx.beginPath();
+                    ctx.arc(80 + ((tick * 7) % (W - 160)), H - 70, 16, 0, Math.PI * 2);
+                    ctx.fill();
+                };
+                paint();
+                return setInterval(paint, 250);
+            }
+            function screenStream(title, light = true) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 1280;
+                canvas.height = 720;
+                drawScreen(canvas, title, light);
+                return canvas.captureStream(4);
+            }
+            function cameraStream(label) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 640;
+                canvas.height = 360;
+                const ctx = canvas.getContext('2d');
+                const gradient = ctx.createLinearGradient(0, 0, 640, 360);
+                gradient.addColorStop(0, '#3a2f4a');
+                gradient.addColorStop(1, '#1d2433');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, 640, 360);
+                ctx.fillStyle = '#c8cbd6';
+                ctx.beginPath();
+                ctx.arc(320, 150, 62, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(320, 330, 120, 100, 0, Math.PI, 0);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = '600 20px sans-serif';
+                ctx.fillText(label, 24, 40);
+                return canvas.captureStream(1);
+            }
+
+            // ---- tiles: copied from RoomClient.handleConsumer (remote) and handleProducer (own) ---------------------
+            function buildVideoLoader(id) {
+                const loader = document.createElement('div');
+                loader.id = id;
+                loader.className = 'video-loader';
+                loader.innerHTML =
+                    '<div class="loading-spinner"><div class="spinner-ring"></div><img class="spinner-logo" src="/images/logo.svg" alt="logo" /></div>';
+                return loader;
+            }
+            function attachStream(video, stream, loader) {
+                video.srcObject = stream;
+                video.addEventListener('playing', () => loader && (loader.style.display = 'none'));
+                video.play().catch(() => {});
+            }
+
+            // handleConsumer, screen or camera, desktop or phone. `id` is the consumer id.
+            function buildRemoteTile({ id, peerId, peerName, isScreen, stream, producerId }) {
+                const d = document.createElement('div');
+                d.className = 'Camera';
+                d.id = id + '__video';
+                d.dataset.peerId = peerId;
+                d.dataset.cameraOff = 'false';
+
+                const elem = document.createElement('video');
+                elem.setAttribute('id', id);
+                elem.setAttribute('volumeBar', peerId + '___pVolume');
+                !isScreen && elem.setAttribute('name', peerId);
+                elem.setAttribute('playsinline', true);
+                elem.controls = false;
+                elem.autoplay = true;
+                elem.muted = true;
+                elem.className = '';
+                elem.style.objectFit = isScreen ? 'contain' : 'var(--videoObjFit)';
+
+                const loader = buildVideoLoader(id + '__loader');
+                const vb = document.createElement('div');
+                vb.id = id + '__vb';
+                vb.className = 'videoMenuBar hidden';
+
+                const eDiv = document.createElement('div');
+                eDiv.className = 'navbar-dropdown';
+                const eBtn = button(
+                    peerId + (isScreen ? '_screen_' : '_video_') + '_expandBtn',
+                    'fas fa-ellipsis-vertical'
+                );
+                const pip = button(id + '__pictureInPicture', 'fas fa-images navbar-secondary-action');
+                const ts = button(id + '__snapshot', 'fas fa-camera-retro navbar-secondary-action');
+                const dw = button(id + '__draw', 'fas fa-pencil-alt navbar-secondary-action');
+                const pn = button(id + '__pin', 'fas fa-map-pin navbar-compact-action');
+                const ha = button(id + '__hideALL', 'fas fa-eye focusMode navbar-secondary-action');
+                const cm = button(id + '___' + peerId + '___video', 'fas fa-video');
+                const au = button(peerId + '__audio', 'fas fa-microphone');
+                const pv = document.createElement('input');
+                pv.id = peerId + '___pVolume';
+                pv.type = 'range';
+                pv.min = 0;
+                pv.max = 100;
+                pv.value = 100;
+                pv.className = 'navbar-secondary-action';
+
+                const i = document.createElement('i');
+                i.id = peerId + '__hand';
+                i.className = 'fas fa-hand-paper user-hand pulsate';
+                i.style.display = 'none';
+                const p = document.createElement('p');
+                p.id = peerId + '__name';
+                p.className = 'username notranslate fadein';
+                p.textContent = peerName;
+                const pm = document.createElement('div');
+                const pb = document.createElement('div');
+                pm.setAttribute('id', peerId + '__pitchMeter');
+                pb.setAttribute('id', peerId + '__pitchBar');
+                pm.className = 'speechbar';
+                pb.className = 'bar';
+                pb.style.height = '1%';
+                pm.appendChild(pb);
+
+                eDiv.appendChild(eBtn);
+                vb.appendChild(eDiv);
+                vb.appendChild(pv);
+                vb.appendChild(au);
+                vb.appendChild(cm);
+                vb.appendChild(ts);
+                vb.appendChild(pip);
+                isScreen && vb.appendChild(dw);
+                vb.appendChild(ha);
+                if (!isMobileDevice) vb.appendChild(pn);
+
+                d.appendChild(elem);
+                d.appendChild(loader);
+                d.appendChild(i);
+                d.appendChild(p);
+                d.appendChild(pm);
+                if (isMobileDevice) {
+                    vb.classList.add('mobile-floating');
+                    document.body.appendChild(vb);
+                } else {
+                    vb.classList.remove('mobile-floating');
+                    d.appendChild(vb);
+                }
+                vb.addEventListener('click', (e) => e.stopPropagation());
+                videoMediaContainer.appendChild(d);
+                attachStream(elem, stream, loader);
+
+                handleVB(d.id, vb.id);
+                handlePN(elem.id, pn.id, d.id);
+
+                // The hook RoomClient.handleConsumer has right after handlePN (tests/test-ReplayUi.js keeps it in place).
+                const remoteIsScreen = isScreen;
+                remoteIsScreen &&
+                    window.Replay?.attachScreen({
+                        tile: d,
+                        bar: vb,
+                        pin: pn,
+                        producerId: rc.consumers.get(id)?.producerId,
+                        peerName: peerName,
+                    });
+                resizeVideoMedia();
+                return { tile: d, bar: vb, video: elem, pin: pn };
+            }
+
+            // handleProducer, screen, desktop or phone. `id` is the producer id.
+            function buildOwnScreenTile({ id, stream }) {
+                const d = document.createElement('div');
+                d.className = 'Camera';
+                d.id = id + '__video';
+                d.dataset.peerId = rc.peer_id;
+                d.dataset.cameraOff = 'false';
+                const elem = document.createElement('video');
+                elem.setAttribute('id', id);
+                elem.setAttribute('volume', rc.peer_id + '___pVolume');
+                elem.setAttribute('playsinline', true);
+                elem.controls = false;
+                elem.autoplay = true;
+                elem.muted = true;
+                elem.volume = 0;
+                elem.style.objectFit = 'contain';
+                const loader = buildVideoLoader(id + '__loader');
+                const vb = document.createElement('div');
+                vb.id = id + '__vb';
+                vb.className = 'videoMenuBar hidden';
+
+                const pip = button(id + '__pictureInPicture', 'fas fa-images navbar-secondary-action');
+                const ha = button(id + '__hideALL', 'fas fa-eye focusMode navbar-secondary-action');
+                const ts = button(id + '__snapshot', 'fas fa-camera-retro navbar-secondary-action');
+                const dw = button(id + '__draw', 'fas fa-pencil-alt navbar-secondary-action');
+                const pn = button(id + '__pin', 'fas fa-map-pin navbar-compact-action');
+                const st = document.createElement('span');
+                st.id = id + '__sessionTime';
+                st.className = 'current-session-time notranslate navbar-session-time';
+                st.textContent = '00:12:31';
+                const au = button(rc.peer_id + '__audio', 'fas fa-microphone');
+                au.style.cursor = 'default';
+                const pv = document.createElement('input');
+                pv.id = rc.peer_id + '___pVolume';
+                pv.type = 'range';
+                pv.min = 0;
+                pv.max = 100;
+                pv.value = 100;
+                const myDropdownDiv = document.createElement('div');
+                myDropdownDiv.className = 'navbar-dropdown';
+                myDropdownDiv.appendChild(button(id + '__dropdownBtn', 'fas fa-ellipsis-vertical'));
+
+                const p = document.createElement('p');
+                p.id = rc.peer_id + '__name';
+                p.className = 'username notranslate fadein';
+                p.textContent = rc.peer_name + ' (me)';
+                const pm = document.createElement('div');
+                pm.className = 'speechbar';
+                pm.innerHTML = '<div class="bar" style="height: 1%"></div>';
+
+                vb.appendChild(myDropdownDiv);
+                vb.appendChild(pv);
+                vb.appendChild(au);
+                vb.appendChild(ts);
+                vb.appendChild(pip);
+                vb.appendChild(dw);
+                vb.appendChild(ha);
+                if (!isMobileDevice) vb.appendChild(pn);
+                vb.appendChild(st);
+
+                d.appendChild(elem);
+                d.appendChild(loader);
+                d.appendChild(pm);
+                d.appendChild(p);
+                const hideVideoMenu = () => {
+                    if (vb && !vb.classList.contains('hidden')) {
+                        hide(vb);
+                        setCamerasBorderNone();
+                    }
+                };
+                if (isMobileDevice) {
+                    vb.classList.add('mobile-floating');
+                    document.body.appendChild(vb);
+                } else {
+                    vb.classList.remove('mobile-floating');
+                    d.appendChild(vb);
+                    d.addEventListener('mouseleave', hideVideoMenu);
+                }
+                vb.addEventListener('click', (e) => e.stopPropagation());
+                videoMediaContainer.appendChild(d);
+                attachStream(elem, stream, loader);
+
+                handleVB(d.id, vb.id);
+                handlePN(elem.id, pn.id, d.id);
+
+                // The hook RoomClient.handleProducer has right after handlePN.
+                const isScreen = true;
+                isScreen &&
+                    window.Replay?.attachScreen({
+                        tile: d,
+                        bar: vb,
+                        pin: pn,
+                        producerId: id,
+                        peerName: rc.peer_name,
+                        own: true,
+                    });
+                resizeVideoMedia();
+                return { tile: d, bar: vb, video: elem, pin: pn };
+            }
+
+            // ---- what the tests call ---------------------------------------------------------------------------------
+            let tiles = 0;
+            const harness = {
+                socket,
+                rc,
+                mobile: isMobileDevice,
+                ready: false,
+                // A screen shared by somebody else: the consumer id, and the producer id (= shareId) the server uses.
+                addRemoteScreen({
+                    consumerId = `cons-${++tiles}`,
+                    producerId = `prod-${tiles}`,
+                    peerId = `peer-${tiles}`,
+                    peerName = 'Beltrano',
+                    light = tiles % 2 === 1,
+                } = {}) {
+                    rc.consumers.set(consumerId, { id: consumerId, producerId, kind: 'video' });
+                    rc.consumersProducer.set(producerId, consumerId);
+                    buildRemoteTile({
+                        id: consumerId,
+                        peerId,
+                        peerName,
+                        isScreen: true,
+                        stream: screenStream(`${peerName} - compartilhando`, light),
+                        producerId,
+                    });
+                    return { consumerId, producerId, peerId };
+                },
+                addOwnScreen({ producerId = `own-${++tiles}` } = {}) {
+                    rc.producers.set(producerId, { id: producerId, kind: 'video' });
+                    rc.producerLabel.set('screenType', producerId);
+                    buildOwnScreenTile({ id: producerId, stream: screenStream('Minha tela', false) });
+                    return { producerId };
+                },
+                addCamera({ consumerId = `cam-${++tiles}`, peerId = `peer-${tiles}`, peerName = 'Ciclano' } = {}) {
+                    rc.consumers.set(consumerId, { id: consumerId, producerId: `camprod-${tiles}`, kind: 'video' });
+                    buildRemoteTile({
+                        id: consumerId,
+                        peerId,
+                        peerName,
+                        isScreen: false,
+                        stream: cameraStream(peerName),
+                        producerId: `camprod-${tiles}`,
+                    });
+                    return { consumerId, peerId };
+                },
+                // RoomClient.removeConsumer / removeVideoProducer: the tile and its bar go.
+                removeTile(videoId) {
+                    document.getElementById(videoId + '__vb')?.remove();
+                    document.getElementById(videoId + '__video')?.remove();
+                    rc.consumers.delete(videoId);
+                    rc.producers.delete(videoId);
+                    resizeVideoMedia();
+                },
+            };
+            window.harness = harness;
+
+            // ---- the bottom bar: the real markup of views/Room.html -------------------------------------------------
+            async function buildBar() {
+                const response = await fetch('/views/Room.html');
+                const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+                const bar = doc.getElementById('bottomButtons');
+                if (!bar) throw new Error('#bottomButtons not found in views/Room.html');
+                document.body.append(document.importNode(bar, true));
+                const live = document.getElementById('bottomButtons');
+                // The buttons a person in a room sees (Room.js shows them after joining): on a phone there is no screen
+                // sharing and no participant view menu, but there is the camera swap.
+                const visible = [
+                    'stopAudioButton',
+                    'startAudioDeviceDropdown',
+                    'stopVideoButton',
+                    'startVideoDeviceDropdown',
+                    'raiseHandButton',
+                    'chatButton',
+                    'participantsButton',
+                    'settingsButton',
+                    'settingsExtraDropdown',
+                    'exitButton',
+                ];
+                if (isMobileDevice) visible.push('swapCameraButton');
+                else visible.push('startScreenButton', 'participantViewDropdown');
+                for (const id of visible) document.getElementById(id)?.classList.remove('hidden');
+                live.style.display = 'flex'; // Room.js showButtons()
+                live.dataset.position = params.get('bar') === 'left' ? 'horizontal' : 'vertical';
+                if (params.get('bar') === 'left') {
+                    const root = document.documentElement.style;
+                    root.setProperty('--bottom-btns-top', '50%');
+                    root.setProperty('--bottom-btns-left', '15px');
+                    root.setProperty('--bottom-btns-bottom', 'auto');
+                    root.setProperty('--bottom-btns-translate-X', '0%');
+                    root.setProperty('--bottom-btns-translate-Y', '-50%');
+                    root.setProperty('--bottom-btns-margin-bottom', '0');
+                    root.setProperty('--bottom-btns-flex-direction', 'column');
+                }
+                // Replay.js turned the button on (or not) before the bar existed: tell it again.
+                if (window.Replay?.state.enabled) window.Replay.enable({});
+            }
+
+            window.harnessReady = buildBar()
+                .then(() => {
+                    harness.ready = true;
+                })
+                .catch((error) => {
+                    console.error('harness', error);
+                    harness.error = String(error);
+                });
+        </script>
+    </body>
+</html>
