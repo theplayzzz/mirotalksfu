@@ -2806,6 +2806,10 @@ function startServer() {
 
             log.debug('Request: getRouterRtpCapabilities', peerInfo);
 
+            // Replay: a person whose join was answered "locked" (the single room's way in) or who waited in the lobby
+            // does not get the room from the join, so this is where they are known to be in. Once per socket.
+            replay?.hub.attachSocket(socket, room, peer);
+
             try {
                 const rtpCapabilities = room.getRtpCapabilities();
                 callback(rtpCapabilities);

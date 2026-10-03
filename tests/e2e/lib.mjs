@@ -182,10 +182,15 @@ export async function startScreenShare(page) {
 // so the encoder always has real motion to code. The app code that asks for the share is the real one; the
 // options it passes are kept in window.__displayMediaCalls for the tests to inspect.
 // Call it before the page navigates to the room.
-export async function stubScreenCapture(page, { width = 1920, height = 1080, fps = 60, withAudio = false } = {}) {
+// With `claquete` (and `withAudio`) the picture flashes white for 6 frames and a beep sounds, both at the same instant,
+// every 2 seconds: a clap board to measure how far apart picture and sound end up after the trip through the room.
+// `mode` is what is on the screen: 'game' (the default: constant motion), 'desktop' (a still desktop with a clock that
+// changes once a second and a burst of movement every 15 s: a capture that produces few frames) or 'idle' (the same
+// without the clock: nothing changes between the bursts, so no frames are produced for long stretches).
+export async function stubScreenCapture(page, { width = 1920, height = 1080, fps = 60, withAudio = false, claquete = false, mode = 'game' } = {}) {
     const source = `(() => {
         window.__displayMediaCalls = [];
-        const W = ${width}, H = ${height}, FPS = ${fps};
+        const W = ${width}, H = ${height}, FPS = ${fps}, CLAQUETE = ${claquete ? 'true' : 'false'}, MODE = ${JSON.stringify(mode)};
         navigator.mediaDevices.getDisplayMedia = async (options) => {
             window.__displayMediaCalls.push(JSON.parse(JSON.stringify(options || {})));
             const canvas = document.createElement('canvas');
@@ -196,8 +201,47 @@ export async function stubScreenCapture(page, { width = 1920, height = 1080, fps
                 r: 8 + Math.random() * 38, h: Math.floor(Math.random() * 360),
             }));
             let tick = 0;
+            let beep = null; // set when the audio exists (claquete)
+            let flash = 0;
+            let lastFlash = -1e9;
+            const desktop = { drawn: false, lastSecond: -1, burst: false };
+            const drawDesktop = () => {
+                const now = performance.now();
+                const lines = () => {
+                    ctx.fillStyle = '#d6e2f0'; ctx.font = '22px monospace';
+                    for (let l = 0; l < 22; l++) ctx.fillText('line ' + l + ' of text a desktop would show: lorem ipsum dolor sit amet', 100, 120 + l * 26);
+                };
+                if (!desktop.drawn) {
+                    desktop.drawn = true;
+                    ctx.fillStyle = '#1e2a3a'; ctx.fillRect(0, 0, W, H);
+                    for (let i = 0; i < 9; i++) { ctx.fillStyle = i % 2 ? '#2b3b52' : '#26354b'; ctx.fillRect(80 + (i % 3) * 600, 80 + Math.floor(i / 3) * 330, 560, 300); }
+                    lines();
+                    ctx.fillStyle = '#111'; ctx.fillRect(0, H - 40, W, 40);
+                }
+                if (MODE === 'desktop') {
+                    const second = Math.floor(now / 1000);
+                    if (second !== desktop.lastSecond) {
+                        desktop.lastSecond = second;
+                        ctx.fillStyle = '#111'; ctx.fillRect(W - 220, H - 40, 220, 40);
+                        ctx.fillStyle = '#fff'; ctx.font = '24px monospace'; ctx.fillText(new Date().toTimeString().slice(0, 8), W - 160, H - 12);
+                    }
+                }
+                const phase = now % 15000;
+                if (phase < 2000) {
+                    const t = phase / 2000;
+                    ctx.fillStyle = '#26354b'; ctx.fillRect(80, 80, 1200, 640);
+                    lines();
+                    ctx.fillStyle = '#ffee55'; ctx.fillRect(200 + t * 1000, 300 + Math.sin(t * 6) * 150, 14, 22);
+                    desktop.burst = true;
+                } else if (desktop.burst) {
+                    desktop.burst = false;
+                    ctx.fillStyle = '#26354b'; ctx.fillRect(80, 80, 1200, 640);
+                    lines();
+                }
+            };
             const draw = () => {
                 tick++;
+                if (MODE !== 'game') { drawDesktop(); requestAnimationFrame(draw); return; }
                 for (let i = 0; i < 12; i++) {
                     ctx.fillStyle = 'hsl(' + ((tick * 2 + i * 30) % 360) + ' 60% ' + (18 + (i % 3) * 8) + '%)';
                     ctx.fillRect(((i * 180 + tick * 6) % 2160) - 180, 0, 180, H);
@@ -214,6 +258,11 @@ export async function stubScreenCapture(page, { width = 1920, height = 1080, fps
                 ctx.fillStyle = '#fff';
                 ctx.font = 'bold 64px sans-serif';
                 ctx.fillText('frame ' + tick, 60 + (tick * 3) % 1400, H / 2 + Math.sin(tick / 20) * 300);
+                if (CLAQUETE && beep) {
+                    const now = performance.now();
+                    if (now - lastFlash >= 2000) { lastFlash = now; flash = 6; beep(); }
+                    if (flash > 0) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); flash--; }
+                }
                 requestAnimationFrame(draw);
             };
             requestAnimationFrame(draw);
@@ -222,8 +271,23 @@ export async function stubScreenCapture(page, { width = 1920, height = 1080, fps
                 const audio = new AudioContext();
                 const destination = audio.createMediaStreamDestination();
                 const oscillator = audio.createOscillator();
-                oscillator.frequency.value = 440;
-                oscillator.connect(destination);
+                if (CLAQUETE) {
+                    // silent except for 100 ms beeps, started together with the flash
+                    const gain = audio.createGain();
+                    gain.gain.value = 0;
+                    oscillator.frequency.value = 880;
+                    oscillator.connect(gain);
+                    gain.connect(destination);
+                    beep = () => {
+                        const t = audio.currentTime;
+                        gain.gain.cancelScheduledValues(t);
+                        gain.gain.setValueAtTime(0.8, t);
+                        gain.gain.setValueAtTime(0, t + 0.1);
+                    };
+                } else {
+                    oscillator.frequency.value = 440;
+                    oscillator.connect(destination);
+                }
                 oscillator.start();
                 destination.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
             }

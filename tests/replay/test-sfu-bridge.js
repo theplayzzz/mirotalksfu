@@ -3,7 +3,7 @@
 require('should');
 
 const EventEmitter = require('node:events');
-const { ReplayBridge, decideAvailability, describeStream, DEFAULTS } = require('../../app/src/replay/ReplayBridge');
+const { ReplayBridge, decideAvailability, describeStream, recorderCapabilities, DEFAULTS } = require('../../app/src/replay/ReplayBridge');
 
 const silent = { info() {}, warn() {}, error() {}, debug() {} };
 
@@ -38,8 +38,29 @@ function fakes({ failRegister = false } = {}) {
         };
     };
 
+    const consumeCapabilities = [];
     const recorderRouter = {
-        rtpCapabilities: { codecs: [{ mimeType: 'video/VP8' }] },
+        // like a real router's: every video codec asks for bandwidth estimation, and there are header extensions
+        rtpCapabilities: {
+            codecs: [
+                {
+                    kind: 'video',
+                    mimeType: 'video/VP8',
+                    clockRate: 90000,
+                    preferredPayloadType: 96,
+                    parameters: {},
+                    rtcpFeedback: [
+                        { type: 'nack' },
+                        { type: 'nack', parameter: 'pli' },
+                        { type: 'ccm', parameter: 'fir' },
+                        { type: 'goog-remb' },
+                        { type: 'transport-cc' },
+                    ],
+                },
+                { kind: 'audio', mimeType: 'audio/opus', clockRate: 48000, channels: 2, preferredPayloadType: 100, parameters: {}, rtcpFeedback: [{ type: 'transport-cc' }] },
+            ],
+            headerExtensions: [{ kind: 'video', uri: 'http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01', preferredId: 5 }],
+        },
         transports: [],
         async createPlainTransport(options) {
             log('createPlainTransport', options);
@@ -48,6 +69,7 @@ function fakes({ failRegister = false } = {}) {
                 observer: new EventEmitter(),
                 consumers: [],
                 async consume(consumeOptions) {
+                    consumeCapabilities.push(consumeOptions.rtpCapabilities);
                     log('consume', consumeOptions.producerId, { paused: consumeOptions.paused });
                     const kind = consumeOptions.producerId.startsWith('audio') ? 'audio' : 'video';
                     const consumer = consumerFor(consumeOptions.producerId, kind);
@@ -120,7 +142,7 @@ function fakes({ failRegister = false } = {}) {
     };
     const producer = (id) => ({ id, observer: new EventEmitter() });
 
-    return { calls, mediasoup, client, roomRouter, producer, recorderRouter, worker };
+    return { calls, mediasoup, client, roomRouter, producer, recorderRouter, worker, consumeCapabilities };
 }
 
 const names = (calls) => calls.map((entry) => entry[0]);
@@ -211,6 +233,53 @@ describe('test-sfu-bridge (the SFU side of the replay recorder)', () => {
         });
     });
 
+    describe('recorderCapabilities (what the recorder asks mediasoup to send)', () => {
+        const router = {
+            codecs: [
+                { kind: 'video', mimeType: 'video/VP8', clockRate: 90000, preferredPayloadType: 96, parameters: { a: 1 }, rtcpFeedback: [{ type: 'nack' }, { type: 'nack', parameter: 'pli' }, { type: 'ccm', parameter: 'fir' }, { type: 'goog-remb' }, { type: 'transport-cc' }] },
+                { kind: 'video', mimeType: 'video/rtx', clockRate: 90000, preferredPayloadType: 97, parameters: { apt: 96 }, rtcpFeedback: [] },
+                { kind: 'audio', mimeType: 'audio/opus', clockRate: 48000, channels: 2, preferredPayloadType: 100, parameters: {}, rtcpFeedback: [{ type: 'transport-cc' }] },
+            ],
+            headerExtensions: [{ kind: 'video', uri: 'abs-send-time', preferredId: 4 }, { kind: 'video', uri: 'transport-wide-cc', preferredId: 5 }],
+        };
+
+        it('takes bandwidth estimation out of every codec: without it mediasoup throttles the recorder to 600 kbps', () => {
+            const caps = recorderCapabilities(router);
+            for (const codec of caps.codecs) {
+                codec.rtcpFeedback.map((feedback) => feedback.type).should.not.containEql('transport-cc');
+                codec.rtcpFeedback.map((feedback) => feedback.type).should.not.containEql('goog-remb');
+            }
+        });
+
+        it('keeps what the recorder uses: nack, PLI and FIR', () => {
+            recorderCapabilities(router).codecs[0].rtcpFeedback.should.deepEqual([{ type: 'nack' }, { type: 'nack', parameter: 'pli' }, { type: 'ccm', parameter: 'fir' }]);
+        });
+
+        it('has no header extensions, so there is nothing for a bandwidth estimator to read', () => {
+            recorderCapabilities(router).headerExtensions.should.deepEqual([]);
+        });
+
+        it('keeps everything else of every codec, RTX included', () => {
+            const caps = recorderCapabilities(router);
+            caps.codecs.should.have.length(3);
+            caps.codecs[0].should.containEql({ kind: 'video', mimeType: 'video/VP8', clockRate: 90000, preferredPayloadType: 96 });
+            caps.codecs[0].parameters.should.deepEqual({ a: 1 });
+            caps.codecs[1].should.containEql({ mimeType: 'video/rtx', preferredPayloadType: 97 });
+            caps.codecs[2].should.containEql({ mimeType: 'audio/opus', channels: 2 });
+        });
+
+        it("does not change the router's own capabilities", () => {
+            const before = JSON.stringify(router);
+            recorderCapabilities(router);
+            JSON.stringify(router).should.equal(before);
+        });
+
+        it('copes with capabilities that have no codecs or no feedback', () => {
+            recorderCapabilities({}).should.deepEqual({ codecs: [], headerExtensions: [] });
+            recorderCapabilities({ codecs: [{ mimeType: 'video/VP8' }] }).codecs[0].rtcpFeedback.should.deepEqual([]);
+        });
+    });
+
     describe('describeStream (what the recorder is told)', () => {
         it('describes VP8 with RTX and Opus with its parameters', async () => {
             const f = fakes();
@@ -267,6 +336,10 @@ describe('test-sfu-bridge (the SFU side of the replay recorder)', () => {
             transportOptions.should.containEql({ rtcpMux: true, comedia: false, enableSrtp: false });
             transportOptions.listenInfo.portRange.should.deepEqual({ min: 52000, max: 52999 });
             byName('consume')[2].should.deepEqual({ paused: true });
+            // both consumers are made with capabilities that leave out bandwidth estimation
+            f.consumeCapabilities.should.have.length(1);
+            JSON.stringify(f.consumeCapabilities[0]).should.not.match(/transport-cc|goog-remb|abs-send-time|transport-wide-cc/);
+            f.consumeCapabilities[0].codecs[0].rtcpFeedback.map((feedback) => feedback.type).should.containEql('nack');
             byName('registerShare')[1].should.deepEqual({
                 shareId: 'video-1',
                 roomId: 'link',
@@ -296,6 +369,9 @@ describe('test-sfu-bridge (the SFU side of the replay recorder)', () => {
             const patch = f.calls.find((entry) => entry[0] === 'patchShare');
             patch[1].should.equal('video-1');
             patch[2].audio.should.containEql({ codec: 'audio/opus', ssrc: 3333, channels: 2 });
+            // the audio of the screen is made like the video: the transport must not learn about bandwidth estimation from it either
+            f.consumeCapabilities.should.have.length(2);
+            for (const caps of f.consumeCapabilities) JSON.stringify(caps).should.not.match(/transport-cc|goog-remb|abs-send-time|transport-wide-cc/);
             bridge.list()[0].hasAudio.should.be.true();
             await bridge.stop();
         });

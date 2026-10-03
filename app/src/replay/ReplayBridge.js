@@ -40,6 +40,26 @@ const DEFAULTS = {
 
 const isRtx = (codec) => /\/rtx$/i.test(codec.mimeType);
 
+/*
+ * What the recorder tells mediasoup it can receive: the router's codecs, but NO bandwidth estimation (transport-cc and
+ * goog-remb feedback) and no header extensions. The recorder never sends transport-wide feedback. When mediasoup is
+ * told that a consumer takes part in bandwidth estimation, it keeps an estimate for the transport that starts at 600
+ * kbps and, without feedback, never grows: the consumer is throttled to it (a screen with motion needs 5-12 Mbps), the
+ * recorder gets a few seconds of picture and then only probing packets, and mediasoup asks the sender for a new
+ * full picture again and again to get the consumer going (found 2026-10-03: a "time kept" stuck at 2-3 s on every
+ * screen with real motion, and a key frame every second for the person sharing). Nack and PLI stay: the recorder uses them.
+ */
+function recorderCapabilities(routerCapabilities) {
+    const bandwidth = new Set(['transport-cc', 'goog-remb']);
+    return {
+        codecs: (routerCapabilities.codecs || []).map((codec) => ({
+            ...codec,
+            rtcpFeedback: (codec.rtcpFeedback || []).filter((feedback) => !bandwidth.has(feedback.type)),
+        })),
+        headerExtensions: [],
+    };
+}
+
 // What the recorder has to know about one stream a consumer sends it
 function describeStream(consumer) {
     const { codecs, encodings } = consumer.rtpParameters;
@@ -137,6 +157,7 @@ class ReplayBridge extends EventEmitter {
 
         this.worker = null;
         this.router = null;
+        this.recorderCaps = null;
         this.shares = new Map(); // shareId (= id of the screen's video producer) -> share
         this.state = { available: false, reason: 'starting', highSince: 0, lowSince: 0, failures: 0 };
         this.cpuSamples = new Map();
@@ -174,6 +195,7 @@ class ReplayBridge extends EventEmitter {
             this.log.warn(`replay: could not lower the priority of the recorder worker: ${error.message}`);
         }
         this.router = await this.worker.createRouter({ mediaCodecs: this.mediaCodecs });
+        this.recorderCaps = recorderCapabilities(this.router.rtpCapabilities);
 
         this.worker.once('died', () => {
             // Only the replay stops. The rooms' workers have their own handler that restarts the whole server.
@@ -274,7 +296,7 @@ class ReplayBridge extends EventEmitter {
         // paused: the recorder must be listening before the first packet is sent
         const consumer = await share.transport.consume({
             producerId: share.producer.id,
-            rtpCapabilities: this.router.rtpCapabilities,
+            rtpCapabilities: this.recorderCaps,
             paused: true,
         });
         share.consumers.video = consumer;
@@ -307,7 +329,7 @@ class ReplayBridge extends EventEmitter {
 
         const consumer = await share.transport.consume({
             producerId: producer.id,
-            rtpCapabilities: this.router.rtpCapabilities,
+            rtpCapabilities: this.recorderCaps,
             paused: true,
         });
         share.consumers.audio = consumer;
@@ -457,4 +479,4 @@ class ReplayBridge extends EventEmitter {
     }
 }
 
-module.exports = { ReplayBridge, decideAvailability, describeStream, DEFAULTS };
+module.exports = { ReplayBridge, decideAvailability, describeStream, recorderCapabilities, DEFAULTS };

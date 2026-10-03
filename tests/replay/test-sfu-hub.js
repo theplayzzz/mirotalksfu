@@ -105,6 +105,39 @@ describe('test-sfu-hub (room events and replay coordination)', () => {
         f.access.consumeTicket(ticketPayload.ticket).should.be.true();
     });
 
+    it('does its work once per socket, however many ways in the person came through', () => {
+        // Whoever joined a locked room (the single room's way in) or waited in the lobby is attached from a later
+        // request, not from the join: both paths call attachSocket, and only the first one counts.
+        const f = fakes();
+        const hub = new ReplayHub({ io: f.io, access: f.access, client: f.client, getRoom: () => f.room, log: silent });
+        hub.attachBridge(f.bridge);
+
+        const socketEvents = [];
+        const handlers = [];
+        const socket = {
+            id: 'sock-2',
+            emit(event, data) {
+                socketEvents.push({ event, data });
+            },
+            on(event) {
+                handlers.push(event);
+            },
+        };
+
+        hub.attachSocket(socket, f.room, { peer_name: 'Friend' });
+        hub.attachSocket(socket, f.room, { peer_name: 'Friend' });
+        hub.attachSocket(socket, f.room, { peer_name: 'Friend' });
+
+        socketEvents.filter((e) => e.event === 'replayTicket').should.have.length(1);
+        socketEvents.filter((e) => e.event === 'replayBuffers').should.have.length(1);
+        handlers.should.deepEqual(['replayRequest']);
+
+        // another socket of the same person (a reconnection) is a new socket and gets its own
+        const again = { id: 'sock-3', emit: (event, data) => socketEvents.push({ event, data }), on() {} };
+        hub.attachSocket(again, f.room, { peer_name: 'Friend' });
+        socketEvents.filter((e) => e.event === 'replayTicket').should.have.length(2);
+    });
+
     it('rejects clip requests when replay is unavailable', async () => {
         const f = fakes();
         f.bridge.available = false;

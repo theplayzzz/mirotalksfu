@@ -78,11 +78,14 @@ class ReplayHub {
     // ---- the room ---------------------------------------------------------------------------------------------------
 
     /*
-     * A person joined the room: gives them a ticket for the gallery cookie and the current state, and listens to
-     * their replayRequest. Called once per socket, after a successful join.
+     * A person is in the room: gives them a ticket for the gallery cookie and the current state, and listens to their
+     * replayRequest. It is called from every way a person gets in (the join itself, and the first thing a person who
+     * joined a locked room or waited in the lobby asks for, because their join was not answered with the room), so it
+     * does its work once per socket.
      */
     attachSocket(socket, room, peer) {
-        if (!this.bridge) return;
+        if (!this.bridge || socket.replayAttached) return;
+        socket.replayAttached = true;
         const ticket = this.access.issueTicket();
         socket.emit('replayTicket', ticket);
         socket.emit('replayBuffers', this.buffersPayload(room.id));

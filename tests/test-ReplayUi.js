@@ -386,6 +386,26 @@ describe('test-ReplayUi', () => {
             }
         });
 
+        // The room is full of voices and game sound: replay must never add a noise of its own, neither when the time
+        // kept reaches a minute nor when a clip is saved (a request of 2026-10-03). The only sound in these files is
+        // the video of a clip when a person presses play in the gallery.
+        it('never make a sound (no beep, no notification tone, no speech, no vibration)', () => {
+            for (const source of [replayJs, logicJs, galleryJs]) {
+                source.should.not.match(/new\s+Audio\s*\(/);
+                source.should.not.match(/\bsound\s*\(/);
+                source.should.not.match(/AudioContext|webkitAudioContext|createOscillator|createBufferSource/);
+                source.should.not.match(/speechSynthesis|SpeechSynthesisUtterance/);
+                source.should.not.match(/\bnew\s+Notification\s*\(|\.vibrate\s*\(/);
+                source.should.not.match(/<audio|\.(wav|mp3|ogg)\b/i);
+            }
+            // and the markup they add to the room has no audio element either
+            read('views/Room.html')
+                .split('\n')
+                .filter((line) => /replay/i.test(line))
+                .join('\n')
+                .should.not.match(/<audio|autoplay/i);
+        });
+
         it('never put HTML made of names or messages into the page', () => {
             for (const source of [replayJs, galleryJs]) {
                 source.should.not.match(/\.innerHTML\s*=/);

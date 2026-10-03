@@ -28,6 +28,13 @@ const number = (value, fallback, min, max) => {
 function create({ io, singleRoom, jwtKey, getRoom, pageFile, log = console, env = process.env }) {
     if (env.REPLAY_ENABLED !== 'true') return null;
 
+    // The gallery is open to the people of ONE room, who all know its password: with many rooms there would be no
+    // single answer to "who may see these clips"
+    if (!singleRoom.enabled) {
+        log.error('replay: it needs the single room setup (SINGLE_ROOM_ID and SINGLE_ROOM_PASSWORD). Replay stays off.');
+        return null;
+    }
+
     const secret = env.REPLAY_INTERNAL_SECRET || '';
     const url = env.REPLAY_RECORDER_URL || '';
     if (secret.length < 24 || !url) {
