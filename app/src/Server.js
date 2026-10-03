@@ -519,6 +519,7 @@ const views = {
     notFound: path.join(__dirname, '../../', 'public/views/404.html'),
     permission: path.join(__dirname, '../../', 'public/views/permission.html'),
     privacy: path.join(__dirname, '../../', 'public/views/privacy.html'),
+    replay: path.join(__dirname, '../../', 'public/views/Replay.html'),
     room: path.join(__dirname, '../../', 'public/views/Room.html'),
     rtmpStreamer: path.join(__dirname, '../../', 'public/views/RtmpStreamer.html'),
     whoAreYou: path.join(__dirname, '../../', 'public/views/whoAreYou.html'),
@@ -694,6 +695,16 @@ function startServer() {
         next();
     });
     */
+
+    // Replay: the last minutes of a shared screen as a clip (app/src/replay, docs/REPLAY.md). null when REPLAY_ENABLED is off.
+    const replay = require('./replay').create({
+        io,
+        singleRoom,
+        jwtKey: jwtCfg.JWT_KEY,
+        getRoom: (roomId) => roomList.get(roomId),
+        pageFile: views.replay,
+        log,
+    });
 
     // Mattermost
     const mattermost = new Mattermost(app);
@@ -883,6 +894,7 @@ function startServer() {
             singleRoom: singleRoom.enabled ? { roomId: singleRoom.roomId } : false,
             healthMeter: healthMeter.enabled ? { enabled: true, intervalS: healthMeter.intervalS } : false,
             screen: { layers: screenLayers, selectiveReception, codec: screenCodec },
+            replay: replay ? replay.publicConfig() : { enabled: false },
         });
     });
 
@@ -909,6 +921,26 @@ function startServer() {
         livePix.handleWebhook(req.body);
         res.sendStatus(200);
     });
+
+    // Replay gallery and recorder events (app/src/replay/ReplayRoutes.js)
+    if (replay) {
+        // the page's assets are relative (../css), so it has to be served with the trailing slash
+        app.get('/replay', (req, res, next) => {
+            if (req.path.endsWith('/')) return next();
+            res.redirect('/replay/' + req.url.slice('/replay'.length));
+        });
+        app.get('/replays', (req, res) => res.redirect('/replay/'));
+        app.use('/replay', replay.router);
+        app.post('/internal/replay/events', replay.internalEvents);
+        replay
+            .start({
+                mediasoup,
+                mediaCodecs: config.mediasoup.router.mediaCodecs,
+                workerSettings: config.mediasoup.worker,
+                roomWorkers: () => workers,
+            })
+            .catch((error) => log.error('Replay could not start', error.message));
+    }
 
     // Development only: measures what the room costs the server with many virtual viewers (see DevLoad.js)
     if (process.env.APP_ENV === 'dev' && process.env.DEV_LOAD_ENABLED === 'true' && singleRoom.testRoomId) {
@@ -2753,6 +2785,9 @@ function startServer() {
                 roomJson.rtmpStreamToken = createRtmpStreamToken(room.id);
             }
 
+            // Replay: the ticket that opens the gallery, what is being kept, and the person's own requests
+            replay?.hub.attachSocket(socket, room, peer);
+
             cb(roomJson);
         });
 
@@ -2921,6 +2956,9 @@ function startServer() {
                         room.addProducerToActiveSpeakerObserver({ producerId: producer_id }),
                     ]);
                 }
+
+                // Replay records screens (and the audio of a screen); it never holds up the live path
+                replay?.hub.onProduce({ room, peer, producerId: producer_id, kind, appData });
 
                 callback({ producer_id });
             } catch (err) {
@@ -5173,6 +5211,7 @@ function startServer() {
 
         socket.on('disconnect', (reason) => {
             healthMeter.forget(socket.id);
+            replay?.hub.detachSocket(socket);
 
             if (!roomExists(socket)) {
                 // Clean up socket listeners even if room doesn't exist

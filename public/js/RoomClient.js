@@ -2421,7 +2421,7 @@ class RoomClient {
 
             // if screen sharing produce the tab audio + microphone
             if (screen && stream.getAudioTracks()[0]) {
-                await this.produceScreenAudio(stream);
+                await this.produceScreenAudio(stream, producer.id);
             }
 
             if (!audio) {
@@ -3630,7 +3630,9 @@ class RoomClient {
         this.sound('left');
     }
 
-    async produceScreenAudio(stream) {
+    // screenProducerId: the video producer of the same screen. The server uses it to know which audio belongs to which
+    // screen (the replay recorder keeps them together); the media type stays audioType for everybody else.
+    async produceScreenAudio(stream, screenProducerId) {
         try {
             if (this.producerLabel.has(mediaType.audioTab)) {
                 return console.warn('Producer already exists for this type ' + mediaType.audioTab);
@@ -3641,6 +3643,7 @@ class RoomClient {
                 track,
                 appData: {
                     mediaType: mediaType.audio,
+                    ...(screenProducerId ? { source: 'screen', shareOf: screenProducerId } : {}),
                 },
             };
 
