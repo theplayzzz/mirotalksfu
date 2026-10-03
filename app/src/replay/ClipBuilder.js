@@ -211,11 +211,17 @@ async function buildClip(o) {
     let exited = null;
     let timer = null;
     try {
-        // The first record is the key frame the file starts with: it tells the size and the codec parameters.
-        const firstStep = await records.next();
-        const first = firstStep.value;
-        if (!first || first.kind !== KIND_VIDEO || !first.key)
+        // The key frame the file starts with tells the size and the codec parameters. It is read by its own offset:
+        // in time order something else (a little audio that was written late) may come out first.
+        const keyChunk = snapshot.chunks[plan.key.chunkIndex];
+        let first = null;
+        for await (const record of readRecords(keyChunk.path, plan.key.off, plan.key.end)) {
+            first = record;
+            break;
+        }
+        if (!first || first.kind !== KIND_VIDEO || !first.key) {
             throw new Error('the ring does not start at a key frame');
+        }
         const params = videoParams(codec, first.data);
 
         child = spawnLowPriority(ffmpegPath, finalizeArgs({ codec, hasAudio, output: outputPath }), {
@@ -249,11 +255,8 @@ async function buildClip(o) {
             }
         };
 
-        let record = first;
-        let step = firstStep;
-        while (!step.done) {
+        for await (const record of records) {
             if (signal && signal.aborted) throw new Error('the recorder is stopping');
-            record = step.value;
             const t = record.ts - base;
             if (t >= 0) {
                 if (record.kind === KIND_VIDEO) {
@@ -266,7 +269,6 @@ async function buildClip(o) {
                     audio.active = true;
                 }
             }
-            step = await records.next();
         }
         await muxer.finish();
         await sink.end();

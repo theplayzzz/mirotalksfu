@@ -36,6 +36,7 @@ class VirtualFeed {
      * @param {number} [o.srEveryMs] media time between Sender Reports
      * @param {function} [o.drop] (kind, packetIndex) => true to lose the packet
      * @param {function} [o.swap] (kind, packetIndex) => true to swap the packet with the next one
+     * @param {boolean} [o.retransmit] answer NACKs with the packet again, like the SFU does
      * @param {number} [o.videoBase] first RTP timestamp of the video (default: wraps after 5 s)
      * @param {number} [o.seqBase] first sequence number (default: wraps after a few packets)
      */
@@ -54,8 +55,22 @@ class VirtualFeed {
         this.sent = 0;
         this.nextSr = -Infinity;
         this.received = []; // what the recorder sent back (NACK, PLI)
+        this.cache = new Map(); // "ssrc:seq" -> packet, for retransmissions
+        this.retransmitted = 0;
         this.socket.on('message', (msg) => {
-            if (rtp.isRtcp(msg)) this.received.push(...rtp.parseRtcp(msg));
+            if (!rtp.isRtcp(msg)) return;
+            for (const packet of rtp.parseRtcp(msg)) {
+                this.received.push(packet);
+                if (packet.type === 'nack' && this.o.retransmit) {
+                    for (const seq of packet.seqs) {
+                        const original = this.cache.get(`${packet.mediaSsrc}:${seq}`);
+                        if (original) {
+                            this.retransmitted++;
+                            this.socket.send(original, this.o.port, '127.0.0.1');
+                        }
+                    }
+                }
+            }
         });
     }
 
@@ -148,6 +163,8 @@ class VirtualFeed {
             }
             for (const packet of this._packets(frame.kind, frame)) {
                 const index = this.packetIndex[frame.kind]++;
+                this.cache.set(`${packet.readUInt32BE(8)}:${packet.readUInt16BE(2)}`, packet);
+                if (this.cache.size > 5000) this.cache.delete(this.cache.keys().next().value);
                 if (drop && drop(frame.kind, index)) continue;
                 if (swap && swap(frame.kind, index) && !held) {
                     held = packet;

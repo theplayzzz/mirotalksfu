@@ -169,6 +169,7 @@ class Share {
         }
         this.audioStream = stream;
         this.audio = this._createReceiver('audio', stream);
+        this.store.expectAudioStream(true);
     }
 
     /** Binds the UDP socket (any free port) and returns the port. */

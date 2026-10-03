@@ -124,6 +124,8 @@ class FrameStore {
         this.queuedBytes = 0;
         this.heap = new FrameHeap();
         this.newestIn = -Infinity; // newest media time given to append()
+        this.newestInKind = { [KIND_VIDEO]: -Infinity, [KIND_AUDIO]: -Infinity };
+        this.expectAudio = false;
         this.newestTs = -Infinity; // newest media time written
         this.audioRanges = [];
         this.waiters = [];
@@ -157,6 +159,7 @@ class FrameStore {
         }
         this.heap.push({ ts: tsMs, kind, key, data, at: this.now() });
         if (tsMs > this.newestIn) this.newestIn = tsMs;
+        if (tsMs > this.newestInKind[kind]) this.newestInKind[kind] = tsMs;
         this._pumpHeap(false);
         if (this.timer === null) {
             this.timer = setInterval(() => this._onTimer(), this.flushIntervalMs);
@@ -171,11 +174,27 @@ class FrameStore {
         this._trim(this.newestTs);
     }
 
+    /** Tells the store that an audio stream exists: the hold-back then waits for its frames too. */
+    expectAudioStream(expected = true) {
+        this.expectAudio = expected;
+    }
+
+    /**
+     * Frames older than this are final: nothing earlier can still arrive, as far as each stream is concerned. With an
+     * audio stream the watermark is the slower of the two streams (otherwise a burst of video, when its timestamps
+     * become known before the audio's, would be written before the audio of the same seconds).
+     */
+    _watermark() {
+        let newest = this.newestInKind[KIND_VIDEO];
+        if (this.expectAudio) newest = Math.min(newest, this.newestInKind[KIND_AUDIO]);
+        return newest - this.holdMs;
+    }
+
     /** Moves frames that waited long enough in the hold-back to the staging buffer, in media time order. */
     _pumpHeap(all) {
         const heap = this.heap;
         if (heap.size === 0) return;
-        const horizon = this.newestIn - this.holdMs;
+        const horizon = this._watermark();
         const oldest = this.now() - 2 * this.holdMs;
         while (heap.size > 0) {
             const top = heap.peek();

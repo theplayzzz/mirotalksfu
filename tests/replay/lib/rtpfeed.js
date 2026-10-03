@@ -22,6 +22,12 @@ function bind(socket, address = '127.0.0.1') {
         socket.once('error', reject);
         socket.bind({ port: 0, address }, () => {
             socket.off('error', reject);
+            try {
+                // FFmpeg sends a key frame as a burst; the test process must not lose any of it
+                socket.setRecvBufferSize(8 * 1024 * 1024);
+            } catch {
+                // the OS keeps its default
+            }
             resolve(socket.address().port);
         });
     });
