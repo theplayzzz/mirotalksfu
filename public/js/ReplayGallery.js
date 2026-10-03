@@ -138,9 +138,17 @@ window.ReplayGallery = (() => {
 
     // ---- small pieces of the page --------------------------------------------------------------------------
 
-    const live = { text: { on: 'ao vivo', retry: 'reconectando…', off: '' } };
+    const live = {
+        text: { on: 'ao vivo', retry: 'reconectando…', off: '' },
+        hint: {
+            on: 'Os replays novos aparecem aqui na hora',
+            retry: 'Reconectando para receber os replays novos',
+            off: '',
+        },
+    };
     function setLive(state) {
         $('rgLive').dataset.state = state;
+        $('rgLive').title = live.hint[state] || '';
         $('rgLiveText').textContent = live.text[state] || '';
     }
 
@@ -728,6 +736,7 @@ window.ReplayGallery = (() => {
         raf: 0,
         idleTimer: 0,
         lastAria: -1,
+        startRetried: false,
         tapWasIdle: false,
         fullscreenChangedAt: 0,
     };
@@ -820,6 +829,7 @@ window.ReplayGallery = (() => {
         resetPlayer();
         P.clip = clip;
         P.triedMp4 = false;
+        P.startRetried = false;
         P.range = L.playerRange(clip, NaN);
         P.lastAria = -1;
         stage.style.setProperty('--rp-ar', String(ratio ? clamp(ratio, 0.4, 3.2).toFixed(4) : 1.7778));
@@ -1019,6 +1029,11 @@ window.ReplayGallery = (() => {
             $('rpSpinner').hidden = true;
             syncPlayButtons();
             startLoop();
+            // A browser that could not seek yet starts from the first frame (the lead-in): once, try again now.
+            if (P.clip && !P.startRetried && P.range.start > 0 && video.currentTime < P.range.start - 0.3) {
+                P.startRetried = true;
+                video.currentTime = P.range.start;
+            }
         });
         video.addEventListener('pause', () => {
             syncPlayButtons();
@@ -1136,7 +1151,11 @@ window.ReplayGallery = (() => {
         timeline.addEventListener('pointerdown', (event) => {
             if (!P.clip || (event.pointerType === 'mouse' && event.button !== 0)) return;
             event.preventDefault();
-            timeline.setPointerCapture(event.pointerId);
+            try {
+                timeline.setPointerCapture(event.pointerId);
+            } catch {
+                // the pointer is already gone: the drag still follows the events it gets
+            }
             P.dragging = true;
             timeline.classList.add('is-drag');
             timeline.focus({ preventScroll: true });

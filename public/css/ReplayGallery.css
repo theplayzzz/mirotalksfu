@@ -798,6 +798,13 @@ body.rg-body * {
     text-align: center;
 }
 
+.rg-noscript {
+    margin: 24px 0;
+    color: var(--rg-ink-2);
+    font-size: 15px;
+    text-align: center;
+}
+
 /*--------------------------------------------------------------
 # Player
 --------------------------------------------------------------*/
