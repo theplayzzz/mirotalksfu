@@ -74,6 +74,8 @@ async function shareAt(fps, name) {
 try {
     const probe = await chrome.newPage();
     await probe.send('Page.navigate', { url: `${origin}/` });
+    // DIAG_ONLY=1: do not share anything, only check the records of an earlier run (the diagnosis part)
+    const DIAG_ONLY = process.env.DIAG_ONLY === '1';
     await sleep(1500);
     const config = await probe.ev("fetch('/config').then((r) => r.json())");
     const mode = config.screen.selectiveMode || (config.screen.selectiveReception ? 'tile' : 'off');
@@ -85,10 +87,12 @@ try {
     // the viewer, with a window the size of a thumbnail
     const viewer = await chrome.newPage();
     await viewer.send('Page.addScriptToEvaluateOnNewDocument', { source: instrument });
-    await viewer.send('Emulation.setDeviceMetricsOverride', { width: 480, height: 270, deviceScaleFactor: 1, mobile: false });
+    await viewer.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
     await joinTestRoom(viewer, { origin, token, name: 'SP-Viewer' });
+    // then the window shrinks to the size of a thumbnail: the tile of the screen is under 450 px wide
+    await viewer.send('Emulation.setDeviceMetricsOverride', { width: 480, height: 270, deviceScaleFactor: 1, mobile: false });
 
-    for (const rate of [60, 20]) {
+    for (const rate of DIAG_ONLY ? [] : [60, 20]) {
         const sharer = await shareAt(rate, `SP-Sharer-${rate}`);
         for (let i = 0; i < 80 && !(await viewer.ev("[...rc.consumers.values()].some((c) => c.kind === 'video' && !c.closed)")); i++) await sleep(500);
         await sleep(14000); // the sender ramps up, and the viewer's own estimate of the sender's rate settles
@@ -116,7 +120,7 @@ try {
 
     // ---- the diagnosis exists in the server's health file
     if (process.env.SSH_HOST && process.env.HEALTH_DIR) {
-        await sleep(15000);
+        if (!DIAG_ONLY) await sleep(15000);
         const day = new Date().toISOString().slice(0, 10);
         const text = execFileSync('ssh', ['-o', 'BatchMode=yes', process.env.SSH_HOST, `tail -n 400 ${process.env.HEALTH_DIR}/health-${day}.jsonl`], { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
         const records = text.split('\n').filter(Boolean).map((line) => JSON.parse(line));
@@ -124,7 +128,9 @@ try {
         const tx = mine.flatMap((r) => r.tx || []);
         const rx = mine.flatMap((r) => r.rx || []);
         const srv = records.filter((r) => r.kind === 'srv');
-        check('every record carries the build of the server', records.length > 0 && records.every((r) => typeof r.bld === 'string'), records[0] && records[0].bld);
+        // (records of the run before this build have no stamp: only look at what came after the first line of this run)
+        const fresh = records.filter((r) => mine.length && r.ts >= mine[0].ts);
+        check('every record of this run carries the build of the server', fresh.length > 0 && fresh.every((r) => typeof r.bld === 'string'), fresh[0] && fresh[0].bld);
         check('the browsers report the build of their page and whether it is visible', mine.length > 0 && mine.every((r) => typeof r.cb === 'string' && typeof r.vis === 'boolean'), JSON.stringify(mine[0] && { cb: mine[0].cb, vis: mine[0].vis }));
         check('a sender reports its capture (frames per second and size of the source) and what its encoder was told', tx.length > 0 && tx.some((t) => t.srcFps > 0 && t.srcW > 0 && t.hint && t.codec), JSON.stringify(tx[tx.length - 1]));
         check('a viewer reports how long its decoder takes and the layer it asked for and why', rx.length > 0 && rx.some((r) => typeof r.decMs === 'number'), JSON.stringify(rx[rx.length - 1]));

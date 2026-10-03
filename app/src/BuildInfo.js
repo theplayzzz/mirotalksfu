@@ -32,7 +32,7 @@ const info = {
     sha,
     sha7: sha.slice(0, 7),
     ref: clean(process.env.BUILD_REF || raw.ref, 60),
-    date: clean(raw.date, 30),
+    date: String(raw.date || '').replace(/[^\w.:+\-]/g, '').slice(0, 30),
 };
 
 // The settings that change what a person sees, in a short stable form (stamped on the records of the health meter).

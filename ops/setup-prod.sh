@@ -34,8 +34,14 @@ if [ ! -f "$CONF/features.env" ]; then
 # At most one request for a full picture per second to each sender (a viewer with losses can ask 5 times a second).
 #KEYFRAME_REQUEST_DELAY_MS=1000
 
-# Every viewer asks the server for what its tile needs: thumbnails get 15 fps, tiles that nobody sees are paused.
+# Every viewer asks the server for fewer frames of a screen only when THAT viewer cannot keep up (SELECTIVE_MODE=adaptive,
+# the default) or by the size of the tile, never below 24 fps (SELECTIVE_MODE=tile). Nothing is ever paused.
 #SELECTIVE_RECEPTION=true
+#SELECTIVE_MODE=adaptive
+
+# The sender guard: a screen its sender cannot hold at 60 fps (saturated encoder, weak uplink) gets a smaller picture and a lower
+# bitrate, back up when there is room. observe = only report what it would do, apply = do it. docs/SCREEN-QUALITY-STRATEGY.md
+#SEND_GUARD=observe
 
 # Replay: the last minutes of a shared screen as a clip. Needs the recorder container (it is in the compose file)
 # and net.core.rmem_max raised on the host (docs/PRODUCTION-ROLLOUT.md).
