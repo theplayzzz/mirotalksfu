@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="pt-BR">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="robots" content="noindex, nofollow" />
+        <meta name="color-scheme" content="dark" />
+        <meta name="theme-color" content="#0e0e14" />
+        <title>Replays · LinkDoNotle</title>
+        <link rel="icon" href="../images/logo.svg" />
+
+        <!-- Same design tokens as the room (wine theme), then the gallery -->
+        <link rel="stylesheet" href="../css/Root.css" />
+        <link rel="stylesheet" href="../css/ReplayGallery.css" />
+
+        <script defer src="../js/ReplayLogic.js"></script>
+        <script defer src="../js/ReplayGallery.js"></script>
+    </head>
+    <body class="rg-body">
+        <!-- Icons: one sprite, used with <use href="#i-name">. -->
+        <svg class="rg-sprite" width="0" height="0" aria-hidden="true" focusable="false">
+            <defs>
+                <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6" /></symbol>
+                <symbol id="i-play" viewBox="0 0 24 24">
+                    <path
+                        class="fill"
+                        d="M8 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 8 5.5Z"
+                    />
+                </symbol>
+                <symbol id="i-pause" viewBox="0 0 24 24">
+                    <path
+                        class="fill"
+                        d="M7 5h3.5a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm6.5 0H17a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3.5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z"
+                    />
+                </symbol>
+                <symbol id="i-restart" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.6-5.9M4 4v5h5" /></symbol>
+                <symbol id="i-volume" viewBox="0 0 24 24">
+                    <path class="fill" d="M4 9.5v5h3.5l4.5 3.8V5.7L7.5 9.5H4Z" />
+                    <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
+                </symbol>
+                <symbol id="i-mute" viewBox="0 0 24 24">
+                    <path class="fill" d="M4 9.5v5h3.5l4.5 3.8V5.7L7.5 9.5H4Z" />
+                    <path d="m16 9.5 5 5m0-5-5 5" />
+                </symbol>
+                <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></symbol>
+                <symbol id="i-collapse" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></symbol>
+                <symbol id="i-pip" viewBox="0 0 24 24">
+                    <path d="M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
+                    <path
+                        class="fill"
+                        d="M12 11.5h6a.5.5 0 0 1 .5.5v3.5a.5.5 0 0 1-.5.5h-6a.5.5 0 0 1-.5-.5V12a.5.5 0 0 1 .5-.5Z"
+                    />
+                </symbol>
+                <symbol id="i-download" viewBox="0 0 24 24">
+                    <path d="M12 4v11M7.5 11 12 15.5 16.5 11M5 20h14" />
+                </symbol>
+                <symbol id="i-trash" viewBox="0 0 24 24">
+                    <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.8 12.5h9.4L17.5 7M10 11v5.5M14 11v5.5" />
+                </symbol>
+                <symbol id="i-film" viewBox="0 0 24 24">
+                    <path
+                        d="M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1ZM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4"
+                    />
+                </symbol>
+                <symbol id="i-lock" viewBox="0 0 24 24">
+                    <path
+                        d="M6.5 10.5h11a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1ZM8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"
+                    />
+                </symbol>
+                <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" /></symbol>
+                <symbol id="i-alert" viewBox="0 0 24 24">
+                    <path d="M12 4.5 2.8 19.5h18.4L12 4.5ZM12 10v4.5M12 17v.1" />
+                </symbol>
+            </defs>
+        </svg>
+
+        <a class="rg-skip" href="#rgMain">Ir para o conteúdo</a>
+
+        <header class="rg-header">
+            <div class="rg-header-inner">
+                <a id="rgBack" class="rg-back" href="/join/link">
+                    <svg class="rg-i" aria-hidden="true"><use href="#i-back" /></svg>
+                    <span>Voltar para a sala</span>
+                </a>
+                <h1 class="rg-title">
+                    <img class="rg-logo" src="../images/logo.svg" alt="" width="22" height="25" />
+                    <span>LinkDoNotle <span class="rg-title-dot" aria-hidden="true">·</span> Replays</span>
+                </h1>
+                <span id="rgLive" class="rg-live" data-state="off" role="status">
+                    <span class="rg-live-dot" aria-hidden="true"></span>
+                    <span id="rgLiveText" class="rg-live-text"></span>
+                </span>
+            </div>
+        </header>
+
+        <main id="rgMain" class="rg-main" tabindex="-1">
+            <!-- Loading -->
+            <section id="rgLoading" class="rg-loading" aria-busy="true" aria-label="Carregando os replays">
+                <div class="rg-grid" aria-hidden="true">
+                    <div class="rg-skel"></div>
+                    <div class="rg-skel"></div>
+                    <div class="rg-skel"></div>
+                </div>
+            </section>
+
+            <!-- Password: people who did not come from the room -->
+            <section id="rgLogin" class="rg-login" hidden>
+                <form id="rgLoginForm" class="rg-login-card" autocomplete="on" novalidate>
+                    <span class="rg-login-icon" aria-hidden="true"
+                        ><svg class="rg-i"><use href="#i-lock" /></svg
+                    ></span>
+                    <h2 class="rg-login-title">Replays da sala</h2>
+                    <p class="rg-login-text">
+                        Digite a senha da sala para ver os replays. Quem está na sala entra direto pelo botão
+                        <strong>Galeria</strong>.
+                    </p>
+                    <label class="rg-field" for="rgPassword">Senha da sala</label>
+                    <input
+                        id="rgPassword"
+                        class="rg-input"
+                        type="password"
+                        name="password"
+                        autocomplete="current-password"
+                        autocapitalize="off"
+                        spellcheck="false"
+                        required
+                        aria-describedby="rgLoginError"
+                    />
+                    <p id="rgLoginError" class="rg-login-error" role="alert"></p>
+                    <button id="rgLoginSubmit" class="rg-btn rg-btn-primary rg-btn-block" type="submit">Entrar</button>
+                </form>
+            </section>
+
+            <!-- The list -->
+            <section id="rgBrowse" hidden>
+                <div class="rg-toolbar">
+                    <div class="rg-seg" role="group" aria-label="Quais replays mostrar">
+                        <button type="button" class="rg-seg-btn" data-scope="all" aria-pressed="true">Todos</button>
+                        <button type="button" class="rg-seg-btn" data-scope="mine" aria-pressed="false">Meus</button>
+                    </div>
+                    <label
+                        class="rg-select"
+                        title="Mostra os replays em que a pessoa compartilhou a tela ou salvou o clipe"
+                    >
+                        <span class="rg-select-label">Pessoa</span>
+                        <select id="rgPerson" class="rg-select-input" aria-label="Filtrar por pessoa">
+                            <option value="">Todas</option>
+                        </select>
+                    </label>
+                    <span id="rgCount" class="rg-count" aria-live="polite"></span>
+                </div>
+
+                <ul id="rgGrid" class="rg-grid" aria-label="Replays"></ul>
+
+                <div id="rgEmpty" class="rg-empty" hidden>
+                    <span class="rg-empty-icon" aria-hidden="true"
+                        ><svg class="rg-i"><use href="#i-film" /></svg
+                    ></span>
+                    <h2 id="rgEmptyTitle" class="rg-empty-title"></h2>
+                    <p id="rgEmptyText" class="rg-empty-text"></p>
+                    <button id="rgEmptyAction" class="rg-btn" type="button" hidden>Limpar filtros</button>
+                </div>
+
+                <div id="rgError" class="rg-empty" hidden>
+                    <span class="rg-empty-icon rg-empty-icon-bad" aria-hidden="true"
+                        ><svg class="rg-i"><use href="#i-alert" /></svg
+                    ></span>
+                    <h2 class="rg-empty-title">Não deu para carregar os replays</h2>
+                    <p class="rg-empty-text">Confira a conexão e tente de novo.</p>
+                    <button id="rgRetry" class="rg-btn rg-btn-primary" type="button">Tentar de novo</button>
+                </div>
+
+                <p id="rgFoot" class="rg-foot"></p>
+            </section>
+
+            <!-- The player -->
+            <section id="rgPlayerView" class="rp" hidden aria-label="Player do replay">
+                <div class="rp-top">
+                    <button id="rpBack" class="rg-btn rg-btn-ghost" type="button">
+                        <svg class="rg-i" aria-hidden="true"><use href="#i-back" /></svg>
+                        <span>Todos os replays</span>
+                    </button>
+                </div>
+
+                <div id="rpStage" class="rp-stage" tabindex="-1">
+                    <div class="rp-view">
+                        <video id="rpVideo" class="rp-video" playsinline preload="metadata"></video>
+                        <div id="rpSpinner" class="rp-spinner" hidden aria-hidden="true"></div>
+                        <button id="rpBig" class="rp-big" type="button" aria-label="Reproduzir">
+                            <svg class="rg-i" aria-hidden="true"><use href="#i-play" /></svg>
+                        </button>
+                        <p id="rpFail" class="rp-fail" role="alert" hidden></p>
+                    </div>
+
+                    <div id="rpControls" class="rp-controls">
+                        <div
+                            id="rpTimeline"
+                            class="rp-timeline"
+                            role="slider"
+                            tabindex="0"
+                            aria-label="Posição no replay"
+                            aria-valuemin="0"
+                            aria-valuemax="0"
+                            aria-valuenow="0"
+                            aria-valuetext="0:00"
+                        >
+                            <div class="rp-track">
+                                <div id="rpBuffered" class="rp-buffered"></div>
+                                <div id="rpPlayed" class="rp-played"></div>
+                            </div>
+                            <div id="rpKnob" class="rp-knob"></div>
+                            <div id="rpHover" class="rp-hover" hidden>0:00</div>
+                        </div>
+                        <div class="rp-row">
+                            <div class="rp-group">
+                                <button
+                                    id="rpPlay"
+                                    class="rp-btn"
+                                    type="button"
+                                    aria-label="Reproduzir"
+                                    title="Reproduzir (Espaço)"
+                                >
+                                    <svg class="rg-i" aria-hidden="true"><use href="#i-play" /></svg>
+                                </button>
+                                <span id="rpTime" class="rp-time" aria-hidden="true">0:00 / 0:00</span>
+                            </div>
+                            <div class="rp-group rp-group-end">
+                                <div class="rp-speed" role="group" aria-label="Velocidade">
+                                    <button type="button" class="rp-speed-btn" data-rate="1" aria-pressed="true">
+                                        1x
+                                    </button>
+                                    <button type="button" class="rp-speed-btn" data-rate="1.5" aria-pressed="false">
+                                        1,5x
+                                    </button>
+                                    <button type="button" class="rp-speed-btn" data-rate="2" aria-pressed="false">
+                                        2x
+                                    </button>
+                                </div>
+                                <div class="rp-tools">
+                                    <div class="rp-volume">
+                                        <button
+                                            id="rpMute"
+                                            class="rp-btn"
+                                            type="button"
+                                            aria-label="Silenciar"
+                                            title="Silenciar (M)"
+                                        >
+                                            <svg class="rg-i" aria-hidden="true"><use href="#i-volume" /></svg>
+                                        </button>
+                                        <input
+                                            id="rpVolume"
+                                            class="rp-range"
+                                            type="range"
+                                            min="0"
+                                            max="1"
+                                            step="0.05"
+                                            value="1"
+                                            aria-label="Volume"
+                                        />
+                                    </div>
+                                    <button
+                                        id="rpPip"
+                                        class="rp-btn"
+                                        type="button"
+                                        aria-label="Imagem sobre imagem"
+                                        title="Imagem sobre imagem"
+                                        hidden
+                                    >
+                                        <svg class="rg-i" aria-hidden="true"><use href="#i-pip" /></svg>
+                                    </button>
+                                    <button
+                                        id="rpFull"
+                                        class="rp-btn"
+                                        type="button"
+                                        aria-label="Tela cheia"
+                                        title="Tela cheia (F)"
+                                    >
+                                        <svg class="rg-i" aria-hidden="true"><use href="#i-expand" /></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rp-info">
+                    <div class="rp-head">
+                        <div class="rp-about">
+                            <h2 id="rpTitle" class="rp-title" tabindex="-1"></h2>
+                            <p id="rpMeta" class="rp-meta"></p>
+                        </div>
+                        <button id="rpDelete" class="rp-del" type="button" hidden>
+                            <svg class="rg-i" aria-hidden="true"><use href="#i-trash" /></svg>
+                            <span>Excluir</span>
+                        </button>
+                    </div>
+                    <div id="rpConfirm" class="rp-confirm" role="alertdialog" aria-label="Excluir este replay?" hidden>
+                        <span class="rp-confirm-text">Excluir este replay para todo mundo?</span>
+                        <button id="rpConfirmYes" class="rg-btn rg-btn-danger" type="button">Excluir</button>
+                        <button id="rpConfirmNo" class="rg-btn" type="button">Cancelar</button>
+                    </div>
+                    <div class="rp-actions">
+                        <a id="rpOriginal" class="rp-dl" href="#" download>
+                            <svg class="rg-i rp-dl-icon" aria-hidden="true"><use href="#i-download" /></svg>
+                            <span class="rp-dl-text">
+                                <span class="rp-dl-label">Baixar original</span>
+                                <span id="rpOriginalNote" class="rp-dl-note">pode começar até ~1 min antes</span>
+                            </span>
+                        </a>
+                        <button id="rpMp4" class="rp-dl rp-dl-mp4" type="button" data-phase="idle">
+                            <span class="rp-dl-fill" aria-hidden="true"></span>
+                            <svg class="rg-i rp-dl-icon" aria-hidden="true"><use href="#i-download" /></svg>
+                            <span class="rp-dl-text">
+                                <span id="rpMp4Label" class="rp-dl-label">Baixar MP4</span>
+                                <span id="rpMp4Note" class="rp-dl-note"></span>
+                            </span>
+                        </button>
+                    </div>
+                    <p class="rp-keys" aria-hidden="true">
+                        <kbd>Espaço</kbd> reproduz · <kbd>←</kbd> <kbd>→</kbd> 5 s · <kbd>F</kbd> tela cheia ·
+                        <kbd>M</kbd> mudo
+                    </p>
+                </div>
+                <p id="rpMp4Status" class="rg-sr" role="status" aria-live="polite"></p>
+            </section>
+        </main>
+
+        <div id="rgToast" class="rg-toast" role="status" aria-live="polite" hidden></div>
+    </body>
+</html>
