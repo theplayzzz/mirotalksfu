@@ -39,8 +39,8 @@ class LocalStorage {
             speaker_volume: 100, // master output volume 0-100
             video_fps: 0, // default 1280x768 30fps
             aspect_ratio: 0, // default (adaptive)
-            screen_optimization: 2, // default motion (2): favor high frame rate for screen and game streaming
-            screen_fps: 1, // default 1920x1080 60fps
+            screen_optimization: 2, // motion: favor frame rate for screen and video sharing
+            screen_fps: 0, // fixed Full HD 60 fps screen sharing
             broadcasting: false, // default false (one to many a/v streaming)
             lobby: false, // default false
             pitch_bar: true, // volume indicator

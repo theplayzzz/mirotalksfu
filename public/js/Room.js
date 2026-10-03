@@ -3353,12 +3353,13 @@ async function toggleScreenSharing() {
     }
     joinRoomWithScreen = !joinRoomWithScreen;
     if (joinRoomWithScreen) {
-        const defaultFrameRate = { ideal: 30 };
-        const selectedValue = getId('videoFps').options[localStorageSettings.screen_fps].value;
-        const customFrameRate = parseInt(selectedValue, 10);
-        const frameRate = selectedValue == 'max' ? defaultFrameRate : customFrameRate;
+        const screenConstraints = {
+            width: { ideal: 1920, max: 1920 },
+            height: { ideal: 1080, max: 1080 },
+            frameRate: { ideal: 60, max: 60 },
+        };
         await navigator.mediaDevices
-            .getDisplayMedia({ audio: true, video: { frameRate: frameRate } })
+            .getDisplayMedia({ audio: true, video: screenConstraints })
             .then((screenStream) => {
                 if (initVideo.classList.contains('mirror')) {
                     initVideo.classList.toggle('mirror');
@@ -4504,9 +4505,10 @@ function loadSettingsFromLocalStorage() {
 
     setSpeakerVolume(localStorageSettings.speaker_volume !== undefined ? localStorageSettings.speaker_volume : 100);
 
-    screenOptimization.selectedIndex = localStorageSettings.screen_optimization;
+    screenOptimization.selectedIndex = 2;
     videoFps.selectedIndex = localStorageSettings.video_fps;
-    screenFps.selectedIndex = localStorageSettings.screen_fps;
+    screenFps.selectedIndex = 0;
+    screenQuality.value = 'fhd';
     BtnAspectRatio.selectedIndex = localStorageSettings.aspect_ratio;
     BtnVideoObjectFit.selectedIndex = localStorageSettings.video_obj_fit;
     BtnVideoControls.selectedIndex = localStorageSettings.video_controls;

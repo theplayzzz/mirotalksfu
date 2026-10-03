@@ -2397,7 +2397,7 @@ class RoomClient {
                 params.encodings = encodings;
                 params.codecs = codec;
                 params.codecOptions = {
-                    videoGoogleStartBitrate: 1000,
+                    videoGoogleStartBitrate: 3000,
                 };
             }
 
@@ -2912,13 +2912,13 @@ class RoomClient {
 
         const resolutionMap = this.getResolutionMap();
 
-        // Default to HD
-        const [width, height] = resolutionMap[videoQuality.value] || [1280, 720];
+        // Default to Full HD
+        const [width, height] = resolutionMap[videoQuality.value] || [1920, 1080];
 
         const constraints = {
             width: { ideal: width },
             height: { ideal: height },
-            frameRate: { ideal: customFrameRate || 30 },
+            frameRate: { ideal: customFrameRate || 60, max: 60 },
         };
 
         if (deviceId) {
@@ -2932,23 +2932,15 @@ class RoomClient {
     }
 
     getScreenConstraints() {
-        const selectedValue = this.getSelectedIndexValue(screenFps);
-        const customFrameRate = parseInt(selectedValue, 10);
-
-        const screenResolutionMap = this.getResolutionMap();
-
-        // Default to Full HD
-        const [width, height] = screenResolutionMap[screenQuality.value] || [1920, 1080];
-
-        const videoConstraints = {
-            width: { ideal: width },
-            height: { ideal: height },
-            frameRate: { ideal: customFrameRate || 30 },
-        };
-
+        // Target 1080p at 60 fps. The browser may deliver less if the shared
+        // source or device cannot provide it; avoid exact/min constraints.
         return {
             audio: true,
-            video: videoConstraints,
+            video: {
+                width: { ideal: 1920, max: 1920 },
+                height: { ideal: 1080, max: 1080 },
+                frameRate: { ideal: 60, max: 60 },
+            },
             windowAudio: 'window',
             systemAudio: 'include',
         };
@@ -3002,7 +2994,7 @@ class RoomClient {
                 console.log('WEBCAM ENCODING: VP9 or AV1 with SVC');
                 encodings = [
                     {
-                        maxBitrate: 5000000,
+                        maxBitrate: 8000000,
                         scalabilityMode: this.webcamScalabilityMode || 'L3T3_KEY',
                     },
                 ];
@@ -3011,7 +3003,7 @@ class RoomClient {
                 encodings = [
                     {
                         scaleResolutionDownBy: 1,
-                        maxBitrate: 5000000,
+                        maxBitrate: 8000000,
                         scalabilityMode: this.webcamScalabilityMode || 'L1T3',
                     },
                 ];
@@ -3082,7 +3074,7 @@ class RoomClient {
                 console.log('SCREEN ENCODING: VP9 or AV1 with SVC');
                 encodings = [
                     {
-                        maxBitrate: 5000000,
+                        maxBitrate: 12000000,
                         scalabilityMode: this.sharingScalabilityMode || 'L3T3',
                         dtx: true,
                     },
@@ -3092,7 +3084,7 @@ class RoomClient {
                 encodings = [
                     {
                         scaleResolutionDownBy: 1,
-                        maxBitrate: 5000000,
+                        maxBitrate: 12000000,
                         scalabilityMode: this.sharingScalabilityMode || 'L1T3',
                         dtx: true,
                     },
@@ -3119,7 +3111,7 @@ class RoomClient {
             encodings = [
                 {
                     scaleResolutionDownBy: 1,
-                    maxBitrate: 5000000,
+                    maxBitrate: 12000000,
                     dtx: true,
                 },
             ];
