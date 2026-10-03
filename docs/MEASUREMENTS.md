@@ -127,6 +127,34 @@ real viewers (`ops/health-summary.py`).
 | people watching (health meter, 29-44 fps received at 1830-1920 px) | loss 0-0.3%, 0-3 freezes in 2-6 min of reports, jitter buffer 35-115 ms; the screen that was being sent ran at 31.8 fps and ~11 Mbps (encoder libvpx, not limited by cpu or bandwidth) |
 | noise in the log | 311 "aborting with incomplete response" in Caddy (and as many `ECONNRESET` warnings in the SFU) right when the first clip was opened: the browser's video player cancelling its own range requests (`H3_REQUEST_CANCELLED`); two per minute afterwards |
 
+## The gallery player: why the clip "never loaded", 2026-10-03 (night of the rollout)
+
+The first people to open a clip in production waited a long time. `tests/e2e/replay-player-load.mjs` (a real Chrome
+speaking HTTP/3 to the development instance, a PC in Brazil, round trip ~200 ms, a clip of 134 MB = 97.7 s of 1080p60
+VP8: 60 s asked plus a **37.7 s lead-in**, the video before the part that was asked for that has to start at a key
+frame) found it, and the numbers of the clip that production made first agree: its key frames were at 0, 34.7, 38.4 and
+68.4 s, so a GOP of a real screen is ~30 s (not the 1-5 s of a recorder that controls its encoder).
+
+| the player | first moving picture | requests for the file | MP4 asked for |
+|---|---|---|---|
+| first version: hid the lead-in by seeking past it, PC idle | **7.3 s** (1.8 s for the metadata, 6.1 s for the seek) | 1 | 0 |
+| first version, PC busy (12 CPU loops on 12 threads, like a PC that runs a game) | **34.5 s** (33.6 s of seek), then it stuttered | 1 | 0 |
+| now: plays from the first frame, PC idle | **0.8 s** | 1 | 0 |
+| now: plays from the first frame, PC busy | **0.7 s**, and plays in real time (6.4 s in 6 s) | 2 | 0 |
+
+The seek was never the network (the file came in one request, 54-82 MB in the first 7-40 s): a browser can show a
+frame only after decoding the key frame and every frame up to it, 2,260 frames of 1080p here, so the cost was the
+decoder's, and the busier the PC the longer. The conversion to MP4 was never started by the player: only the click on
+"Baixar MP4" posts to `/replay/api/clips/:id/mp4` (the page does it from nowhere else; a UI test now fails if watching,
+seeking, pausing or changing the speed asks for it). In production the person who opened a clip could see "Convertendo
+para MP4..." because somebody else, who had waited for the same load, clicked the button: the progress is sent to
+everyone who has that clip open.
+
+What is left: **skipping inside a clip still decodes from the key frame before the target**, up to a GOP (~30 s of
+1080p60) of frames, so a jump costs from a few seconds on a fast PC to many on a busy one. Only shorter GOPs fix it, and
+the only way to get them is to ask the sender for key frames more often (`RECORDER_KEYFRAME_SAFETY_S`, off): each one is
+~146 KB at 1080p and goes to the people watching live too.
+
 ## What a viewer can be spared: sizes do not work, frame rates do, 2026-10-03
 
 The idea of selective reception is that a thumbnail or a hidden tile should not cost a viewer (and the server) the

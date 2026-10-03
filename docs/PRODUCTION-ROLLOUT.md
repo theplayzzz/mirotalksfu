@@ -18,7 +18,24 @@ ligados de uma vez**, a pedido do dono ("pode executar tudo agora jogando para p
 | Caddy | não foi tocado; `reverse_proxy 127.0.0.1:3012` continua servindo `/replay/` sem regra nova |
 | Primeiros minutos | ver "Produção, os primeiros minutos" em `docs/MEASUREMENTS.md`: primeiro replay salvo por um amigo (clipe pronto em 0,87 s, MP4 em 90 s), 0 pacotes perdidos no gravador, espectadores com 29-44 fps e perda ≤ 0,3% |
 
-## Para desfazer — IMPORTANTE: não é o `ops/rollback.sh`
+## Segunda subida, 21:54 UTC: o que a galera achou na primeira hora
+
+Na primeira hora o dono reportou duas coisas. **(1)** "quando a gente para de olhar a janela, as transmissões pausam e só
+voltam depois de um tempo": era a recepção seletiva pausando de propósito o vídeo de aba escondida; foi tirado (o cliente
+nunca pausa, o servidor ignora o pedido de pausa mesmo de uma aba que ainda tenha o JavaScript antigo, só
+`SELECTIVE_PAUSE_HIDDEN=true` o aceitaria). **(2)** "o replay fica muito tempo tentando carregar" (e parecia converter
+para MP4 sozinho): o player pulava o começo do arquivo (o trecho antes do que foi pedido, até um GOP de ~30 s) e o
+navegador tinha que decodificar tudo isso antes da primeira imagem: 7,3 s num PC livre, 34,5 s num PC ocupado. Agora toca
+do primeiro quadro (0,8 s e 0,7 s). O MP4 só converte no clique em "Baixar MP4"; o botão agora diz isso e a estimativa
+passou de 35 s para os 1,5 s por segundo medidos. Números e método em `docs/MEASUREMENTS.md`.
+
+Subida: imagem `ghcr.io/theplayzzz/mirotalksfu@sha256:2441bb2aa645…` (a `main` no commit `b707d0a9`), por
+`./ops/deploy.sh prod main --force`; **queda de 11,4 s** (o contêiner antigo parou às 21:54:36,5 e o novo ficou saudável às
+21:54:47,9). Quem estava compartilhando precisou recomeçar a tela e os buffers de replay do momento (até 5 min por tela) foram
+descartados, como em qualquer reinício. O desfazer desta subida é o `./ops/rollback.sh prod` (volta ao compose guardado,
+`compose.yaml.pre-deploy-20261003T215412Z`, que aponta para a imagem `sha256:0947a362…` da primeira noite).
+
+## Para desfazer a primeira troca — IMPORTANTE: não é o `ops/rollback.sh`
 
 Esta primeira troca mudou o próprio `compose.yaml`. O `ops/rollback.sh prod` volta ao compose de *antes do último deploy*,
 que nesta primeira vez já era o compose novo. O caminho de volta ao sistema de 01/10 (contêiner antigo, `config.js`
@@ -79,4 +96,7 @@ ao compose anterior.
   verdade (antes era ignorado por um erro de nome).
 - Cada tela mostra um botão de replay (relógio, ao lado do alfinete); a galeria está em `/replay/` (`/replays` redireciona).
   Nada do replay faz som.
-- Miniaturas recebem a tela a 15 fps e telas escondidas ficam pausadas; a tela fixada continua em qualidade cheia.
+- Miniaturas recebem a tela a 15 fps (tiles médios a 30 fps); a tela fixada e as grandes continuam com todos os quadros.
+  **Nada é pausado** por janela escondida, aba em segundo plano ou tile fora de vista (era assim na primeira noite e foi tirado).
+- O player da galeria toca do primeiro quadro do arquivo (que pode começar até ~30 s antes do que foi pedido) e marca na
+  linha do tempo onde o pedido começa; o MP4 só converte quando alguém clica em "Baixar MP4".

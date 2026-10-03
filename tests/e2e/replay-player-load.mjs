@@ -179,6 +179,24 @@ try {
     const after = await state();
     note(`6 s later: ${JSON.stringify(after)}`);
 
+    // what skipping into the middle costs: the browser decodes from the key frame before the target (a GOP of a real
+    // screen is ~30 s), so this is the part that still depends on how often the sender makes key frames
+    let seekS = null;
+    if (process.env.SEEK !== '0' && after && after.dur > 20) {
+        const target = after.dur * 0.5;
+        const askedAt = Date.now();
+        await gallery.ev(`(() => { document.getElementById('rpVideo').currentTime = ${target}; return true; })()`);
+        for (let i = 0; i < 480; i++) {
+            const s = await state();
+            if (s && s.ct >= target + 0.2 && s.rs >= 3 && !s.paused) {
+                seekS = (Date.now() - askedAt) / 1000;
+                break;
+            }
+            await sleep(250);
+        }
+        note(`skipping to ${target.toFixed(0)} s of ${after.dur.toFixed(0)}: ${seekS === null ? 'NEVER (2 minutes)' : seekS.toFixed(1) + ' s until it plays there'}`);
+    }
+
     const events = await gallery.ev('window.__video && window.__video.events');
     console.log('\nvideo events (ms since page start):');
     for (const e of events || []) console.log(`  ${String(e.t).padStart(6)}  ${e.name.padEnd(15)} ct=${String(e.ct).padEnd(7)} rs=${e.rs} ns=${e.ns} buffered=${JSON.stringify(e.buffered)}`);
