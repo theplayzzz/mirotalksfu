@@ -49,6 +49,11 @@ compose file back if anything fails. `deploy-history.log` in the instance direct
 Production protection: `docker compose up` silently swaps the image when the compose file names another one than the
 running container. `deploy.sh prod` refuses to run in that state unless `--accept-drift` is given.
 
+**The first change of production** (a new compose file with the recorder container, a new image, and a rollback that
+`deploy.sh` cannot do on its own because the compose file changes too) has its own step by step in
+`docs/PRODUCTION-ROLLOUT.md`. Nothing in it has been done yet; `ops/compose.prod.yaml` and `ops/setup-prod.sh` are
+ready for it. `ops/deploy.sh prod main --check` can be run at any time: it only reports.
+
 ## Test room (development only)
 
 The test room `teste` of the development instance is entered with a token that expires by itself, so automated tests

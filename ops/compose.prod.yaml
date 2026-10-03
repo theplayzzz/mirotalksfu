@@ -1,11 +1,15 @@
 # Production instance. On the server it lives at /home/debian/mirotalksfu/compose.yaml and is updated with
-# ops/deploy.sh, which replaces the image line below with the digest it deploys.
+# ops/deploy.sh, which replaces the image lines below with the digest it deploys. NOTHING IN THIS FILE HAS BEEN
+# DEPLOYED YET: read docs/PRODUCTION-ROLLOUT.md first.
 #
 # Compared with the file that was in use until 2026-10:
 #   - the image comes from the repository (ghcr.io), built by CI from the main branch;
 #   - config.js is no longer mounted: the image carries it (the bitrate settings it used to override are in
 #     app/src/config.template.js now);
-#   - production gets a high CPU weight, so the development instance and the recorder never compete with it.
+#   - production gets a high CPU weight, so the development instance and the recorder never compete with it;
+#   - every new feature has a switch in features.env (all of them off when the file only has comments: the room then
+#     behaves exactly as it does today), and the replay recorder is here as a second container that does nothing until
+#     REPLAY_ENABLED=true is put in features.env.
 # Everything else (ports, memory, environment files) is the same.
 
 services:
@@ -23,8 +27,26 @@ services:
       - ./.env
       - /home/debian/.config/mirotalksfu-prod/room-access.env
       - /home/debian/.config/mirotalksfu-prod/livepix.env
+      # the switches of the new features (health meter, key frame limit, selective reception, replay): see features.env
+      - /home/debian/.config/mirotalksfu-prod/features.env
+      # the secret the SFU and the recorder share
+      - /home/debian/.config/mirotalksfu-prod/replay.env
+    environment:
+      # where the recorder is and where its clips are; REPLAY_ENABLED itself is a switch in features.env
+      REPLAY_RECORDER_URL: "http://mirotalk-replay:7000"
+      REPLAY_DATA_DIR: /data/replays
+      REPLAY_PORT_MIN: "52000"
+      REPLAY_PORT_MAX: "52999"
+      REPLAY_MAX_SECONDS: "300"
+      HEALTH_DIR: /data/health
     volumes:
       - ./.env:/src/.env:ro
+      - /home/debian/mirotalksfu/data:/data
+      # the SFU only reads the clips (the recorder writes them): a mistake in a route cannot change or delete one
+      - /home/debian/mirotalksfu/data/replays:/data/replays:ro
+    networks:
+      - default
+      - replay-net
     cpu_shares: 2048
     mem_limit: 8g
     mem_reservation: 1g
@@ -44,3 +66,58 @@ services:
       timeout: 8s
       retries: 5
       start_period: 45s
+
+  # The replay recorder: the same image, another command. It listens only on the private network it shares with the
+  # SFU, keeps the last minutes of the screens on disk (/data/replays), builds the clips and converts them to MP4.
+  # It has its own core (5, away from the network card's interrupts on 0-1) and a low weight: when the machine is
+  # busy the room wins. With REPLAY_ENABLED off in features.env nothing is sent to it and it sits idle.
+  mirotalk-replay:
+    image: ghcr.io/theplayzzz/mirotalksfu:main
+    container_name: mirotalk-replay
+    hostname: mirotalk-replay
+    command: ["node", "app/src/replay/Recorder.js"]
+    user: "1000:1000"
+    restart: unless-stopped
+    env_file:
+      - /home/debian/.config/mirotalksfu-prod/replay.env
+    environment:
+      REPLAY_LISTEN_PORT: "7000"
+      REPLAY_DATA_DIR: /data/replays
+      REPLAY_SFU_EVENTS_URL: "http://mirotalksfu:3010/internal/replay/events"
+      REPLAY_BUFFER_SECONDS: "300"
+      REPLAY_LEAD_IN_SECONDS: "90"
+      REPLAY_KEEP_AFTER_END_S: "120"
+      REPLAY_RETENTION_DAYS: "7"
+      REPLAY_QUOTA_GB: "20"
+      REPLAY_MIN_FREE_GB: "10"
+      REPLAY_MP4_HEIGHT: "720"
+      REPLAY_FFMPEG_THREADS: "2"
+    volumes:
+      - /home/debian/mirotalksfu/data/replays:/data/replays
+    networks:
+      - replay-net
+    cpuset: "5"
+    cpu_shares: 256
+    mem_limit: 2g
+    mem_reservation: 256m
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 25m
+        max-file: "3"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "node -e \"fetch('http://127.0.0.1:7000/v1/health', {headers:{'x-replay-secret':process.env.REPLAY_INTERNAL_SECRET}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 30s
+
+networks:
+  # private: no way out, and nothing from outside gets in
+  replay-net:
+    internal: true
