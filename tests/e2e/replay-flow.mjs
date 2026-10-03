@@ -342,7 +342,6 @@ try {
     note(`MP4 took ${Math.round((Date.now() - mp4Started) / 1000)} s; ${progress.length} progress events: ${JSON.stringify(progress.slice(0, 12))}`);
     check('the MP4 is ready', mp4Done.type === 'mp4.ready', JSON.stringify(mp4Done.data));
     check('progress was reported, between 0 and 1, never going back', progress.length >= 1 && progress.every((p, i) => p >= 0 && p <= 1 && (i === 0 || p >= progress[i - 1])), JSON.stringify(progress));
-    check('the stream also announced the clip', events.some((e) => e.type === 'clip.created') || true);
     const mp4File = path.join(OUT_DIR, 'clip.mp4');
     const mp4Got = await download(`${origin}/replay/media/${clip.id}/clip.mp4?download=1`, mp4File, auth);
     const mp4Info = probeJson(mp4File);

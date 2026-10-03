@@ -35,8 +35,8 @@ const peerOf = (req) => String(req.get('x-replay-peer') || '').slice(0, 200);
 function safeName(text) {
     const folded = String(text || '')
         .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .replace(/[^A-Za-z0-9._-]+/g, '-')
+        .replace(/\p{M}/gu, '') // the accents that NFD split off the letters
+        .replace(/[^A-Za-z0-9_-]+/g, '-') // no dots either: a name made of ".." would be odd in a header
         .replace(/^-+|-+$/g, '')
         .slice(0, 40);
     return folded || 'replay';
@@ -209,7 +209,10 @@ function createReplayRouter({ hub, access, client, singleRoom, pageFile, dataDir
 
         res.sendFile(file, { root: directory, dotfiles: 'deny', acceptRanges: true, cacheControl: false, headers }, (error) => {
             if (!error || res.headersSent) return;
-            res.status(error.status === 404 || error.code === 'ENOENT' ? 404 : 500).json({ error: 'Not found' });
+            // a missing file is 404; a Range past the end is 416 (not a server error); anything else is ours
+            const missing = error.status === 404 || error.code === 'ENOENT';
+            const status = missing ? 404 : error.status >= 400 && error.status < 500 ? error.status : 500;
+            res.status(status).json({ error: missing ? 'Not found' : status === 416 ? 'Range not satisfiable' : 'Could not read the file' });
         });
     });
 
