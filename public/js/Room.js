@@ -1385,6 +1385,7 @@ async function whoAreYou() {
         const joinBackground = getId('joinBackground');
         const backgroundVideo = getId('joinBackgroundVideo');
         joinBackground?.classList.remove('active');
+        window.LivePixPanel?.hide();
         if (backgroundVideo) {
             backgroundVideo.pause();
             backgroundVideo.removeAttribute('src');
@@ -1419,6 +1420,7 @@ async function whoAreYou() {
             passwordInput.value = room_password || '';
             if (room_password_required) passwordInput.placeholder = 'Room password';
             showMobileAudioGuidance();
+            window.LivePixPanel?.show(Swal.getPopup());
             nameInput.focus();
         },
         preConfirm: () => {

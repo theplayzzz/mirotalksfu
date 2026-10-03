@@ -107,6 +107,8 @@ const swaggerDocument = yaml.load(fs.readFileSync(path.join(__dirname, '/../api/
 const Sentry = require('@sentry/node');
 const Discord = require('./Discord');
 const Mattermost = require('./Mattermost');
+const LivePix = require('./LivePix');
+const livePix = new LivePix();
 const restrictAccessByIP = require('./middleware/IpWhitelist');
 const { applyEmbedHeaders, embedAllowedOrigins, embedCsp } = require('./middleware/EmbedHeaders');
 const packageJson = require('../../package.json');
@@ -879,6 +881,19 @@ function startServer() {
     // UI themes configuration
     app.get('/themes', (req, res) => {
         res.status(200).json({ message: config?.ui?.themes ? config.ui.themes : false });
+    });
+
+    // LivePix donations summary for the join screen
+    livePix.start();
+    app.get('/livepix/summary', (req, res) => {
+        res.set('Cache-Control', 'no-store').json(livePix.getSummary());
+    });
+    // Real-time updates for the join screen (Server-Sent Events)
+    app.get('/livepix/stream', (req, res) => livePix.subscribe(req, res));
+    // LivePix notification URL: payload only has ids, so it just triggers a re-sync
+    app.post('/livepix/webhook', (req, res) => {
+        livePix.handleWebhook(req.body);
+        res.sendStatus(200);
     });
 
     // main page
