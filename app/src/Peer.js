@@ -4,6 +4,11 @@ const { parseScalabilityMode } = require('mediasoup');
 const Logger = require('./Logger');
 const log = new Logger('Peer');
 
+// Minimum time (ms) between two key frame requests to a video sender, 0 = mediasoup's default (no limit).
+// Every viewer who joins, or loses packets, makes the sender produce a full frame, which is several times
+// bigger than a normal one; limiting the rate keeps one unstable viewer from making everyone else pay for it.
+const KEYFRAME_REQUEST_DELAY_MS = Math.min(5000, Math.max(0, parseInt(process.env.KEYFRAME_REQUEST_DELAY_MS, 10) || 0));
+
 module.exports = class Peer {
     constructor(socket_id, data) {
         const { peer_info } = data;
@@ -197,6 +202,11 @@ module.exports = class Peer {
             producer = await producerTransport.produce({
                 kind: producer_kind,
                 rtpParameters: producer_rtpParameters,
+                // Video only: minimum time between two key frame requests to the sender. The first request goes out
+                // at once, later ones inside the window are merged. 0 (default) keeps mediasoup's behaviour.
+                ...(producer_kind === 'video' && KEYFRAME_REQUEST_DELAY_MS > 0
+                    ? { keyFrameRequestDelay: KEYFRAME_REQUEST_DELAY_MS }
+                    : {}),
             });
 
             this.addProducer(producer.id, producer);
@@ -439,6 +449,52 @@ module.exports = class Peer {
             params: this.getConsumerParams(consumer),
             reused: false,
         };
+    }
+
+    /*
+     * What a viewer wants from one of its video consumers, decided by the browser from what is on its screen
+     * (public/js/ScreenQuality.js): which layer, how important it is when the network is short, and whether the
+     * video is paused because nobody is looking at it. Audio is never touched. Returns what was applied.
+     */
+    async setConsumerPreferences(consumer_id, preferences = {}) {
+        const { spatialLayer, temporalLayer, priority, paused } = preferences;
+        const consumer = typeof consumer_id === 'string' ? this.getConsumer(consumer_id) : null;
+
+        if (!consumer || consumer.closed) {
+            const error = new Error(`Consumer ${consumer_id} not found`);
+            error.code = 'CONSUMER_NOT_FOUND';
+            throw error;
+        }
+        if (consumer.kind !== 'video') {
+            const error = new Error('Only video consumers have preferences');
+            error.code = 'NOT_VIDEO';
+            throw error;
+        }
+
+        const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+        const applied = {};
+
+        if (['simulcast', 'svc'].includes(consumer.type) && (Number.isInteger(spatialLayer) || Number.isInteger(temporalLayer))) {
+            const { spatialLayers, temporalLayers } = parseScalabilityMode(consumer.rtpParameters.encodings[0].scalabilityMode);
+            const spatial = Number.isInteger(spatialLayer) ? clamp(spatialLayer, 0, spatialLayers - 1) : spatialLayers - 1;
+            const temporal = Number.isInteger(temporalLayer) ? clamp(temporalLayer, 0, temporalLayers - 1) : temporalLayers - 1;
+            await consumer.setPreferredLayers({ spatialLayer: spatial, temporalLayer: temporal });
+            applied.spatialLayer = spatial;
+            applied.temporalLayer = temporal;
+        }
+
+        if (Number.isInteger(priority)) {
+            applied.priority = clamp(priority, 1, 255);
+            await consumer.setPriority(applied.priority);
+        }
+
+        if (typeof paused === 'boolean' && paused !== consumer.paused) {
+            if (paused) await consumer.pause();
+            else await consumer.resume();
+        }
+        applied.paused = consumer.paused;
+
+        return applied;
     }
 
     getConsumerParams(consumer) {

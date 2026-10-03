@@ -1852,6 +1852,20 @@ module.exports = {
                     },
                 },
 
+                // H.264 Constrained Baseline level 4.2: the level that covers 1920x1080 at 60 fps (3.1 above only
+                // covers 720p30), so a hardware encoder is not held back to a smaller size or lower frame rate
+                {
+                    kind: 'video',
+                    mimeType: 'video/h264',
+                    clockRate: 90000,
+                    parameters: {
+                        'packetization-mode': 1,
+                        'profile-level-id': '42e02a', // Baseline 4.2
+                        'level-asymmetry-allowed': 1,
+                        'x-google-start-bitrate': 1000,
+                    },
+                },
+
                 // H.264 Main profile (better compression than Baseline)
                 {
                     kind: 'video',
@@ -1986,7 +2000,7 @@ module.exports = {
              */
             initialAvailableOutgoingBitrate: 10000000, // 10 Mbps starting estimate for Full HD
             minimumAvailableOutgoingBitrate: 1000000, // 1 Mbps minimum guaranteed
-            maxIncomingBitrate: 15000000, // 15 Mbps ceiling per producer
+            maxIncomingBitrate: 20000000, // 20 Mbps ceiling for everything one person sends (the whole send transport: screen layers, camera and audio)
 
             /**
              * Data Channel Settings (mediasoup 3.20.0+)

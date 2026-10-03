@@ -109,6 +109,17 @@ const Discord = require('./Discord');
 const Mattermost = require('./Mattermost');
 const LivePix = require('./LivePix');
 const livePix = new LivePix();
+const HealthMeter = require('./HealthMeter');
+const healthMeter = new HealthMeter();
+
+// Screen shares can be sent in 1-3 simulcast layers (1/4, 1/2 and full size) so each viewer receives only the
+// quality it can show; with SELECTIVE_RECEPTION the viewers' browsers choose the layer of every screen from the
+// size of its tile and pause the video of the ones nobody is looking at (public/js/ScreenQuality.js).
+const screenLayers = Math.min(3, Math.max(1, parseInt(process.env.SCREEN_SIMULCAST_LAYERS, 10) || 1));
+const selectiveReception = process.env.SELECTIVE_RECEPTION === 'true';
+// Codec of the screens: 'vp8' (default), 'h264', or 'auto' = H.264 for the people whose browser encodes it in
+// hardware (lighter on their PC, and the replay clip needs no conversion) and VP8 for everybody else.
+const screenCodec = ['vp8', 'h264', 'auto'].includes(process.env.SCREEN_CODEC) ? process.env.SCREEN_CODEC : 'vp8';
 const restrictAccessByIP = require('./middleware/IpWhitelist');
 const { applyEmbedHeaders, embedAllowedOrigins, embedCsp } = require('./middleware/EmbedHeaders');
 const packageJson = require('../../package.json');
@@ -508,6 +519,7 @@ const views = {
     notFound: path.join(__dirname, '../../', 'public/views/404.html'),
     permission: path.join(__dirname, '../../', 'public/views/permission.html'),
     privacy: path.join(__dirname, '../../', 'public/views/privacy.html'),
+    replay: path.join(__dirname, '../../', 'public/views/Replay.html'),
     room: path.join(__dirname, '../../', 'public/views/Room.html'),
     rtmpStreamer: path.join(__dirname, '../../', 'public/views/RtmpStreamer.html'),
     whoAreYou: path.join(__dirname, '../../', 'public/views/whoAreYou.html'),
@@ -683,6 +695,16 @@ function startServer() {
         next();
     });
     */
+
+    // Replay: the last minutes of a shared screen as a clip (app/src/replay, docs/REPLAY.md). null when REPLAY_ENABLED is off.
+    const replay = require('./replay').create({
+        io,
+        singleRoom,
+        jwtKey: jwtCfg.JWT_KEY,
+        getRoom: (roomId) => roomList.get(roomId),
+        pageFile: views.replay,
+        log,
+    });
 
     // Mattermost
     const mattermost = new Mattermost(app);
@@ -870,6 +892,9 @@ function startServer() {
         res.status(200).json({
             message: config?.ui?.buttons || false,
             singleRoom: singleRoom.enabled ? { roomId: singleRoom.roomId } : false,
+            healthMeter: healthMeter.enabled ? { enabled: true, intervalS: healthMeter.intervalS } : false,
+            screen: { layers: screenLayers, selectiveReception, codec: screenCodec },
+            replay: replay ? replay.publicConfig() : { enabled: false },
         });
     });
 
@@ -885,6 +910,7 @@ function startServer() {
 
     // LivePix donations summary for the join screen
     livePix.start();
+    healthMeter.start();
     app.get('/livepix/summary', (req, res) => {
         res.set('Cache-Control', 'no-store').json(livePix.getSummary());
     });
@@ -895,6 +921,41 @@ function startServer() {
         livePix.handleWebhook(req.body);
         res.sendStatus(200);
     });
+
+    // Replay gallery and recorder events (app/src/replay/ReplayRoutes.js)
+    if (replay) {
+        // the page's assets are relative (../css), so it has to be served with the trailing slash
+        app.get('/replay', (req, res, next) => {
+            if (req.path.endsWith('/')) return next();
+            res.redirect('/replay/' + req.url.slice('/replay'.length));
+        });
+        app.get('/replays', (req, res) => res.redirect('/replay/'));
+        app.use('/replay', replay.router);
+        app.post('/internal/replay/events', replay.internalEvents);
+        replay
+            .start({
+                mediasoup,
+                mediaCodecs: config.mediasoup.router.mediaCodecs,
+                workerSettings: config.mediasoup.worker,
+                roomWorkers: () => workers,
+            })
+            .catch((error) => log.error('Replay could not start', error.message));
+    }
+
+    // Development only: measures what the room costs the server with many virtual viewers (see DevLoad.js)
+    if (process.env.APP_ENV === 'dev' && process.env.DEV_LOAD_ENABLED === 'true' && singleRoom.testRoomId) {
+        app.post('/dev/load', async (req, res) => {
+            const token = String(req.headers.authorization || '').replace(/^Bearer /, '');
+            if (!singleRoom.matches(token, singleRoom.testRoomId)) return res.status(401).json({ error: 'Invalid token' });
+            const room = roomList.get(singleRoom.testRoomId);
+            if (!room) return res.status(404).json({ error: 'The test room is empty' });
+            try {
+                res.json(await require('./DevLoad').runLoad(room, req.body || {}));
+            } catch (error) {
+                res.status(500).json({ error: error.message });
+            }
+        });
+    }
 
     // main page
     app.get('/', OIDCAuth, (req, res) => {
@@ -1093,7 +1154,7 @@ function startServer() {
             const { room, roomPassword, name, audio, video, screen, hide, notify, chat, duration, token, isPresenter } =
                 checkXSS(req.query);
 
-            if (singleRoom.enabled && room !== singleRoom.roomId) return res.redirect('/join/' + singleRoom.roomId);
+            if (singleRoom.enabled && !singleRoom.allows(room)) return res.redirect('/join/' + singleRoom.roomId);
 
             if (!room) {
                 log.warn('/join/params room empty', room);
@@ -1185,7 +1246,7 @@ function startServer() {
     app.get('/join/:roomId', async (req, res) => {
         //
         const { roomId } = checkXSS(req.params);
-        if (singleRoom.enabled && roomId !== singleRoom.roomId) return res.redirect('/join/' + singleRoom.roomId);
+        if (singleRoom.enabled && !singleRoom.allows(roomId)) return res.redirect('/join/' + singleRoom.roomId);
 
         if (!roomId) {
             log.warn('/join/:roomId empty', roomId);
@@ -1245,7 +1306,7 @@ function startServer() {
 
     // handle who are you: Presenter or Guest
     app.get('/whoAreYou/:roomId', (req, res) => {
-        if (singleRoom.enabled && req.params.roomId !== singleRoom.roomId) return res.redirect('/join/' + singleRoom.roomId);
+        if (singleRoom.enabled && !singleRoom.allows(req.params.roomId)) return res.redirect('/join/' + singleRoom.roomId);
         htmlInjector.injectHtml(views.whoAreYou, res);
     });
 
@@ -2409,7 +2470,7 @@ function startServer() {
                     retryable: false,
                 });
             }
-            if (singleRoom.enabled && !singleRoom.matches(room_password)) {
+            if (singleRoom.enabled && !singleRoom.matches(room_password, room_id)) {
                 return callback({
                     error: 'Incorrect room password',
                     code: 'INVALID_ROOM_PASSWORD',
@@ -2437,10 +2498,10 @@ function startServer() {
 
         socket.on('join', async (dataObject, cb) => {
             if (singleRoom.enabled) {
-                if (!singleRoom.allows(socket.room_id) || dataObject?.room_id !== singleRoom.roomId) {
+                if (!singleRoom.allows(socket.room_id) || dataObject?.room_id !== socket.room_id) {
                     return cb('notAllowed');
                 }
-                if (!singleRoom.matches(dataObject?.room_password)) return cb('invalidPassword');
+                if (!singleRoom.matches(dataObject?.room_password, socket.room_id)) return cb('invalidPassword');
             }
             if (!roomExists(socket)) {
                 return cb({
@@ -2724,6 +2785,9 @@ function startServer() {
                 roomJson.rtmpStreamToken = createRtmpStreamToken(room.id);
             }
 
+            // Replay: the ticket that opens the gallery, what is being kept, and the person's own requests
+            replay?.hub.attachSocket(socket, room, peer);
+
             cb(roomJson);
         });
 
@@ -2741,6 +2805,10 @@ function startServer() {
             const peerInfo = getPeerInfo(peer);
 
             log.debug('Request: getRouterRtpCapabilities', peerInfo);
+
+            // Replay: a person whose join was answered "locked" (the single room's way in) or who waited in the lobby
+            // does not get the room from the join, so this is where they are known to be in. Once per socket.
+            replay?.hub.attachSocket(socket, room, peer);
 
             try {
                 const rtpCapabilities = room.getRtpCapabilities();
@@ -2893,6 +2961,9 @@ function startServer() {
                     ]);
                 }
 
+                // Replay records screens (and the audio of a screen); it never holds up the live path
+                replay?.hub.onProduce({ room, peer, producerId: producer_id, kind, appData });
+
                 callback({ producer_id });
             } catch (err) {
                 log.warn('Producer transport error', {
@@ -2922,6 +2993,19 @@ function startServer() {
 
             try {
                 const params = await room.consume(socket.id, consumerTransportId, producerId, rtpCapabilities, type);
+
+                // Tell the viewer which layer it is really getting (see ScreenQuality.js)
+                const consumer = params ? peer.getConsumer(params.id) : null;
+                if (consumer && ['simulcast', 'svc'].includes(consumer.type) && !consumer.appData.layersNotify) {
+                    consumer.appData.layersNotify = true;
+                    consumer.on('layerschange', (layers) => {
+                        socket.emit('consumerLayers', {
+                            consumer_id: consumer.id,
+                            spatialLayer: layers ? layers.spatialLayer : null,
+                            temporalLayer: layers ? layers.temporalLayer : null,
+                        });
+                    });
+                }
 
                 log.debug('Consuming', {
                     producer_type: type,
@@ -3198,6 +3282,29 @@ function startServer() {
             }
         });
 
+        // A viewer chooses the layer, the priority and the pause of its video consumers from what is on its screen
+        socket.on('setConsumerPreferences', async (data, callback) => {
+            if (!roomExists(socket)) return callback?.({ error: 'Room not found' });
+
+            const peer = getPeer(socket);
+
+            if (!peer || isPeerInLobby(peer)) return callback?.({ error: 'Not allowed' });
+
+            const now = Date.now();
+            if (now - (socket.preferencesWindowStart || 0) > 1000) {
+                socket.preferencesWindowStart = now;
+                socket.preferencesInWindow = 0;
+            }
+            if (++socket.preferencesInWindow > 40) return callback?.({ error: 'Too many requests', code: 'RATE_LIMIT' });
+
+            try {
+                const applied = await peer.setConsumerPreferences(data?.consumer_id, data);
+                callback?.({ ok: true, ...applied });
+            } catch (error) {
+                callback?.({ error: error.message, code: error.code });
+            }
+        });
+
         socket.on('getProducers', (data, callback) => {
             if (!roomExists(socket)) return callback?.({ error: 'Room not found' });
 
@@ -3321,7 +3428,7 @@ function startServer() {
                         room: null,
                         password: 'KO',
                     };
-                    if (singleRoom.enabled ? singleRoom.matches(data.password) : data.password == room.getPassword()) {
+                    if (singleRoom.enabled ? singleRoom.matches(data.password, room.id) : data.password == room.getPassword()) {
                         roomData.room = room.toJson();
                         roomData.password = 'OK';
                     }
@@ -3694,6 +3801,22 @@ function startServer() {
                 peer_name: targetPeer.peer_name,
                 is_presenter: grant,
                 from_peer_name: data.from_peer_name,
+            });
+        });
+
+        // Each browser reports how its own screen shares are doing (see HealthMeter.js)
+        socket.on('healthReport', (report) => {
+            if (!healthMeter.enabled || !roomExists(socket)) return;
+
+            const { peer } = getRoomAndPeer(socket);
+
+            if (!peer) return;
+
+            healthMeter.record({
+                socketId: socket.id,
+                roomId: socket.room_id,
+                peerName: peer.peer_name ?? peer.peer_info?.peer_name,
+                report,
             });
         });
 
@@ -5091,6 +5214,9 @@ function startServer() {
         });
 
         socket.on('disconnect', (reason) => {
+            healthMeter.forget(socket.id);
+            replay?.hub.detachSocket(socket);
+
             if (!roomExists(socket)) {
                 // Clean up socket listeners even if room doesn't exist
                 socket.removeAllListeners();

@@ -2382,7 +2382,8 @@ class RoomClient {
                     codecs: codec,
                 });
                 params.encodings = encodings;
-                params.codecs = codec;
+                // mediasoup-client reads `codec` (it ignored the plural this used to set, so a forced codec never applied)
+                if (codec) params.codec = codec;
                 params.codecOptions = {
                     videoGoogleStartBitrate: 1000,
                 };
@@ -2395,7 +2396,7 @@ class RoomClient {
                     codecs: codec,
                 });
                 params.encodings = encodings;
-                params.codecs = codec;
+                if (codec) params.codec = codec;
                 params.codecOptions = {
                     videoGoogleStartBitrate: 3000,
                 };
@@ -2420,7 +2421,7 @@ class RoomClient {
 
             // if screen sharing produce the tab audio + microphone
             if (screen && stream.getAudioTracks()[0]) {
-                await this.produceScreenAudio(stream);
+                await this.produceScreenAudio(stream, producer.id);
             }
 
             if (!audio) {
@@ -3059,6 +3060,13 @@ class RoomClient {
             if (!codec) throw new Error('Desired AV1 codec+configuration is not supported');
         }
 
+        // The server setting SCREEN_CODEC decides, for this browser, whether the screen is sent in H.264 (when it is
+        // encoded in hardware) or in VP8 (see ScreenQuality.js)
+        if (!codec && window.ScreenQuality?.screenCodec?.() === 'h264') {
+            codec = window.ScreenQuality.pickH264(this.device.rtpCapabilities.codecs) || undefined;
+        }
+        const isH264 = codec?.mimeType?.toLowerCase() === 'video/h264';
+
         if (this.enableSharingLayers) {
             console.log('SCREEN SIMULCAST/SVC ENABLED');
 
@@ -3081,27 +3089,34 @@ class RoomClient {
                 ];
             } else {
                 console.log('SCREEN ENCODING: VP8 or H264 with simulcast.');
+                // How many sizes the screen is sent in (1-3) comes from the server (SCREEN_SIMULCAST_LAYERS)
+                // H.264 has no temporal layers in mediasoup and hardware encoders run one session per layer: two at most
+                const sharingLayers = Math.min(
+                    window.ScreenQuality?.screenLayers?.() || this.numSimulcastStreamsSharing,
+                    isH264 ? 2 : 3
+                );
+                const layerMode = isH264 ? 'L1T1' : this.sharingScalabilityMode || 'L1T3';
                 encodings = [
                     {
                         scaleResolutionDownBy: 1,
                         maxBitrate: 12000000,
-                        scalabilityMode: this.sharingScalabilityMode || 'L1T3',
+                        scalabilityMode: layerMode,
                         dtx: true,
                     },
                 ];
-                if (this.numSimulcastStreamsSharing > 1) {
+                if (sharingLayers > 1) {
                     encodings.unshift({
                         scaleResolutionDownBy: 2,
-                        maxBitrate: 1000000,
-                        scalabilityMode: this.sharingScalabilityMode || 'L1T3',
+                        maxBitrate: 1500000,
+                        scalabilityMode: layerMode,
                         dtx: true,
                     });
                 }
-                if (this.numSimulcastStreamsSharing > 2) {
+                if (sharingLayers > 2) {
                     encodings.unshift({
                         scaleResolutionDownBy: 4,
-                        maxBitrate: 500000,
-                        scalabilityMode: this.sharingScalabilityMode || 'L1T3',
+                        maxBitrate: 600000,
+                        scalabilityMode: layerMode,
                         dtx: true,
                     });
                 }
@@ -3405,6 +3420,15 @@ class RoomClient {
                 this.handleHA(ha.id, d.id);
                 BUTTONS.producerVideo.drawingButton && isScreen && this.handleDW(dw.id, d.id);
                 this.handlePN(elem.id, pn.id, d.id, isScreen);
+                isScreen &&
+                    window.Replay?.attachScreen({
+                        tile: d,
+                        bar: vb,
+                        pin: pn,
+                        producerId: id,
+                        peerName: this.peer_name,
+                        own: true,
+                    });
                 this.handleZV(elem.id, d.id, this.peer_id);
                 this.handlePV(id, pv.id);
 
@@ -3606,7 +3630,9 @@ class RoomClient {
         this.sound('left');
     }
 
-    async produceScreenAudio(stream) {
+    // screenProducerId: the video producer of the same screen. The server uses it to know which audio belongs to which
+    // screen (the replay recorder keeps them together); the media type stays audioType for everybody else.
+    async produceScreenAudio(stream, screenProducerId) {
         try {
             if (this.producerLabel.has(mediaType.audioTab)) {
                 return console.warn('Producer already exists for this type ' + mediaType.audioTab);
@@ -3617,6 +3643,7 @@ class RoomClient {
                 track,
                 appData: {
                     mediaType: mediaType.audio,
+                    ...(screenProducerId ? { source: 'screen', shareOf: screenProducerId } : {}),
                 },
             };
 
@@ -3727,6 +3754,13 @@ class RoomClient {
             this.consumersProducer.set(producer_id, consumer.id);
 
             await this.handleConsumer(consumer.id, type, stream, peer_name, peer_info);
+
+            // Start at the layer that fits the tile, before the video is resumed (see ScreenQuality.js)
+            try {
+                await window.ScreenQuality?.onConsumerCreated(this, consumer, type);
+            } catch (error) {
+                console.warn('ScreenQuality', error.message);
+            }
 
             // https://mediasoup.discourse.group/t/create-server-side-consumers-with-paused-true/244
             const resumed = await this.resumeConsumerWithRetry(consumer.id, type);
@@ -4210,6 +4244,14 @@ class RoomClient {
                 this.handleKO(ko.id, remotePeerId);
                 this.handleRole(role.id, remotePeerId, remotePeerPresenter);
                 this.handlePN(elem.id, pn.id, d.id, remoteIsScreen);
+                remoteIsScreen &&
+                    window.Replay?.attachScreen({
+                        tile: d,
+                        bar: vb,
+                        pin: pn,
+                        producerId: this.consumers.get(id)?.producerId,
+                        peerName: peer_name,
+                    });
                 this.handleZV(elem.id, d.id, remotePeerId);
                 this.popupPeerInfo(p.id, peer_info);
                 this.checkPeerInfoStatus(peer_info);

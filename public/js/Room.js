@@ -3363,8 +3363,15 @@ async function toggleScreenSharing() {
             height: { ideal: 1080, max: 1080 },
             frameRate: { ideal: 60, max: 60 },
         };
+        // Same audio rules as RoomClient.getScreenConstraints(): sharing a window sends only that
+        // application's audio, sharing a screen sends the system audio. Guarded by tests/test-AudioCaptureGuard.js
         await navigator.mediaDevices
-            .getDisplayMedia({ audio: true, video: screenConstraints })
+            .getDisplayMedia({
+                audio: true,
+                video: screenConstraints,
+                windowAudio: 'window',
+                systemAudio: 'include',
+            })
             .then((screenStream) => {
                 if (initVideo.classList.contains('mirror')) {
                     initVideo.classList.toggle('mirror');

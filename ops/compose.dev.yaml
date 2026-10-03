@@ -1,0 +1,133 @@
+# Development instance. On the server it lives at /home/debian/mirotalk-dev/compose.yaml and is updated with
+# ops/deploy.sh, which replaces the image line below with the digest it deploys.
+#
+# It shares the machine with production, so it is kept small: one core (4) with a low priority, one
+# mediasoup worker, its own media ports and its own secrets (dev.env). Production is never touched from here.
+
+services:
+  mirotalksfu-dev:
+    image: ghcr.io/theplayzzz/mirotalksfu:develop
+    container_name: mirotalksfu-dev
+    hostname: mirotalksfu-dev
+    user: "1000:1000"
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3013:3010/tcp"
+      - "40200-40300:40200-40300/tcp"
+      - "40200-40300:40200-40300/udp"
+    env_file:
+      - /home/debian/.config/mirotalksfu-dev/dev.env
+      - /home/debian/.config/mirotalksfu-dev/room-access.env
+      - /home/debian/.config/mirotalksfu-dev/livepix.env
+      - /home/debian/.config/mirotalksfu-dev/test-room.env
+      - /home/debian/.config/mirotalksfu-dev/replay.env
+    environment:
+      APP_ENV: dev
+      SERVER_HOST_URL: https://mirotalk-dev.40-160-143-32.sslip.io
+      SERVER_LISTEN_PORT: "3010"
+      CORS_ORIGIN: https://mirotalk-dev.40-160-143-32.sslip.io
+      SFU_ANNOUNCED_IP: 40.160.143.32
+      SFU_LISTEN_IP: 0.0.0.0
+      SFU_MIN_PORT: "40200"
+      SFU_MAX_PORT: "40300"
+      SFU_NUM_WORKERS: "1"
+      HOST_PROTECTED: "false"
+      HOST_USER_AUTH: "false"
+      # features under test in development
+      KEYFRAME_REQUEST_DELAY_MS: "1000"
+      SCREEN_SIMULCAST_LAYERS: "1"
+      SELECTIVE_RECEPTION: "true"
+      DEV_LOAD_ENABLED: "true"
+      HEALTH_METER_ENABLED: "true"
+      HEALTH_DIR: /data/health
+      HEALTH_INTERVAL_S: "10"
+      HEALTH_RETENTION_DAYS: "14"
+      # replay
+      REPLAY_ENABLED: "true"
+      REPLAY_UI_ENABLED: "true"
+      REPLAY_RECORDER_URL: "http://mirotalk-replay-dev:7000"
+      REPLAY_DATA_DIR: /data/replays
+      REPLAY_PORT_MIN: "52000"
+      REPLAY_PORT_MAX: "52999"
+      REPLAY_MAX_SECONDS: "300"
+    volumes:
+      - /home/debian/mirotalk-dev/data:/data
+      # the SFU only reads the clips (the recorder writes them): a mistake in a route cannot change or delete one
+      - /home/debian/mirotalk-dev/data/replays:/data/replays:ro
+    cpuset: "4"
+    cpu_shares: 128
+    mem_limit: 2g
+    mem_reservation: 512m
+    pids_limit: 384
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - default
+      - replay-dev-net
+    labels:
+      org.opencontainers.image.source: https://github.com/theplayzzz/mirotalksfu
+    logging:
+      driver: json-file
+      options:
+        max-size: 25m
+        max-file: "3"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "node -e \"fetch('http://127.0.0.1:3010').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 60s
+
+  mirotalk-replay-dev:
+    image: ghcr.io/theplayzzz/mirotalksfu:develop
+    container_name: mirotalk-replay-dev
+    hostname: mirotalk-replay-dev
+    command: ["node", "app/src/replay/Recorder.js"]
+    user: "1000:1000"
+    restart: unless-stopped
+    env_file:
+      - /home/debian/.config/mirotalksfu-dev/replay.env
+    environment:
+      REPLAY_LISTEN_PORT: "7000"
+      REPLAY_DATA_DIR: "/data/replays"
+      REPLAY_SFU_EVENTS_URL: "http://mirotalksfu-dev:3010/internal/replay/events"
+      REPLAY_BUFFER_SECONDS: "300"
+      REPLAY_LEAD_IN_SECONDS: "90"
+      REPLAY_KEEP_AFTER_END_S: "120"
+      REPLAY_RETENTION_DAYS: "7"
+      REPLAY_QUOTA_GB: "20"
+      REPLAY_MIN_FREE_GB: "10"
+      REPLAY_MP4_HEIGHT: "720"
+      REPLAY_FFMPEG_THREADS: "2"
+    volumes:
+      - /home/debian/mirotalk-dev/data/replays:/data/replays
+    cpuset: "5"
+    cpu_shares: 128
+    mem_limit: 2g
+    mem_reservation: 512m
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - replay-dev-net
+    labels:
+      org.opencontainers.image.source: https://github.com/theplayzzz/mirotalksfu
+    logging:
+      driver: json-file
+      options:
+        max-size: 25m
+        max-file: "3"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "node -e \"fetch('http://127.0.0.1:7000/v1/health', {headers:{'x-replay-secret':process.env.REPLAY_INTERNAL_SECRET}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 30s
+
+networks:
+  replay-dev-net:
+    internal: true

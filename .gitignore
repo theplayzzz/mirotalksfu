@@ -24,3 +24,5 @@ security
 
 # virtual background
 custom
+# local agent worktrees and tooling
+.claude/

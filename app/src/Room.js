@@ -30,10 +30,10 @@ module.exports = class Room {
         // ##########################
         this._isBroadcasting = false;
         // ##########################
-        this._isLocked = singleRoom.enabled && room_id === singleRoom.roomId;
+        this._isLocked = singleRoom.enabled && singleRoom.allows(room_id);
         this._isLobbyEnabled = false;
         this._isJoinLocked = false;
-        this._roomPassword = this._isLocked ? singleRoom.password : null;
+        this._roomPassword = this._isLocked ? singleRoom.passwordFor(room_id) : null;
         this._hostOnlyRecording = false;
         // Server-side whiteboard lock state. Authoritative — does not depend on the client
         // clicking the lock button. Used to drop non-presenter whiteboard writes when set.

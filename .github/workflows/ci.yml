@@ -29,8 +29,16 @@ jobs:
           node-version: 24.21.0
           cache: npm
 
-      # The tests do not need the mediasoup worker or the browser bundle, so skip the build scripts.
+      # The tests do not need the browser bundle, so skip the build scripts.
       - run: npm ci --ignore-scripts
+
+      # The real mediasoup worker (a prebuilt binary of a few MB) lets tests/replay/test-sfu-mediasoup.js run. Without
+      # it those tests are skipped, so a failure here does not fail the build.
+      - name: mediasoup worker (prebuilt)
+        run: npm rebuild mediasoup
+        continue-on-error: true
+        timeout-minutes: 6
+
       - run: cp app/src/config.template.js app/src/config.js
       - run: npm test
 
