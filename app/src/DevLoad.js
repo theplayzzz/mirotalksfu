@@ -12,6 +12,7 @@
  */
 
 const crypto = require('node:crypto');
+const { recorderCapabilities } = require('./replay/ReplayBridge');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -71,9 +72,12 @@ async function runLoad(room, { viewers = 10, screens = 4, layers = [], temporal 
             transports.push(transport);
 
             for (let s = 0; s < screens; s++) {
+                // Without bandwidth estimation, like the recorder's consumers: a plain transport that is told it takes part in
+                // it keeps an estimate of 600 kbps that nothing raises (nobody sends feedback), and a screen of 11 Mbps
+                // is then not forwarded at all (no layer fits), which made every number of this tool zero.
                 const consumer = await transport.consume({
                     producerId: producers[s % producers.length].id,
-                    rtpCapabilities: room.router.rtpCapabilities,
+                    rtpCapabilities: recorderCapabilities(room.router.rtpCapabilities),
                     paused: false,
                 });
                 const layer = layers[s];
