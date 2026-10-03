@@ -122,8 +122,13 @@ already set, no conversion needed).
 - When a screen video producer is created, and when its audio producer (`appData.source === 'screen'`,
   `appData.shareOf === <screen producer id>`) is created: `router.pipeToRouter` to the recorder router, one
   `PlainTransport` per share (`rtcpMux: true`, `comedia: false`, `listenInfo` on `REPLAY_PORT_MIN..MAX`), connect it
-  to the recorder's port, `consume` with the recorder router's own `rtpCapabilities`, and register the streams with
-  `POST /v1/shares` (video) and `PATCH` (audio).
+  to the recorder's port, `consume` with the capabilities of `recorderCapabilities()` and register the streams with
+  `POST /v1/shares` (video) and `PATCH` (audio). **The consumers must NOT be made with the router's own capabilities:**
+  those carry `transport-cc`/`goog-remb` feedback and the transport-wide header extension, mediasoup then gives the plain
+  transport a bandwidth estimate that starts at 600 kbps, the recorder never sends the feedback that would raise it, and
+  the consumer is throttled to 600 kbps (found 2026-10-03: a screen with motion reached the recorder for ~3 s and then
+  only as probing packets, SSRC 1234 payload type 127). `recorderCapabilities()` keeps nack, PLI and FIR and drops the
+  rest (tests/replay/test-sfu-mediasoup.js checks it with the real mediasoup).
 - The only key frame request it makes is the automatic one when the consumer is created. `RECORDER_KEYFRAME_SAFETY_S`
   (default 0 = off) asks one every N seconds, for senders whose encoder rarely sends key frames (H.264 in hardware).
 - Safety: it samples `worker.getResourceUsage()` of the room workers every 5 s; above 85% for 10 s, or less than
@@ -134,7 +139,7 @@ already set, no conversion needed).
 
 | direction | event | payload |
 |---|---|---|
-| server → client | `replayTicket` | `{ ticket, expiresAt }` after `join`, to open the gallery session (below) |
+| server → client | `replayTicket` | `{ ticket, expiresAt }` as soon as the person is in the room, to open the gallery session (below). The single room answers every join but the first with "locked" and sends the room later, so this is sent from the join **and** from the first `getRouterRtpCapabilities`, once per socket (`ReplayHub.attachSocket`) |
 | server → room, every 5 s and on changes | `replayBuffers` | `{ available, reason?, maxSeconds, shares: [{ producerId, peerName, bufferSeconds, codec, hasAudio }] }` |
 | client → server | `replayRequest` (ack) | `{ producerId, seconds }` → ack `{ ok: true, requestId }` or `{ error, code }`; limits: one request per 3 s per person, `seconds` in `[10, maxSeconds]` |
 | server → requester | `replayStatus` | `{ requestId, state: "preparing" \| "done" \| "error", clip?, message? }` |
@@ -209,7 +214,24 @@ Off unless `/config` says `replay.enabled` (`{ enabled, maxSeconds, options: [60
 | Room UI and gallery | `public/js/Replay.js`, `public/css/Replay.css`, `public/views/Replay.html`, `public/js/ReplayGallery.js`, `public/css/ReplayGallery.css`, a few hook lines in `RoomClient.js` / `Room.html` |
 | SFU bridge, socket events, `/replay/*` routes, internal events, compose files, integration tests | `app/src/replay/ReplayBridge.js`, `app/src/Server.js`, `ops/*`, `tests/e2e/*` |
 
-## 9. Tests
+## 9. What replay must never do
+
+- **Make a sound.** Not when the time kept reaches a minute, not when an option becomes available, not when a clip is
+  saved (requested 2026-10-03). The room has its own sounds (`joined.wav` when a producer starts, `left.wav` when one
+  ends, played by `RoomClient`); replay adds none. `tests/test-ReplayUi.js` forbids `new Audio`, `sound(`, Web Audio,
+  speech and vibration in the replay files, and the end-to-end tests watch every sound a page tries to play.
+- Make the live stream wait for it, or cost it anything: the viewers of a screen got 57 fps and no freezes while the
+  recorder was being fed (their consumers are separate from the recorder's).
+- Use SweetAlert2 (a leftover layer once froze the whole room).
+
+Known limits: the "time kept" and the clip end at the newest frame, in media time. A capture that sends no frames at
+all while nothing changes (a still desktop on some systems) shows the counter standing still between changes, and a clip
+of the "last minute" ends at the last change. Chrome sends a refresh frame about once a second for window and tab
+captures, which is why this does not show with them. The recorder's UDP receive buffer is whatever the host allows
+(`net.core.rmem_max`, 208 KB by default: the recorder logs a warning); raising it is a host setting that needs the
+owner's OK.
+
+## 10. Tests
 
 - Recorder: synthetic RTP made by FFmpeg (a test pattern with a beep, VP8+Opus and H.264+Opus) fed to the real UDP
   socket; the clips are checked with `ffprobe` (duration, first frame is a key frame, audio present) and decoded to
