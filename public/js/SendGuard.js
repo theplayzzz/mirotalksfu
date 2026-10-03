@@ -203,7 +203,7 @@
             next.changedAt = now;
             next.why = 'capture-undo';
             const back = captureSize(next.base, next.capRung);
-            return { state: next, action: { kind: 'capture', capRung: next.capRung, width: back.width, height: back.height, kbps: rungKbps(next.rung, back.width, back.height), why: 'capture-undo' } };
+            return { state: next, action: { kind: 'capture', capRung: next.capRung, width: back.width, height: back.height, why: 'capture-undo' } };
         }
 
         let action = null;
@@ -229,7 +229,9 @@
                 next.capSince = 0;
                 next.calmSince = 0;
                 next.why = 'capture-trial';
-                return { state: next, action: { kind: 'capture', capRung: to, width: target.width, height: target.height, kbps: rungKbps(next.rung, target.width, target.height), why: up ? 'capture-up-try' : 'capture' } };
+                // (the bitrate ceiling is left as it is: a smaller picture does not need less of it, and a ceiling that is too low
+                // for the motion makes the encoder drop the very frames this is trying to give back)
+                return { state: next, action: { kind: 'capture', capRung: to, width: target.width, height: target.height, why: up ? 'capture-up-try' : 'capture' } };
             }
         }
         const why = a.capture ? 'capture' : a.uplink ? 'uplink' : a.encoder ? 'encoder' : a.bandwidth ? 'bandwidth' : a.calm ? 'ok' : next.why === 'start' ? 'start' : 'steady';
@@ -335,13 +337,12 @@
         }
         try {
             if (action.kind === 'capture') {
-                // the capture itself is asked for another size, the encoder keeps its own (and gets the bitrate that fits)
+                // the capture itself is asked for another size; the encoder keeps its own size and its bitrate ceiling
                 await producer.track.applyConstraints({
                     width: { ideal: action.width, max: action.width },
                     height: { ideal: action.height, max: action.height },
                     frameRate: { ideal: TARGET_FPS, max: TARGET_FPS },
                 });
-                await producer.setRtpEncodingParameters({ maxBitrate: action.kbps * 1000 });
             } else {
                 await producer.setRtpEncodingParameters({ scaleResolutionDownBy: action.scale, maxBitrate: action.kbps * 1000 });
             }

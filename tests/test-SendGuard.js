@@ -223,11 +223,11 @@ describe('test-SendGuard (what the sender does about its own screen)', () => {
             return actions;
         }
 
-        it('asks the capture for 80% of its size after 8 s of a slow capture of a moving picture, with the bitrate that fits it', () => {
+        it('asks the capture for 80% of its size after 8 s of a slow capture of a moving picture, and leaves the bitrate ceiling alone', () => {
             const state = initialState(0);
             const actions = runWith(state, slow(32), 2000, 12); // the trial starts at 10 s and has not ended yet
             actions[0].should.containEql({ kind: 'capture', capRung: 1, width: 1536, height: 864, why: 'capture' });
-            actions[0].kbps.should.equal(rungKbps(0, 1536, 864));
+            (actions[0].kbps === undefined).should.be.true();
             actions[0].at.should.be.within(10000, 12000);
             state.capTrial.should.containEql({ from: 0, to: 1, before: 32 });
         });

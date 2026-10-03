@@ -18,7 +18,7 @@ import { joinTestRoom, launchChrome, sleep, startScreenShare, stubScreenCapture 
 const { E2E_CHROME: chromePath, E2E_ORIGIN: origin, E2E_TOKEN: token } = process.env;
 if (!chromePath || !origin || !token) throw new Error('set E2E_CHROME, E2E_ORIGIN and E2E_TOKEN');
 
-const chrome = await launchChrome({ chrome: chromePath, lowPriority: process.env.LOW === '1' });
+const chrome = await launchChrome({ chrome: chromePath, headless: process.env.HEADED !== '1', lowPriority: process.env.LOW === '1' });
 let failures = 0;
 const check = (name, ok, detail = '') => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`);

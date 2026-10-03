@@ -7,6 +7,8 @@
 //   E2E_CHROME=... E2E_ORIGIN=https://mirotalk-dev... E2E_TOKEN=$(ssh ... dev-test-token.sh 30) node tests/e2e/replay-flow.mjs
 //   OUT_DIR=...   where the clip, the MP4 and the screenshot are kept (default: the temp folder)
 //   SKIP_UI=1     skip the part that clicks the button in the room (it needs 65 s of buffer, so it takes longer)
+//   RESIZE=1      the sender's picture changes size while it is being kept (what the sender guard does when it lowers a rung):
+//                 the clip that covers the change has to decode, convert and play like any other
 import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -95,7 +97,8 @@ async function measure(page, seconds) {
 
 // ---- the test --------------------------------------------------------------------------------------------------
 
-const chrome = await launchChrome({ chrome: chromePath });
+// HEADED=1: a real window, with the graphics card (needed for its hardware encoder, which is what SCREEN_CODEC=auto picks)
+const chrome = await launchChrome({ chrome: chromePath, headless: process.env.HEADED !== '1', lowPriority: process.env.LOW === '1' });
 try {
     // 1. the sharer: a screen with sound and a clap board
     const sharer = await chrome.newPage();
@@ -144,6 +147,11 @@ try {
     note(`the viewer, with the recorder running: ${JSON.stringify(live)}`);
     check('the viewer still gets a full frame rate while the recorder runs', live.fps >= 50, JSON.stringify(live));
     check('and no freezes', live.freezes === 0, `${live.freezes}`);
+    if (process.env.RESIZE === '1') {
+        // the encoder starts a new size at a key frame: the picture goes from 1920x1080 to 1280x720 in the middle of the buffer
+        const scale = await sharer.ev("(async () => { const p = [...rc.producers.values()].find((x) => x.kind === 'video' && !x.closed); await p.setRtpEncodingParameters({ scaleResolutionDownBy: 1.5 }); return p.rtpSender.getParameters().encodings[0].scaleResolutionDownBy; })()");
+        note(`the sender's picture is now 1/${scale} of its size`);
+    }
 
     // 5. the buffer grows
     const grown = await waitFor(`${FAST_BUFFER_NEEDED} s of buffer`, async () => {
@@ -217,6 +225,10 @@ try {
     check('it starts with a key frame', !!firstPacket && firstPacket.trim().startsWith('K'), firstPacket && firstPacket.trim());
     const errors = decodeErrors(file);
     check('it decodes from start to end without a single error', errors === '', errors.slice(0, 300));
+    if (process.env.RESIZE === '1') {
+        const sizes = new Set((probe(file, '-select_streams', 'v:0', '-show_entries', 'frame=width,height', '-of', 'csv=p=0') || '').split(/\r?\n/).filter(Boolean));
+        check('the clip holds both sizes of the picture (the resize happened inside it)', sizes.size >= 2, [...sizes].join(' | '));
+    }
     const counted = probe(file, '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0');
     const frames = counted ? Number(counted.trim()) : 0;
     note(`${frames} frames over ${clip.durationS} s = ${(frames / clip.durationS).toFixed(1)} fps`);

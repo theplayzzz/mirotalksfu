@@ -24,7 +24,7 @@ const stopHogs = () => {
 };
 process.once('exit', stopHogs);
 
-const chrome = await launchChrome({ chrome: chromePath, lowPriority: process.env.LOW !== '0' });
+const chrome = await launchChrome({ chrome: chromePath, headless: process.env.HEADED !== '1', lowPriority: process.env.LOW !== '0' });
 let failures = 0;
 const check = (name, ok, detail = '') => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`);
