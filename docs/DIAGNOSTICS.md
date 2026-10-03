@@ -14,7 +14,7 @@ commit of the server's image, 7 characters):
 | line | written by | when | what it says |
 |---|---|---|---|
 | `{"kind":"epoch", "flags":…}` | the server | every start | the commit, the day it was built, and every switch that changes what people see (`sel=adaptive kfd=1000 replay=1 codec=vp8 layers=1 guard=observe pause=0`). The analysis splits the day into epochs here |
-| a report with `peer`, `rx`, `tx`, `net` | each browser | every 10 s | what that browser sends (`tx`) and receives (`rx`), `cb` (the commit of the PAGE it runs: an old tab shows up), `vis` (the page is visible or hidden) |
+| a report with `peer`, `rx`, `tx`, `net` | each browser | every 10 s | what that browser sends (`tx`) and receives (`rx`), `cb` (the commit of the PAGE it runs: an old tab shows up), `vis` (the page is visible or hidden), `press` (the worst processor pressure of the whole PC in the interval, from the browser's Compute Pressure API: `nominal`, `fair`, `serious`, `critical`; a game on the same PC shows up here) |
 | `{"kind":"srv", "workers":…, "producers":…, "consumers":…}` | the server | every 10 s | what the SERVER sees: how each screen arrives (score, bitrate, loss, round trip), what it sends to each viewer (bitrate, the layer, mediasoup's score) and the load of every worker as a share of a core |
 
 Names are the ones people typed in the room, kept only here, never sent back to anybody.
@@ -29,9 +29,9 @@ Names are the ones people typed in the room, kept only here, never sent back to 
 | `encMs` | milliseconds per frame in the encoder | with `fps`: `encMs x fps / 1000` = how busy the encoder is (1 = busy all the time) |
 | `lim`, `limCpuMs`, `limBwMs` | what the browser says limits the picture and for how long in the interval | the browser's own opinion; it can say `none` while frames are being dropped |
 | `scale`, `maxKbps`, `maxFps`, `degr`, `hint` | what the encoder was told: size divisor, bitrate and frame-rate ceilings, `degradationPreference`, `contentHint` | `degr=maintain-resolution` or `hint=detail` drop frames instead of shrinking the picture |
-| `codec`, `enc`, `hw` | codec, encoder implementation (hidden by the browser unless it has a permission), hardware or not | |
+| `codec`, `enc`, `hw` | codec, encoder implementation (hidden by the browser unless it has a permission), hardware or not. The `encMs` of a hardware encoder is the delay of its pipeline, not a load | `hw=true` = the graphics card's encoder (H.264 Main/High); VP8/VP9/AV1 and the Constrained Baseline H.264 are software in Chrome on Windows |
 | `lost`, `rtt`, `retx`, `nack`, `pli`, `kf`, `huge`, `qlr`, `sendMs` | loss the server reports back, round trip, share of what was sent that was a repeat, NACK/PLI/key frame counts, picture-size changes, pacing delay | the sender's line |
-| `gRung`, `gWhy`, `gMode` | the sender guard's step on its ladder (0 = full size), why, and whether it applies or only observes | |
+| `gRung`, `gCap`, `gWhy`, `gMode` | the sender guard's step on its encoder ladder (0 = full size), its step on the capture ladder (0 = the size the capture started at, 1 = 80%, 2 = 67%, 3 = 50%), why it did what it did (`encoder`, `uplink`, `capture` = it tried a smaller capture, `capture-trial` = waiting for the verdict, `capture-kept`, `capture-undo`, `room` = it went back up, `steady`, `ok`), and whether it applies or only observes | `gCap` > 0 = the capture itself was asked for a smaller size because it was slow |
 
 ### A viewer's row (`rx`)
 
@@ -44,7 +44,10 @@ Names are the ones people typed in the room, kept only here, never sent back to 
 | `tl`, `lw`, `tw` | the temporal layer this viewer asked the server for (0 = a quarter of the frames, 2 = all), **why** (`full`, `tile`, `struggle`, `floor`), and the width of its tile |
 
 `env` (once per page load): browser, OS, cores, memory, `gpu`, `scr` (screen size and pixel ratio), and what the browser says it can
-encode and decode in hardware or software for VP8, VP9, H.264 and AV1.
+encode and decode in hardware or software for VP8, VP9, H.264 and AV1. H.264 is asked in two profiles: `h264e`/`h264d` for
+Main (the one the hardware encoders of Chrome on Windows take: `hw` here means the graphics card encodes it) and `h264cbe` for the
+Constrained Baseline (`sw` everywhere on Windows). An old record that says `h264e: sw` asked only the constrained profile and says
+nothing about the graphics card.
 
 ## Reading it
 
@@ -65,8 +68,9 @@ For a **sender**, in a window:
 | cause | condition |
 |---|---|
 | `uplink` | loss reported back >= 4%, or repeats >= 15% of what is sent, or round trip >= 450 ms while the browser says bandwidth limits it |
-| `capture` | the capture gives < 48 fps while the encoder is busy < 70% of the time (with `srcFps`; without it the label is `capture?`: low frame rate with an idle encoder) |
-| `encoder` | the encoder is busy >= 85% of the time, or frames the capture gave never came out of it (`fps` < 75% of `srcFps`) |
+| `capture` | the capture gives < 48 fps while the encoder is busy < 70% of the time and the picture moves (>= 1500 kbps) (with `srcFps`; without it the label is `capture?`: low frame rate with an idle encoder). The line adds what the capture costs per frame: Chrome keeps the capture to half of the time, so `fps = 500 / ms per captured frame` (32 fps = 15.6 ms, 15.8 fps = 31.6 ms; 60 fps needs under 8.3 ms) |
+| `still` | few frames and few bits: a screen that hardly changes (the capture gives frames only when it changes). Not a fault |
+| `encoder` | a software encoder is busy >= 85% of the time, the browser says the processor limits it, or frames the capture gave never came out of it (`fps` < 75% of `srcFps`). A hardware encoder is never "busy" by its time per frame |
 | `ok` | >= 54 fps and none of the above |
 
 For a **viewer**:
