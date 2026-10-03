@@ -4,7 +4,7 @@
 import { spawn } from 'node:child_process';
 import { createReadStream, mkdtempSync, statSync } from 'node:fs';
 import http from 'node:http';
-import { tmpdir } from 'node:os';
+import os, { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -72,7 +72,11 @@ export async function cdp(wsUrl) {
     return { ws, send, ev, click };
 }
 
-export async function launchChrome({ chrome, tabCaptureTitle = 'E2ESRC', extraFlags = [], width = 1920, height = 1080 }) {
+// `headless: false` opens a real window (it has access to the graphics card, a headless Chrome has not: the hardware
+// encoders and decoders are only there). `lowPriority`: the browser runs below the normal priority, so a test that has
+// to run on the PC of a person who is playing does not take the game's CPU (what a test measures is then less exact:
+// do not use it for a comparison of speeds).
+export async function launchChrome({ chrome, tabCaptureTitle = 'E2ESRC', extraFlags = [], width = 1920, height = 1080, headless = true, lowPriority = false }) {
     const port = 9300 + Math.floor(Math.random() * 90);
     const profile = mkdtempSync(path.join(tmpdir(), 'e2e-chrome-'));
     const proc = spawn(
@@ -80,13 +84,21 @@ export async function launchChrome({ chrome, tabCaptureTitle = 'E2ESRC', extraFl
         [
             // --mute-audio: the pages of a test play the sound of the screens they receive (a steady tone, the beeps of the
             // clap board every 2 s) and a headless Chrome sends it to the speakers of whoever runs the test. Never again.
-            '--headless=new', '--mute-audio', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run',
+            ...(headless ? ['--headless=new'] : ['--window-position=-32000,-32000']),
+            '--mute-audio', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run',
             '--no-default-browser-check', '--use-fake-ui-for-media-stream', `--auto-select-tab-capture-source-by-title=${tabCaptureTitle}`,
             '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
             '--disable-backgrounding-occluded-windows', `--window-size=${width},${height}`, ...extraFlags, 'about:blank',
         ],
         { stdio: 'ignore' }
     );
+    if (lowPriority) {
+        try {
+            os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+        } catch (error) {
+            // not allowed here: it runs at the normal priority
+        }
+    }
     let version;
     for (let i = 0; i < 80 && !version; i++) {
         try {

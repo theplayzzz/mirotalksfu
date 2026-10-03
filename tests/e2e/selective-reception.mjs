@@ -96,6 +96,12 @@ try {
     const config = await sharer.ev("fetch('/config').then((r) => r.json())");
     console.log('server screen settings', JSON.stringify(config.screen));
     check('the server has selective reception on', config.screen.selectiveReception === true);
+    // This test is about the 'tile' mode (the layer follows the size of the tile). The default is 'adaptive': see screen-policy.mjs
+    if (config.screen.selectiveMode === 'adaptive') {
+        console.log('this instance runs SELECTIVE_MODE=adaptive: nothing follows the size of a tile. Run screen-policy.mjs, or set SELECTIVE_MODE=tile.');
+        chrome.close();
+        process.exit(failures ? 1 : 0);
+    }
     // What the browser asks for as the tile shrinks: the spatial layer (sizes) or the temporal one (frame rates)
     const spatial = config.screen.layers > 1;
     const levelOf = (data) => (spatial ? data.spatialLayer : data.temporalLayer);
@@ -123,13 +129,15 @@ try {
     // b. a small window asks for the smallest layer
     let since = await now(viewer);
     await window_(viewer, 480, 270);
-    let asked = await waitForPreference(viewer, since, (d) => levelOf(d) === 0, 6);
-    check('a small tile (480 px) asks for the smallest layer', !!asked, asked ? `after ${Math.round(((await now(viewer)) - since) / 100) / 10} s at most` : 'no request');
+    // a 60 fps sender: the lowest layer would be 15 fps, below the floor of 24, so the smallest tile gets 30 fps (layer 1)
+    const smallest = spatial ? 0 : 1;
+    let asked = await waitForPreference(viewer, since, (d) => levelOf(d) === smallest, 8);
+    check(`a small tile (480 px) asks for ${spatial ? 'the smallest size' : 'the lowest layer that keeps 24 fps'}`, !!asked, asked ? `after ${Math.round(((await now(viewer)) - since) / 100) / 10} s at most` : 'no request');
     await sleep(4000);
     phase = await measure(viewer, 6);
     console.log('small tile (480x270):', JSON.stringify(phase), '| big was', bigMbps, 'Mbps');
     // sizes: a quarter of the picture is about 5% of the bits; frame rates: 15 of 60 fps is about 40%
-    const lightFactor = spatial ? 0.5 : 0.6;
+    const lightFactor = spatial ? 0.5 : 0.8; // frame rates: 30 of 60 fps is about 60% of the bits
     check('the smallest layer uses far less bandwidth than the big tile', phase.mbps < Math.max(2, bigMbps * lightFactor), `${phase.mbps} vs ${bigMbps} Mbps`);
 
     // c. a medium window asks for the middle layer

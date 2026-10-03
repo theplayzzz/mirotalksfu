@@ -2419,6 +2419,9 @@ class RoomClient {
             this.producers.set(producer.id, producer);
             this.producerLabel.set(type, producer.id);
 
+            // The sender guard keeps the screen at its frame rate (see SendGuard.js; the server's SEND_GUARD says how)
+            if (screen && window.SendGuard) window.SendGuard.attach(this, producer).catch(() => {});
+
             // if screen sharing produce the tab audio + microphone
             if (screen && stream.getAudioTracks()[0]) {
                 await this.produceScreenAudio(stream, producer.id);
@@ -3752,6 +3755,8 @@ class RoomClient {
 
             this.consumers.set(consumer.id, consumer);
             this.consumersProducer.set(producer_id, consumer.id);
+            // who sends it: the health meter reports it, so a viewer's numbers can be tied to the sender's without guessing
+            if (consumer.appData && typeof consumer.appData === 'object') consumer.appData.from = String(peer_name || '').slice(0, 40);
 
             await this.handleConsumer(consumer.id, type, stream, peer_name, peer_info);
 

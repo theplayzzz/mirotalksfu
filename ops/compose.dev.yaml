@@ -37,6 +37,8 @@ services:
       KEYFRAME_REQUEST_DELAY_MS: "1000"
       SCREEN_SIMULCAST_LAYERS: "1"
       SELECTIVE_RECEPTION: "true"
+      SELECTIVE_MODE: "adaptive"
+      SEND_GUARD: "apply"
       DEV_LOAD_ENABLED: "true"
       HEALTH_METER_ENABLED: "true"
       HEALTH_DIR: /data/health

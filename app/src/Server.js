@@ -111,6 +111,8 @@ const LivePix = require('./LivePix');
 const livePix = new LivePix();
 const HealthMeter = require('./HealthMeter');
 const healthMeter = new HealthMeter();
+const StreamMeter = require('./StreamMeter');
+const BuildInfo = require('./BuildInfo');
 
 // Screen shares can be sent in 1-3 simulcast layers (1/4, 1/2 and full size) so each viewer receives only the
 // quality it can show; with SELECTIVE_RECEPTION the viewers' browsers choose the layer of every screen from the
@@ -120,6 +122,17 @@ const healthMeter = new HealthMeter();
 const screenLayers = Math.min(3, Math.max(1, parseInt(process.env.SCREEN_SIMULCAST_LAYERS, 10) || 1));
 const selectiveReception = process.env.SELECTIVE_RECEPTION === 'true';
 const selectivePauseHidden = process.env.SELECTIVE_PAUSE_HIDDEN === 'true';
+// How the viewers' browsers choose layers when SELECTIVE_RECEPTION is on: 'adaptive' (default) asks for everything and
+// steps a screen down only when that viewer is really struggling (dropped frames, freezes), 'tile' chooses by the size
+// of the tile (the first version: with a floor, it never takes a screen below ~20 fps), 'off' never asks for layers.
+const selectiveMode = selectiveReception
+    ? ['tile', 'adaptive'].includes(process.env.SELECTIVE_MODE)
+        ? process.env.SELECTIVE_MODE
+        : 'adaptive'
+    : 'off';
+// The sender guard (public/js/SendGuard.js): 'off', 'observe' (works out what it would do and reports it) or 'apply'
+// (lowers the size of the picture and the bitrate of a screen that its sender cannot keep at 60 fps)
+const sendGuard = ['observe', 'apply'].includes(process.env.SEND_GUARD) ? process.env.SEND_GUARD : 'off';
 // Codec of the screens: 'vp8' (default), 'h264', or 'auto' = H.264 for the people whose browser encodes it in
 // hardware (lighter on their PC, and the replay clip needs no conversion) and VP8 for everybody else.
 const screenCodec = ['vp8', 'h264', 'auto'].includes(process.env.SCREEN_CODEC) ? process.env.SCREEN_CODEC : 'vp8';
@@ -896,7 +909,8 @@ function startServer() {
             message: config?.ui?.buttons || false,
             singleRoom: singleRoom.enabled ? { roomId: singleRoom.roomId } : false,
             healthMeter: healthMeter.enabled ? { enabled: true, intervalS: healthMeter.intervalS } : false,
-            screen: { layers: screenLayers, selectiveReception, codec: screenCodec },
+            screen: { layers: screenLayers, selectiveReception, selectiveMode, codec: screenCodec, guard: sendGuard },
+            build: BuildInfo.info.sha7,
             replay: replay ? replay.publicConfig() : { enabled: false },
         });
     });
@@ -914,6 +928,7 @@ function startServer() {
     // LivePix donations summary for the join screen
     livePix.start();
     healthMeter.start();
+    new StreamMeter({ meter: healthMeter, rooms: () => roomList, workers: () => workers }).start();
     app.get('/livepix/summary', (req, res) => {
         res.set('Cache-Control', 'no-store').json(livePix.getSummary());
     });

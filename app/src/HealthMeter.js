@@ -22,10 +22,11 @@ const path = require('node:path');
 const zlib = require('node:zlib');
 const { pipeline } = require('node:stream/promises');
 const Logger = require('./Logger');
+const BuildInfo = require('./BuildInfo');
 const log = new Logger('HealthMeter');
 
 const FLUSH_MS = 5000;
-const MAX_REPORT_BYTES = 6000;
+const MAX_REPORT_BYTES = 12000;
 const MAX_RX = 12;
 const MAX_TX = 6;
 const FILE_RE = /^health-(\d{4}-\d{2}-\d{2})\.jsonl(\.gz)?$/;
@@ -46,6 +47,9 @@ function sanitizeRx(r) {
     if (!r || typeof r !== 'object') return null;
     return clean({
         id: text(r.id, 36),
+        // the producer of the stream (the first 8 characters of its id: the same as in the server's records) and who sends it
+        pid: text(r.pid, 12),
+        from: text(r.from, 40),
         type: pick(r.type, ['screen', 'camera']),
         fps: num(r.fps, 0, 240),
         w: num(r.w, 0, 8192),
@@ -61,12 +65,20 @@ function sanitizeRx(r) {
         jbMs: num(r.jbMs, 0, 60000),
         dec: text(r.dec),
         hw: bool(r.hw),
+        // what this viewer asked of the server for the screen and why (ScreenQuality.js), and the size of its tile
+        tl: num(r.tl, 0, 3),
+        lw: pick(r.lw, ['full', 'tile', 'struggle', 'pinned', 'floor', 'off']),
+        tw: num(r.tw, 0, 16384),
+        // how long the decoder takes per frame and how often the video was paused by the browser
+        decMs: num(r.decMs, 0, 1000),
+        pause: num(r.pause, 0, 10000),
     });
 }
 
 function sanitizeTx(t) {
     if (!t || typeof t !== 'object') return null;
     return clean({
+        pid: text(t.pid, 12),
         type: pick(t.type, ['screen', 'camera']),
         fps: num(t.fps, 0, 240),
         w: num(t.w, 0, 8192),
@@ -84,6 +96,30 @@ function sanitizeTx(t) {
         encMs: num(t.encMs, 0, 1000),
         rtt: num(t.rtt, 0, 60000),
         lost: num(t.lost, 0, 100),
+        // the capture: how many frames per second the SOURCE gives and at what size (media-source), and the settings
+        // the browser made of the capture (track.getSettings()): tells a capture that is slow from an encoder that is
+        srcFps: num(t.srcFps, 0, 1000),
+        srcW: num(t.srcW, 0, 16384),
+        srcH: num(t.srcH, 0, 16384),
+        setW: num(t.setW, 0, 16384),
+        setH: num(t.setH, 0, 16384),
+        setFps: num(t.setFps, 0, 1000),
+        // what the encoder was told (and by whom): picture size divisor, bitrate and frame rate ceilings
+        scale: num(t.scale, 0, 100),
+        maxKbps: num(t.maxKbps, 0, 1000000),
+        maxFps: num(t.maxFps, 0, 1000),
+        degr: pick(t.degr, ['maintain-framerate', 'maintain-resolution', 'balanced', 'disabled', 'default']),
+        hint: pick(t.hint, ['motion', 'detail', 'text', 'none']),
+        codec: pick(t.codec, ['VP8', 'VP9', 'H264', 'AV1', 'H265']),
+        // retransmitted part of what was sent (loss makes a stream pay twice), key frames and picture size changes
+        retx: num(t.retx, 0, 100),
+        huge: num(t.huge, 0, 10000),
+        qlr: num(t.qlr, 0, 10000),
+        sendMs: num(t.sendMs, 0, 60000),
+        // the sender guard (SendGuard.js): the step of its ladder, what it decided last and in which mode
+        gRung: num(t.gRung, 0, 20),
+        gWhy: text(t.gWhy, 24),
+        gMode: pick(t.gMode, ['observe', 'apply']),
     });
 }
 
@@ -97,11 +133,17 @@ function sanitizeEnv(e) {
         os: text(e.os, 60),
         cores: num(e.cores, 0, 1024),
         mem: num(e.mem, 0, 1024),
+        gpu: text(e.gpu, 70),
+        scr: text(e.scr, 24),
         caps: clean({
             vp8e: capLabel(caps.vp8e),
             h264e: capLabel(caps.h264e),
             vp8d: capLabel(caps.vp8d),
             h264d: capLabel(caps.h264d),
+            vp9e: capLabel(caps.vp9e),
+            vp9d: capLabel(caps.vp9d),
+            av1e: capLabel(caps.av1e),
+            av1d: capLabel(caps.av1d),
         }),
     });
 }
@@ -126,7 +168,7 @@ function sanitize(report) {
     const env = sanitizeEnv(report.env);
 
     if (!rx.length && !tx.length && !env) return null;
-    return clean({ dt: num(report.dt, 0, 600000), net, rx: rx.length ? rx : null, tx: tx.length ? tx : null, env });
+    return clean({ dt: num(report.dt, 0, 600000), cb: text(report.cb, 12), vis: bool(report.vis), net, rx: rx.length ? rx : null, tx: tx.length ? tx : null, env });
 }
 
 class HealthMeter {
@@ -140,6 +182,9 @@ class HealthMeter {
         this.timer = null;
         this.lastRotation = '';
         this.flushing = false;
+        // what this server is: stamped on every record, so a change in what people saw can be tied to a build or a switch
+        this.build = BuildInfo.info.sha7;
+        this.flags = BuildInfo.flagsOf(env);
     }
 
     start() {
@@ -153,7 +198,17 @@ class HealthMeter {
         }
         this.timer = setInterval(() => this.flush(), FLUSH_MS);
         this.timer.unref();
-        log.info('Health meter enabled', { dir: this.dir, intervalS: this.intervalS, retentionDays: this.retentionDays });
+        // a line that says what started: the analysis tools split the day into epochs at these lines
+        this.write({ kind: 'epoch', ref: BuildInfo.info.ref || undefined, built: BuildInfo.info.date || undefined, flags: this.flags });
+        log.info('Health meter enabled', { dir: this.dir, intervalS: this.intervalS, retentionDays: this.retentionDays, build: this.build, flags: this.flags });
+    }
+
+    // A record that the server itself makes (the start of an epoch, what it sees of every stream): same file, same stamp.
+    write(fields, now = Date.now()) {
+        if (!this.enabled) return false;
+        this.queue.push(JSON.stringify({ ts: now, bld: this.build, ...fields }));
+        if (this.queue.length > 20000) this.queue.splice(0, this.queue.length - 20000);
+        return true;
     }
 
     // Returns true when the report was accepted.
@@ -171,6 +226,7 @@ class HealthMeter {
         this.queue.push(
             JSON.stringify({
                 ts: now,
+                bld: this.build,
                 room: text(String(roomId || ''), 40) || undefined,
                 peer: text(String(peerName || ''), 40) || undefined,
                 ...fields,

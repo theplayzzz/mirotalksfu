@@ -3,22 +3,27 @@
 /*
  * Screen quality: what each viewer really needs of every shared screen.
  *
- * Without it every viewer downloads every screen in full quality (4 screens of 12 Mbps = ~47 Mbps each), even
- * screens shown as small tiles. With the server setting SELECTIVE_RECEPTION the browser looks at its own screen and
- * asks the server for:
- *   - the layer that fits the tile. A screen is sent in one size with 3 frame-rate layers (VP8 L1T3: 60, 30 and 15
- *     fps, which cost 100%, 60% and 40% of the bits), so a thumbnail gets 15 fps and a medium tile 30 fps. With
- *     SCREEN_SIMULCAST_LAYERS the screen can also be sent in up to 3 sizes (1/4, 1/2 and full), and then the size
- *     is chosen instead (off by default: Chrome does not hold the bandwidth estimate of a layered sender up, see
- *     docs/MEASUREMENTS.md),
- *   - priority for the biggest tile when the network is short.
- * Nothing is paused and nothing is lowered because the window is hidden or a tile is out of sight. It was, in the
- * first version, and the people of the room did not want it: coming back to a window found the screens stopped, and
- * a paused video can only start again at a new full picture from the sender, which takes from 1 to 10 seconds.
- * Changing the frame-rate layer instead needs no full picture, but the rule is simply "what is on screen counts".
- * Quality goes up quickly and down slowly, so resizing or unpinning does not make it flap.
+ * A screen is sent in one size with 3 frame-rate layers (VP8 L1T3: 1/4, 1/2 and all of the frames, which cost 40%,
+ * 60% and 100% of the bits). With the server setting SELECTIVE_RECEPTION the browser can ask the server for fewer of
+ * them, in one of two ways (SELECTIVE_MODE):
+ *   - 'adaptive' (the default): everything, always, until THIS viewer is struggling (the browser drops frames before
+ *     showing them, the decoder is busy, the picture freezes without any packet lost). Then the least important screen
+ *     (not pinned, smallest tile) goes one layer down, and after 30 quiet seconds the most important one comes back
+ *     up. Smoothness first: people want every screen at the frame rate its sender gives, and only a viewer that cannot
+ *     keep up loses frames, and only as many as it must.
+ *   - 'tile': the layer follows the size of the tile (15 fps for a thumbnail, 30 for a medium tile). This was the
+ *     first version and it assumed a 60 fps sender: a sender at 16 fps (a loaded PC) became 4 fps in a small tile, and
+ *     "some saw it perfect and others stuttering". Now it never takes a screen below 24 fps, whatever the tile.
+ * In both the frame rate of the SENDER is estimated from what arrives and the layer it is on, and no layer that would
+ * leave less than the floor (24 fps for a tile, 12 for a viewer that is struggling) is ever chosen. The biggest tile
+ * also gets priority when the network is short. With SCREEN_SIMULCAST_LAYERS the screen can be sent in up to 3 sizes
+ * too (off by default: Chrome does not hold the bandwidth estimate of a layered sender up, see docs/MEASUREMENTS.md).
  *
- * The rules at the top are pure functions, loaded also by the unit tests (tests/test-ScreenQuality.js).
+ * Nothing is paused and nothing is lowered because the window is hidden or a tile is out of sight: it was, in the first
+ * version, and the people of the room did not want it (a paused video can only start again at a new full picture from
+ * the sender, which takes from 1 to 10 seconds). Changing the frame-rate layer needs no full picture.
+ *
+ * The rules are pure functions, loaded also by the unit tests (tests/test-ScreenQuality.js).
  */
 (function (root) {
     // ---- rules ---------------------------------------------------------------------------------------------
@@ -57,16 +62,73 @@
         return top;
     }
 
+    // ---- the frame rate that is left ------------------------------------------------------------------------
+
+    const FLOOR_TILE_FPS = 24; // 'tile' mode: a screen is never taken below this many frames per second
+    const FLOOR_STRUGGLE_FPS = 12; // a viewer that cannot keep up: smooth at 12 is better than frozen at 60
+    const STRUGGLE_DROP_RATE = 0.08; // 8% of the frames dropped by the browser before they were shown
+    const STRUGGLE_BUSY = 0.65; // the decoder busy more than 65% of the time (decode ms x frames per second)
+    const CALM_MS = 30000; // a viewer that has not struggled for this long gets a screen back up one layer
+    const COOLDOWN_MS = 8000; // after a change, wait before the next one: the numbers need time to show its effect
+
+    // The share of the frames that temporal layer `layer` carries when the screen has layers 0..top: each layer doubles
+    // them (L1T3: 1/4, 1/2, all)
+    const fractionOf = (layer, top) => 2 ** (Math.max(0, layer) - Math.max(0, top));
+
+    // The lowest layer that still gives `floorFps` when the sender sends `senderFps` in all of them. Unknown sender rate:
+    // nothing is taken away.
+    function lowestAllowed(senderFps, top, floorFps) {
+        if (!(senderFps > 0) || top <= 0) return Math.max(0, top);
+        for (let layer = 0; layer <= top; layer++) {
+            if (senderFps * fractionOf(layer, top) >= floorFps) return layer;
+        }
+        return top;
+    }
+
     // What one screen should get now. tile: { visible, width (device pixels), cssWidth }, temporalLayers: how many
-    // frame-rate layers the screen has (1 = none). A tile that is not on screen (focus mode, scrolled away, a hidden
-    // window) keeps everything: the best layers are what a new consumer gets, so nothing has to be asked for, and
-    // when the person looks again the picture is there, already moving.
-    function decide({ layers, topWidth, tile, temporalLayers = 1 }) {
+    // frame-rate layers the screen has (1 = none), senderFps: the estimated frame rate of the sender (0 = not known).
+    // A tile that is not on screen (focus mode, scrolled away, a hidden window) keeps everything: the best layers are
+    // what a new consumer gets, so nothing has to be asked for, and when the person looks again the picture is there,
+    // already moving. This is the 'tile' mode: the layer follows the size of the tile, but never below the floor.
+    function decide({ layers, topWidth, tile, temporalLayers = 1, senderFps = 0 }) {
         const bestTemporal = Math.max(0, temporalLayers - 1);
         if (!tile.visible) return { spatialLayer: Math.max(0, layers - 1), temporalLayer: bestTemporal, reason: 'out-of-sight' };
         // A screen sent in several sizes already has light small ones; frame-rate layers are for the one-size screen
-        const temporalLayer = layers > 1 ? bestTemporal : pickTemporal(temporalLayers, tile.cssWidth ?? tile.width);
-        return { spatialLayer: pickLayer(layers, topWidth, tile.width), temporalLayer, reason: 'visible' };
+        if (layers > 1) return { spatialLayer: pickLayer(layers, topWidth, tile.width), temporalLayer: bestTemporal, reason: 'visible' };
+        const wished = pickTemporal(temporalLayers, tile.cssWidth ?? tile.width);
+        const floor = lowestAllowed(senderFps, bestTemporal, FLOOR_TILE_FPS);
+        return { spatialLayer: pickLayer(layers, topWidth, tile.width), temporalLayer: Math.max(wished, floor), reason: wished < floor ? 'floor' : 'visible' };
+    }
+
+    // Is this browser struggling with one screen? `row` is what StreamStats.receiverRow made of the last seconds.
+    // The first guesses of the limits; the decode time per frame (decMs) that the health meter now reports is what
+    // will tell where they should really be.
+    function struggling(row) {
+        if (!row || !(row.seconds > 0)) return false;
+        const shown = (row.fps || 0) * row.seconds;
+        const dropRate = (row.drop || 0) / Math.max(1, shown + (row.drop || 0));
+        const busy = row.decMs && row.fps ? (row.decMs * row.fps) / 1000 : 0;
+        // a picture that froze while (almost) no packet was lost is not the network
+        const froze = (row.frz || 0) >= 1 && (row.loss || 0) < 2 && dropRate > 0.02;
+        return dropRate > STRUGGLE_DROP_RATE || busy > STRUGGLE_BUSY || froze;
+    }
+
+    // The 'adaptive' mode: at most one change at a time. `entries`: [{ id, top, layer, senderFps, importance }] with the
+    // layer each screen is on now; `struggle`: this viewer is struggling now; `calmSince`: since when it is not (ms, or 0).
+    // Returns { id, layer, why } or null.
+    function adapt({ entries, now, lastChangeAt = 0, struggle, calmSince = 0 }) {
+        if (now - lastChangeAt < COOLDOWN_MS) return null;
+        if (struggle) {
+            const down = entries
+                .filter((e) => e.layer > lowestAllowed(e.senderFps, e.top, FLOOR_STRUGGLE_FPS))
+                .sort((a, b) => a.importance - b.importance)[0];
+            return down ? { id: down.id, layer: down.layer - 1, why: 'struggle' } : null;
+        }
+        if (calmSince && now - calmSince >= CALM_MS) {
+            const up = entries.filter((e) => e.layer < e.top).sort((a, b) => b.importance - a.importance)[0];
+            return up ? { id: up.id, layer: up.layer + 1, why: 'full' } : null;
+        }
+        return null;
     }
 
     // Does `wanted` ask for something different from what is applied?
@@ -141,13 +203,23 @@
         THUMBNAIL_MAX_CSS_PX,
         MEDIUM_MAX_CSS_PX,
         temporalLayersOf,
+        fractionOf,
+        lowestAllowed,
         decide,
+        struggling,
+        adapt,
         differs,
         follow,
         pickH264,
         chooseCodec,
         HOLD_UP_MS,
         HOLD_DOWN_MS,
+        FLOOR_TILE_FPS,
+        FLOOR_STRUGGLE_FPS,
+        STRUGGLE_DROP_RATE,
+        STRUGGLE_BUSY,
+        CALM_MS,
+        COOLDOWN_MS,
     };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = rules;
@@ -156,14 +228,20 @@
 
     // ---- in the browser --------------------------------------------------------------------------------------
 
+    const HEALTH_MS = 2000; // how often the statistics of every screen are read to see whether this viewer is struggling
+
     const state = {
         layers: 1,
         selective: false,
+        mode: 'off', // 'off' | 'tile' | 'adaptive' (the server's SELECTIVE_MODE)
         codec: 'vp8',
         entries: new Map(),
         timer: null,
+        healthTimer: null,
         listening: false,
         loaded: null,
+        lastChangeAt: 0,
+        calmSince: 0,
     };
 
     function loadConfig() {
@@ -174,6 +252,8 @@
                     const screen = (config && config.screen) || {};
                     state.layers = Math.min(3, Math.max(1, Number(screen.layers) || 1));
                     state.selective = screen.selectiveReception === true;
+                    // a server that does not say how: the first version, by the size of the tile
+                    state.mode = state.selective ? (['tile', 'adaptive'].includes(screen.selectiveMode) ? screen.selectiveMode : 'tile') : 'off';
                     return probeCodec(screen.codec);
                 })
                 .catch(() => {});
@@ -244,7 +324,7 @@
     // Called by RoomClient.consume() for every new consumer, after its tile exists and before it is resumed.
     async function onConsumerCreated(room, consumer, type) {
         await loadConfig();
-        if (!state.selective || consumer.kind !== 'video') return;
+        if (state.mode === 'off' || consumer.kind !== 'video') return;
         if (typeof RoomClient === 'undefined' || type !== RoomClient.mediaType.screen) return;
 
         const temporalLayers = temporalLayersOf(consumer.rtpParameters && consumer.rtpParameters.encodings && consumer.rtpParameters.encodings[0] && consumer.rtpParameters.encodings[0].scalabilityMode);
@@ -252,13 +332,24 @@
             room,
             consumer,
             temporalLayers,
+            top: Math.max(0, temporalLayers - 1),
             // what the server gives a new consumer: the best it has
             applied: { spatialLayer: state.layers - 1, temporalLayer: temporalLayers - 1 },
+            why: 'full',
+            changedAt: 0,
             candidate: null,
             lastChange: 0,
             priority: 1,
             activeLayer: null,
             topWidth: DEFAULT_TOP_WIDTH,
+            // what is known of it: the frame rate of its sender (estimated from what arrives), the last statistics, its tile
+            senderFps: 0,
+            prev: null,
+            row: null,
+            struggle: false,
+            tileWidth: 0,
+            area: 0,
+            pinned: false,
         };
         state.entries.set(consumer.id, entry);
 
@@ -270,14 +361,19 @@
             });
         }
         if (!state.timer) state.timer = setInterval(poll, POLL_MS);
+        if (!state.healthTimer) state.healthTimer = setInterval(() => health().catch(() => {}), HEALTH_MS);
 
-        // Start at the right layer when the tile already has its size
+        // 'tile' mode: start at the right layer when the tile already has its size ('adaptive' starts with everything)
         const tile = measureTile(consumer.id);
-        if (tile.visible && (state.layers > 1 || temporalLayers > 1)) {
+        if (state.mode === 'tile' && tile.visible && (state.layers > 1 || temporalLayers > 1)) {
             const wanted = decide({ layers: state.layers, topWidth: entry.topWidth, tile, temporalLayers });
             if (differs(entry.applied, wanted)) {
                 const answer = await request(entry, { spatialLayer: wanted.spatialLayer, temporalLayer: wanted.temporalLayer });
-                if (answer && answer.ok) entry.applied = { spatialLayer: wanted.spatialLayer, temporalLayer: wanted.temporalLayer };
+                if (answer && answer.ok) {
+                    entry.applied = { spatialLayer: wanted.spatialLayer, temporalLayer: wanted.temporalLayer };
+                    entry.why = 'tile';
+                    entry.changedAt = Date.now();
+                }
             }
         }
     }
@@ -294,18 +390,24 @@
             }
             const tile = measureTile(id);
             tiles.set(id, tile);
+            entry.tileWidth = tile.cssWidth;
+            entry.area = tile.area;
+            entry.pinned = tile.pinned;
             if (tile.visible && (!biggest || tile.pinned > biggest.pinned || (tile.pinned === biggest.pinned && tile.area > biggest.area))) {
                 biggest = { id, pinned: tile.pinned, area: tile.area };
             }
         }
         if (!state.entries.size) {
             clearInterval(state.timer);
+            clearInterval(state.healthTimer);
             state.timer = null;
+            state.healthTimer = null;
             return;
         }
 
         for (const [id, entry] of state.entries) {
             const tile = tiles.get(id);
+            const priority = biggest && biggest.id === id ? 255 : 1;
 
             // The size of the full picture: with several sizes it is learned from what the server says it sends
             // (consumerLayers); with one size it is the picture itself
@@ -318,11 +420,21 @@
                 }
             }
 
-            const wanted = decide({ layers: state.layers, topWidth: entry.topWidth, tile, temporalLayers: entry.temporalLayers });
+            // 'adaptive' mode never follows the tile: only the priority of the biggest one is kept
+            if (state.mode !== 'tile') {
+                if (priority !== entry.priority) {
+                    entry.priority = priority;
+                    request(entry, { priority });
+                }
+                continue;
+            }
+
+            const wanted = decide({ layers: state.layers, topWidth: entry.topWidth, tile, temporalLayers: entry.temporalLayers, senderFps: entry.senderFps });
             const change = follow(entry, wanted, now);
-            const priority = biggest && biggest.id === id ? 255 : 1;
 
             if (change) {
+                entry.why = wanted.reason === 'floor' ? 'floor' : 'tile';
+                entry.changedAt = now;
                 const preferences = { spatialLayer: change.spatialLayer, temporalLayer: change.temporalLayer };
                 if (priority !== entry.priority) preferences.priority = priority;
                 request(entry, preferences).then((answer) => {
@@ -339,11 +451,80 @@
         }
     }
 
+    // Every few seconds: read the statistics of every screen, estimate the frame rate of its sender and, in 'adaptive'
+    // mode, take one layer off the least important screen when this viewer struggles (and give it back when it is calm).
+    async function health() {
+        if (!state.entries.size || !window.StreamStats) return;
+        // a page nobody sees drops frames on purpose: it says nothing about whether the viewer can keep up
+        if (document.visibilityState === 'hidden') {
+            state.calmSince = 0;
+            return;
+        }
+        const now = Date.now();
+        let any = false;
+        for (const entry of state.entries.values()) {
+            if (entry.consumer.closed) continue;
+            let report;
+            try {
+                report = await entry.consumer.getStats();
+            } catch (error) {
+                continue;
+            }
+            let inbound = null;
+            report.forEach((r) => {
+                if (r.type === 'inbound-rtp' && r.kind === 'video') inbound = r;
+            });
+            if (!inbound) continue;
+            const row = window.StreamStats.receiverRow({ s: inbound, before: entry.prev });
+            entry.prev = inbound;
+            if (!row) continue;
+            entry.row = row;
+            // The frame rate of the sender: what arrives divided by the share of the frames of the layer it is on (a
+            // few seconds after a change of layer the picture still shows the old one)
+            if (now - entry.changedAt > 6000 && row.fps > 0) {
+                const estimate = row.fps / fractionOf(entry.applied.temporalLayer, entry.top);
+                entry.senderFps = entry.senderFps ? entry.senderFps * 0.5 + estimate * 0.5 : estimate;
+            }
+            entry.struggle = struggling(row);
+            if (entry.struggle) any = true;
+        }
+        if (any) state.calmSince = 0;
+        else if (!state.calmSince) state.calmSince = now;
+        if (state.mode !== 'adaptive') return;
+
+        const entries = [...state.entries.values()].map((e) => ({
+            id: e.consumer.id,
+            top: e.top,
+            layer: e.applied.temporalLayer,
+            senderFps: e.senderFps,
+            importance: (e.pinned ? 1e9 : 0) + (e.area || 0),
+        }));
+        const action = adapt({ entries, now, lastChangeAt: state.lastChangeAt, struggle: any, calmSince: state.calmSince });
+        if (!action) return;
+        const entry = state.entries.get(action.id);
+        if (!entry) return;
+        const answer = await request(entry, { spatialLayer: state.layers - 1, temporalLayer: action.layer });
+        if (answer && answer.ok) {
+            entry.applied = { spatialLayer: state.layers - 1, temporalLayer: action.layer };
+            entry.why = action.why === 'full' && action.layer >= entry.top ? 'full' : action.why;
+            entry.changedAt = now;
+            state.lastChangeAt = now;
+            // after a step up wait for another quiet stretch before the next one
+            state.calmSince = action.why === 'full' ? now : 0;
+        }
+    }
+
+    // What this viewer asked of the server for a screen: the temporal layer, why, and the width of its tile (the health meter reports it)
+    function layerInfo(consumerId) {
+        const entry = state.entries.get(consumerId);
+        return entry ? { tl: entry.applied.temporalLayer, why: entry.why, tw: Math.round(entry.tileWidth || 0) } : null;
+    }
+
     // The health meter asks (it leaves paused screens out of its numbers). Nothing is paused by the page any more.
     function isPaused() {
         return false;
     }
 
-    root.ScreenQuality = { screenLayers, screenCodec, pickH264, onConsumerCreated, isPaused, state, rules };
+    root.ScreenQuality = { screenLayers, screenCodec, pickH264, onConsumerCreated, isPaused, layerInfo, state, rules };
     loadConfig();
 })(typeof window !== 'undefined' ? window : globalThis);

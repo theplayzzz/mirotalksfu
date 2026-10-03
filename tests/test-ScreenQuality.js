@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const Peer = require('../app/src/Peer');
 const rules = require('../public/js/ScreenQuality');
-const { pickLayer, pickTemporal, temporalLayersOf, decide, follow, layerScales, pickH264, chooseCodec } = rules;
+const { pickLayer, pickTemporal, temporalLayersOf, decide, follow, layerScales, pickH264, chooseCodec, fractionOf, lowestAllowed, struggling, adapt } = rules;
 
 describe('test-ScreenQuality', () => {
     // The people of the room did not want screens to stop when they leave a window or look at something else, and a
@@ -23,8 +23,11 @@ describe('test-ScreenQuality', () => {
             source.should.not.match(/\.pause\(/);
         });
 
-        it('does not read whether the window or the page is hidden', () => {
-            source.should.not.match(/visibilityState|visibilitychange|document\.hidden|IntersectionObserver/);
+        it('does not watch whether the window or the page is hidden to change what it asks for', () => {
+            source.should.not.match(/visibilitychange|document\.hidden|IntersectionObserver/);
+            // the one place that reads it: a page nobody sees drops frames on purpose, so health() does not judge the viewer then
+            (source.match(/visibilityState/g) || []).should.have.length(1);
+            source.should.match(/visibilityState === 'hidden'\) \{\s*state\.calmSince = 0;\s*return;/);
         });
     });
 
@@ -92,16 +95,22 @@ describe('test-ScreenQuality', () => {
             });
         });
 
-        it('asks for the frame-rate layer of a screen that is sent in one size', () => {
+        it('(tile mode) asks for the frame-rate layer of the tile, but never leaves the screen below 24 fps', () => {
             const tile = (width, dpr = 1) => ({ visible: true, width: width * dpr, cssWidth: width });
-            const wanted = (width, dpr) => decide({ layers: 1, topWidth: 1920, tile: tile(width, dpr), temporalLayers: 3 });
-            wanted(300).should.deepEqual({ spatialLayer: 0, temporalLayer: 0, reason: 'visible' });
-            wanted(600).should.containEql({ spatialLayer: 0, temporalLayer: 1 });
+            const wanted = (width, dpr, senderFps = 60) => decide({ layers: 1, topWidth: 1920, tile: tile(width, dpr), temporalLayers: 3, senderFps });
+            // a 60 fps sender: the lowest layer is 15 fps, below the floor, so even a thumbnail gets 30 fps
+            wanted(300).should.deepEqual({ spatialLayer: 0, temporalLayer: 1, reason: 'floor' });
+            wanted(600).should.deepEqual({ spatialLayer: 0, temporalLayer: 1, reason: 'visible' });
             wanted(1400).should.containEql({ spatialLayer: 0, temporalLayer: 2 });
             // the size on the screen counts, not the device pixels: a thumbnail on a 2x display is still a thumbnail
-            wanted(300, 2).should.containEql({ temporalLayer: 0 });
+            wanted(300, 2).should.containEql({ temporalLayer: 1 });
+            // The first version took a screen sent at 16 fps down to 4 fps in a small tile. A sender that gives 45 fps could
+            // only be taken to 22 fps (below the floor): everything. At 16 fps: everything. Not known yet: nothing is taken.
+            wanted(300, 1, 45).should.containEql({ temporalLayer: 2 });
+            wanted(300, 1, 16).should.containEql({ temporalLayer: 2 });
+            wanted(300, 1, 0).should.containEql({ temporalLayer: 2 });
             // without frame-rate layers (H.264) there is nothing to reduce
-            decide({ layers: 1, topWidth: 1920, tile: tile(300), temporalLayers: 1 }).should.containEql({ temporalLayer: 0 });
+            decide({ layers: 1, topWidth: 1920, tile: tile(300), temporalLayers: 1, senderFps: 60 }).should.containEql({ temporalLayer: 0 });
             // a screen sent in several sizes already has light small ones and keeps every frame
             decide({ layers: 3, topWidth: 1920, tile: tile(300), temporalLayers: 3 }).should.containEql({
                 spatialLayer: 0,
@@ -127,6 +136,98 @@ describe('test-ScreenQuality', () => {
             decide({ layers: 1, topWidth: 1920, tile, temporalLayers: 3, page: { hidden: true } }).should.deepEqual(asked);
             decide({ layers: 3, topWidth: 1920, tile: visible, temporalLayers: 3, page: { hidden: true } }).should.have.property('spatialLayer');
             (asked.paused === undefined).should.be.true();
+        });
+    });
+
+    // The first version cut screens by the size of the tile as if every sender gave 60 fps. Real senders give 16 to 60 (their
+    // PCs also run the game): a screen sent at 16 fps became 4 fps in a small tile. These rules keep a floor under what is left.
+    describe('the frame rate that is left', () => {
+        it('knows what share of the frames each frame-rate layer carries', () => {
+            fractionOf(2, 2).should.equal(1);
+            fractionOf(1, 2).should.equal(0.5);
+            fractionOf(0, 2).should.equal(0.25);
+            fractionOf(0, 1).should.equal(0.5); // two layers
+            fractionOf(0, 0).should.equal(1); // none
+        });
+
+        it('finds the lowest layer that still gives the floor, for the senders that really exist', () => {
+            lowestAllowed(60, 2, 24).should.equal(1); // 15 fps is too little, 30 is fine
+            lowestAllowed(60, 2, 12).should.equal(0); // a viewer that struggles may go to 15
+            lowestAllowed(58, 2, 12).should.equal(0);
+            lowestAllowed(45, 2, 24).should.equal(2); // 22 fps would be below the floor
+            lowestAllowed(45, 2, 12).should.equal(1); // 22 fps is fine for a viewer that struggles, 11 is not
+            lowestAllowed(32, 2, 12).should.equal(1); // 16 fps ok, 8 not
+            lowestAllowed(16, 2, 12).should.equal(2); // a sender at 16 fps: nothing can be taken
+            lowestAllowed(0, 2, 24).should.equal(2); // not known: nothing is taken
+            lowestAllowed(60, 0, 24).should.equal(0); // a screen without layers has only one
+        });
+    });
+
+    describe('is this viewer struggling?', () => {
+        const row = (overrides) => ({ seconds: 2, fps: 58, drop: 0, frz: 0, loss: 0, decMs: 5, ...overrides });
+
+        it('is not, when every frame is shown and the decoder has time', () => {
+            struggling(row()).should.be.false();
+            struggling(row({ decMs: 9 })).should.be.false(); // 9 ms x 58 fps = 52% busy
+            struggling(null).should.be.false();
+            struggling(row({ seconds: 0 })).should.be.false();
+        });
+
+        it('is, when the browser drops many frames before showing them (the 4-core laptop of the room: 300 a minute)', () => {
+            struggling(row({ fps: 38, drop: 12 })).should.be.true(); // 12 of 88 = 14%
+            struggling(row({ fps: 38, drop: 2 })).should.be.false(); // 2.6%: a few dropped is normal
+        });
+
+        it('is, when the decoder is busy most of the time', () => {
+            struggling(row({ decMs: 13 })).should.be.true(); // 13 ms x 58 = 75%
+        });
+
+        it('is, when the picture froze although nothing was lost: it is not the network', () => {
+            struggling(row({ frz: 2, loss: 0.1, drop: 4 })).should.be.true(); // some drops with the freeze
+            struggling(row({ frz: 2, loss: 5, drop: 4 })).should.be.false(); // packets were lost: the network, the server handles it
+            struggling(row({ frz: 2, loss: 0, drop: 0 })).should.be.false(); // a freeze alone says little
+        });
+    });
+
+    describe('the adaptive mode: what to change, one at a time', () => {
+        const entry = (id, layer, importance, senderFps = 60, top = 2) => ({ id, top, layer, senderFps, importance });
+        const three = () => [entry('big', 2, 1e9 + 900000), entry('mid', 2, 400000), entry('small', 2, 150000)];
+
+        it('does nothing while nobody struggles and it has not been calm long enough', () => {
+            (adapt({ entries: three(), now: 100_000, struggle: false, calmSince: 90_000 }) === null).should.be.true();
+        });
+
+        it('takes a layer off the LEAST important screen first, all the way to its floor, then the next one, never the pinned one first', () => {
+            adapt({ entries: three(), now: 100_000, struggle: true }).should.deepEqual({ id: 'small', layer: 1, why: 'struggle' });
+            const next = [entry('big', 2, 1e9 + 900000), entry('mid', 2, 400000), entry('small', 1, 150000)];
+            adapt({ entries: next, now: 120_000, struggle: true }).should.deepEqual({ id: 'small', layer: 0, why: 'struggle' });
+            const after = [entry('big', 2, 1e9 + 900000), entry('mid', 2, 400000), entry('small', 0, 150000)];
+            adapt({ entries: after, now: 140_000, struggle: true }).should.deepEqual({ id: 'mid', layer: 1, why: 'struggle' });
+        });
+
+        it('waits between changes: the numbers need time to show the effect', () => {
+            (adapt({ entries: three(), now: 100_000, lastChangeAt: 95_000, struggle: true }) === null).should.be.true();
+            adapt({ entries: three(), now: 104_000, lastChangeAt: 95_000, struggle: true }).should.containEql({ id: 'small' });
+        });
+
+        it('stops at the floor of a viewer that struggles (12 fps) and at the frame rate of the sender itself', () => {
+            // a sender at 32 fps: layer 1 is 16 fps (fine), layer 0 is 8 fps (not): the screen can go to 1 and no lower
+            const slow = [entry('a', 1, 1000, 32), entry('b', 2, 500, 32)];
+            adapt({ entries: slow, now: 100_000, struggle: true }).should.deepEqual({ id: 'b', layer: 1, why: 'struggle' });
+            const floor = [entry('a', 1, 1000, 32), entry('b', 1, 500, 32)];
+            (adapt({ entries: floor, now: 100_000, struggle: true }) === null).should.be.true();
+            // a sender at 16 fps cannot be reduced at all
+            (adapt({ entries: [entry('a', 2, 1, 16)], now: 100_000, struggle: true }) === null).should.be.true();
+        });
+
+        it('gives a layer back, to the MOST important screen, only after 30 quiet seconds, one at a time', () => {
+            const reduced = [entry('big', 2, 1e9), entry('mid', 1, 400000), entry('small', 1, 150000)];
+            (adapt({ entries: reduced, now: 120_000, struggle: false, calmSince: 100_000 }) === null).should.be.true();
+            adapt({ entries: reduced, now: 131_000, struggle: false, calmSince: 100_000 }).should.deepEqual({ id: 'mid', layer: 2, why: 'full' });
+        });
+
+        it('has nothing to do when every screen is already at its best', () => {
+            (adapt({ entries: three(), now: 200_000, struggle: false, calmSince: 100_000 }) === null).should.be.true();
         });
     });
 

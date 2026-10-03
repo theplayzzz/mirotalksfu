@@ -32,6 +32,12 @@ COPY --chown=node:node public ./public
 # Copy config template → config
 COPY --chown=node:node app/src/config.template.js app/src/config.js
 
+# Which commit this image was built from (the CI passes it): the server stamps it on its health records and /config
+ARG GIT_SHA=unknown
+ARG GIT_REF=unknown
+ARG BUILD_DATE=unknown
+RUN printf '{"sha":"%s","ref":"%s","date":"%s"}\n' "$GIT_SHA" "$GIT_REF" "$BUILD_DATE" > /src/build-info.json
+
 # Run as the non-root "node" user (uid/gid 1000) shipped with the base image
 USER node
 

@@ -49,7 +49,34 @@ describe('test-HealthMeter', () => {
             many.rx.should.have.length(12);
             many.tx.should.have.length(6);
 
-            (sanitize({ rx: [rx], padding: 'p'.repeat(7000) }) === null).should.be.true();
+            (sanitize({ rx: [rx], padding: 'p'.repeat(13000) }) === null).should.be.true();
+        });
+
+        // The fields that tell a slow capture from a slow encoder from a bad line, and what the viewer asked of the server
+        it('accepts the diagnostic fields of a sender, a viewer and the page (the build, whether it is visible)', () => {
+            const sender = {
+                pid: 'a1b2c3d4', type: 'screen', fps: 15.8, w: 1920, h: 1080, encMs: 32.4, lim: 'none', hw: false,
+                srcFps: 16.2, srcW: 2560, srcH: 1440, setW: 1920, setH: 1080, setFps: 60,
+                scale: 1.25, maxKbps: 9000, maxFps: 60, degr: 'maintain-framerate', hint: 'motion', codec: 'VP8',
+                retx: 12.5, huge: 1, qlr: 2, sendMs: 4.5, gRung: 1, gWhy: 'uplink', gMode: 'observe',
+            };
+            const viewer = { pid: 'a1b2c3d4', from: 'Sender One', type: 'screen', fps: 29, tl: 1, lw: 'struggle', tw: 650, decMs: 11.2, pause: 0 };
+            const clean = sanitize({ cb: 'b707d0a', vis: false, tx: [sender], rx: [viewer] });
+            clean.cb.should.equal('b707d0a');
+            clean.vis.should.be.false();
+            clean.tx[0].should.deepEqual(sender);
+            clean.rx[0].should.deepEqual(viewer);
+        });
+
+        it('drops a diagnostic label that is not in the list, and the commit of the page when it is not plain', () => {
+            const clean = sanitize({ cb: '<script>', tx: [{ type: 'screen', fps: 60, degr: 'whatever', hint: 'x', codec: 'MPEG', gMode: 'both', gWhy: 'a;b' }] });
+            clean.should.not.have.property('cb');
+            clean.tx[0].should.deepEqual({ type: 'screen', fps: 60 });
+        });
+
+        it('accepts the graphics card, the screen and the codecs the browser says it can encode and decode', () => {
+            const clean = sanitize({ env: { gpu: 'AMD Radeon RX 9060 XT', scr: '2560x1440@1', caps: { vp9e: 'sw', vp9d: 'hw', av1e: 'sw', av1d: 'hw', vp8d: 'sw' } } });
+            clean.env.should.deepEqual({ gpu: 'AMD Radeon RX 9060 XT', scr: '2560x1440@1', caps: { vp9e: 'sw', vp9d: 'hw', av1e: 'sw', av1d: 'hw', vp8d: 'sw' } });
         });
 
         it('refuses reports that are not objects or have nothing in them', () => {

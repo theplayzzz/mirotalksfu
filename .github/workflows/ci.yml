@@ -74,6 +74,10 @@ jobs:
           context: .
           push: true
           provenance: false
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            GIT_REF=${{ github.ref_name }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
           tags: |
             ghcr.io/theplayzzz/mirotalksfu:sha-${{ steps.tags.outputs.sha }}
             ghcr.io/theplayzzz/mirotalksfu:${{ steps.tags.outputs.ref }}

@@ -95,6 +95,8 @@ per second) and `peer-traffic.py` (upload and download of every participant, nee
 | `SINGLE_ROOM_ID`, `SINGLE_ROOM_PASSWORD` | the only room and its password | none |
 | `KEYFRAME_REQUEST_DELAY_MS` | minimum time between two key frame requests to the same sender | 0 (no limit) |
 | `SELECTIVE_RECEPTION` | every browser asks the server for the layer its tile needs (frame rates of a one-size screen, or sizes if `SCREEN_SIMULCAST_LAYERS` > 1). It never pauses a screen because the window is hidden or the tile is out of sight (people did not want screens stopped when they come back) | off |
+| `SELECTIVE_MODE` | with `SELECTIVE_RECEPTION`: `adaptive` (default) every screen at every frame until THAT viewer struggles (dropped frames, busy decoder), then the least important screen goes down one layer and comes back after 30 quiet seconds; `tile` the layer follows the size of the tile, never below 24 fps (`docs/SCREEN-QUALITY-STRATEGY.md`) | adaptive |
+| `SEND_GUARD` | the sender guard (`public/js/SendGuard.js`): `observe` reports what it would do, `apply` lowers the picture size and bitrate of a screen its sender cannot hold at 60 fps (encoder saturated or weak uplink) and raises them back | off |
 | `SELECTIVE_PAUSE_HIDDEN` | `true`: the server accepts the requests to pause a screen nobody looks at (an old browser tab may still send them; no current page does). A paused screen needs a new full picture from the sender to start again, 1-10 s | off (ignored) |
 | `SCREEN_SIMULCAST_LAYERS` | sizes a screen is sent in, 1-3. Keep 1: Chrome's bandwidth estimate collapses with 2-3 (`docs/MEASUREMENTS.md`) | 1 |
 | `SCREEN_CODEC` | `vp8`, `h264` or `auto` (H.264 where the browser encodes it in hardware) | vp8 |
