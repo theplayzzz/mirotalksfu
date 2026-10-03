@@ -205,6 +205,7 @@ async function buildClip(o) {
     const outputName = codec === 'vp8' ? 'clip.webm' : 'clip.mp4';
     const outputPath = path.join(stagingDir, outputName);
 
+    const signal = o.signal || null;
     const records = orderedRecords(snapshot.chunks, plan.key.chunkIndex, plan.key.off);
     let child = null;
     let exited = null;
@@ -223,6 +224,10 @@ async function buildClip(o) {
         exited = waitForExit(child);
         exited.catch(() => {}); // a failure is reported where the exit is awaited, never as an unhandled rejection
         timer = setTimeout(() => child.kill('SIGKILL'), FINALIZE_TIMEOUT_MS);
+        if (signal) {
+            if (signal.aborted) child.kill('SIGKILL');
+            else signal.addEventListener('abort', () => child.kill('SIGKILL'), { once: true });
+        }
         const sink = streamSink(child.stdin);
         const muxer = new MatroskaMuxer({
             docType: 'matroska',
@@ -247,6 +252,7 @@ async function buildClip(o) {
         let record = first;
         let step = firstStep;
         while (!step.done) {
+            if (signal && signal.aborted) throw new Error('the recorder is stopping');
             record = step.value;
             const t = record.ts - base;
             if (t >= 0) {
