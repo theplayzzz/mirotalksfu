@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.6
 
-# Use Node.js 24 LTS slim image as base
-FROM node:24-slim
+# Node.js 24.21.0 on Debian 12 (bookworm), pinned by digest so every build starts from the same base.
+# To update: pick a new tag on Docker Hub, copy its digest here and test it in development first.
+FROM node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
 
 # Set working directory
 WORKDIR /src
