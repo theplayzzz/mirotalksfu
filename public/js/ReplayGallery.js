@@ -594,19 +594,22 @@ window.ReplayGallery = (() => {
                 break;
             case 'mp4.progress':
                 if (data.id === app.openId) {
-                    mp4Apply(data.id, {
-                        state: 'running',
-                        progress: data.progress,
-                        etaSeconds: data.etaSeconds,
-                        ahead: data.ahead,
-                    });
+                    mp4Apply(
+                        data.id,
+                        { state: 'running', progress: data.progress, etaSeconds: data.etaSeconds, ahead: data.ahead },
+                        { stream: true }
+                    );
                 }
                 break;
             case 'mp4.ready':
+                if (data.id === app.openId) M.streamAt = Date.now();
                 markMp4Ready(data.id, data.mp4);
                 break;
             case 'mp4.error':
-                if (data.id === app.openId) mp4Fail();
+                if (data.id === app.openId) {
+                    M.streamAt = Date.now();
+                    mp4Fail();
+                }
                 break;
             default:
                 break;
@@ -1335,7 +1338,8 @@ window.ReplayGallery = (() => {
         eta: null,
         ahead: undefined,
         firstRunAt: 0,
-        lastEventAt: 0,
+        lastEventAt: 0, // the last time anything told the page how it is going
+        streamAt: 0, // the last time the stream did
         timer: 0,
         auto: false, // the person asked for it here: download it by itself when it is ready
         saidKey: '',
@@ -1350,6 +1354,7 @@ window.ReplayGallery = (() => {
             eta: null,
             ahead: undefined,
             firstRunAt: 0,
+            streamAt: 0,
             auto: false,
             saidKey: '',
         });
@@ -1393,8 +1398,12 @@ window.ReplayGallery = (() => {
         $('rpMp4Status').textContent = M.phase === 'idle' ? '' : [title, detail].filter(Boolean).join(' ');
     }
 
-    function mp4Apply(id, data) {
+    // `sentAt`: when the question that got this answer was asked; `stream`: it came on the stream. An answer to a
+    // question asked before the stream said something newer is stale (it can arrive late): the stream wins.
+    function mp4Apply(id, data, { sentAt = 0, stream = false } = {}) {
         if (id !== app.openId || !data) return;
+        if (stream) M.streamAt = Date.now();
+        else if (sentAt && M.streamAt > sentAt) return;
         const clip = P.clip;
         M.lastEventAt = Date.now();
         switch (data.state) {
@@ -1495,6 +1504,7 @@ window.ReplayGallery = (() => {
         M.eta = null;
         M.lastEventAt = Date.now();
         mp4Render();
+        const sentAt = Date.now();
         let res = null;
         try {
             res = await api(`/replay/api/clips/${clip.id}/mp4`, { method: 'POST' });
@@ -1503,10 +1513,10 @@ window.ReplayGallery = (() => {
         }
         if (clip.id !== app.openId) return; // moved to another clip: the conversion goes on in the server
         if (!res || !res.ok || !res.data) {
-            if (!res || res.status !== 401) mp4Fail();
+            if (M.streamAt <= sentAt && (!res || res.status !== 401)) mp4Fail();
             return;
         }
-        mp4Apply(clip.id, res.data);
+        mp4Apply(clip.id, res.data, { sentAt });
     }
 
     // If the stream stays silent while a conversion runs, ask again: the answer of the server is always the truth.
@@ -1516,9 +1526,10 @@ window.ReplayGallery = (() => {
             const clip = P.clip;
             if (!clip || (M.phase !== 'queued' && M.phase !== 'running')) return stopMp4Watch();
             if (Date.now() - M.lastEventAt < timings.mp4QuietMs) return;
+            const sentAt = Date.now();
             try {
                 const res = await api(`/replay/api/clips/${clip.id}/mp4`, { method: 'POST' });
-                if (res.ok && res.data) mp4Apply(clip.id, res.data);
+                if (res.ok && res.data) mp4Apply(clip.id, res.data, { sentAt });
             } catch {
                 // offline for a moment: try again on the next tick
             }
