@@ -453,10 +453,14 @@ module.exports = class Peer {
 
     /*
      * What a viewer wants from one of its video consumers, decided by the browser from what is on its screen
-     * (public/js/ScreenQuality.js): which layer, how important it is when the network is short, and whether the
-     * video is paused because nobody is looking at it. Audio is never touched. Returns what was applied.
+     * (public/js/ScreenQuality.js): which layer and how important it is when the network is short. A request to
+     * pause the video "because nobody is looking" is ignored unless `allowPause` (SELECTIVE_PAUSE_HIDDEN): the people
+     * of the room did not want screens to stop when they leave a window, and a paused video needs a new full picture
+     * from the sender (1 to 10 seconds) to start again. Browsers that still run the first version of ScreenQuality.js,
+     * which asked for it, are protected by this too. Resuming is always honored. Audio is never touched. Returns what
+     * was applied.
      */
-    async setConsumerPreferences(consumer_id, preferences = {}) {
+    async setConsumerPreferences(consumer_id, preferences = {}, { allowPause = false } = {}) {
         const { spatialLayer, temporalLayer, priority, paused } = preferences;
         const consumer = typeof consumer_id === 'string' ? this.getConsumer(consumer_id) : null;
 
@@ -488,7 +492,7 @@ module.exports = class Peer {
             await consumer.setPriority(applied.priority);
         }
 
-        if (typeof paused === 'boolean' && paused !== consumer.paused) {
+        if (typeof paused === 'boolean' && paused !== consumer.paused && (allowPause || !paused)) {
             if (paused) await consumer.pause();
             else await consumer.resume();
         }

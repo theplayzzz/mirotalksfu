@@ -50,9 +50,10 @@ Production protection: `docker compose up` silently swaps the image when the com
 running container. `deploy.sh prod` refuses to run in that state unless `--accept-drift` is given.
 
 **The first change of production** (a new compose file with the recorder container, a new image, and a rollback that
-`deploy.sh` cannot do on its own because the compose file changes too) has its own step by step in
-`docs/PRODUCTION-ROLLOUT.md`. Nothing in it has been done yet; `ops/compose.prod.yaml` and `ops/setup-prod.sh` are
-ready for it. `ops/deploy.sh prod main --check` can be run at any time: it only reports.
+`deploy.sh` cannot do on its own because the compose file changes too) was done on 2026-10-03 and is recorded in
+`docs/PRODUCTION-ROLLOUT.md`, with the one command that goes back to the system of 01/10 (`compose.rollback.yaml`, which
+is not what `ops/rollback.sh` restores that first time). From now on `ops/deploy.sh prod ...` and `ops/rollback.sh prod`
+work as described above. `ops/deploy.sh prod main --check` can be run at any time: it only reports.
 
 ## Test room (development only)
 
@@ -93,7 +94,8 @@ per second) and `peer-traffic.py` (upload and download of every participant, nee
 |---|---|---|
 | `SINGLE_ROOM_ID`, `SINGLE_ROOM_PASSWORD` | the only room and its password | none |
 | `KEYFRAME_REQUEST_DELAY_MS` | minimum time between two key frame requests to the same sender | 0 (no limit) |
-| `SELECTIVE_RECEPTION` | every browser asks the server for the layer its tile needs and pauses hidden screens (frame rates of a one-size screen, or sizes if `SCREEN_SIMULCAST_LAYERS` > 1) | off |
+| `SELECTIVE_RECEPTION` | every browser asks the server for the layer its tile needs (frame rates of a one-size screen, or sizes if `SCREEN_SIMULCAST_LAYERS` > 1). It never pauses a screen because the window is hidden or the tile is out of sight (people did not want screens stopped when they come back) | off |
+| `SELECTIVE_PAUSE_HIDDEN` | `true`: the server accepts the requests to pause a screen nobody looks at (an old browser tab may still send them; no current page does). A paused screen needs a new full picture from the sender to start again, 1-10 s | off (ignored) |
 | `SCREEN_SIMULCAST_LAYERS` | sizes a screen is sent in, 1-3. Keep 1: Chrome's bandwidth estimate collapses with 2-3 (`docs/MEASUREMENTS.md`) | 1 |
 | `SCREEN_CODEC` | `vp8`, `h264` or `auto` (H.264 where the browser encodes it in hardware) | vp8 |
 | `DEV_LOAD_ENABLED` | development only: `/dev/load`, virtual viewers to measure the worker (`tests/e2e/worker-load.mjs`) | off |

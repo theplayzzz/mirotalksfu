@@ -114,9 +114,12 @@ const healthMeter = new HealthMeter();
 
 // Screen shares can be sent in 1-3 simulcast layers (1/4, 1/2 and full size) so each viewer receives only the
 // quality it can show; with SELECTIVE_RECEPTION the viewers' browsers choose the layer of every screen from the
-// size of its tile and pause the video of the ones nobody is looking at (public/js/ScreenQuality.js).
+// size of its tile (public/js/ScreenQuality.js). They no longer pause the screens nobody is looking at (people
+// found them stopped when they came back to the window): the server ignores such requests, also from a browser
+// that still runs the first version of the page, unless SELECTIVE_PAUSE_HIDDEN=true.
 const screenLayers = Math.min(3, Math.max(1, parseInt(process.env.SCREEN_SIMULCAST_LAYERS, 10) || 1));
 const selectiveReception = process.env.SELECTIVE_RECEPTION === 'true';
+const selectivePauseHidden = process.env.SELECTIVE_PAUSE_HIDDEN === 'true';
 // Codec of the screens: 'vp8' (default), 'h264', or 'auto' = H.264 for the people whose browser encodes it in
 // hardware (lighter on their PC, and the replay clip needs no conversion) and VP8 for everybody else.
 const screenCodec = ['vp8', 'h264', 'auto'].includes(process.env.SCREEN_CODEC) ? process.env.SCREEN_CODEC : 'vp8';
@@ -3282,7 +3285,8 @@ function startServer() {
             }
         });
 
-        // A viewer chooses the layer, the priority and the pause of its video consumers from what is on its screen
+        // A viewer chooses the layer and the priority of its video consumers from what is on its screen (a request to
+        // pause one is ignored, see Peer.setConsumerPreferences)
         socket.on('setConsumerPreferences', async (data, callback) => {
             if (!roomExists(socket)) return callback?.({ error: 'Room not found' });
 
@@ -3298,7 +3302,7 @@ function startServer() {
             if (++socket.preferencesInWindow > 40) return callback?.({ error: 'Too many requests', code: 'RATE_LIMIT' });
 
             try {
-                const applied = await peer.setConsumerPreferences(data?.consumer_id, data);
+                const applied = await peer.setConsumerPreferences(data?.consumer_id, data, { allowPause: selectivePauseHidden });
                 callback?.({ ok: true, ...applied });
             } catch (error) {
                 callback?.({ error: error.message, code: error.code });

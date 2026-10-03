@@ -109,8 +109,12 @@ frame: kind, key flag, media time, length, bytes); nothing outside the recorder 
 }
 ```
 
-`durationS` is the length of the file; `startOffsetS` is where playback must start so the clip begins exactly
-`seconds` before the click (the lead-in before it is hidden). The two hashes are server side only and are removed
+`durationS` is the length of the file; `startOffsetS` is where the part that was asked for begins inside it, so the
+clip is exactly `seconds` before the click from there on (the file starts at the key frame before it: the lead-in). The
+gallery player plays the whole file from its first frame and marks `startOffsetS` on the timeline, because starting
+there would make the browser decode the whole lead-in before the first picture (a GOP is ~30 s in a real screen; the
+first version of the player did that and took 7 s on a fast PC and 34 s on one busy with a game); the MP4 conversion
+does cut at `startOffsetS`. The two hashes are server side only and are removed
 before anything goes to a browser. VP8 shares make a WebM; H.264 shares make an MP4 directly (so `files.mp4` is
 already set, no conversion needed).
 
@@ -202,12 +206,15 @@ Off unless `/config` says `replay.enabled` (`{ enabled, maxSeconds, options: [60
   how long ago, time left before expiry and a `MP4 pronto` badge; new clips appear live (SSE); delete for the owner.
 - A password form when the API answers 401 (people who did not come from the room).
 - **Player**: own controls in the room's theme: play/pause, timeline you can drag, time, volume, speed `1x` `1,5x`
-  `2x`, full screen, picture in picture; keys Space, ←/→ (5 s), F, M. The timeline starts at `startOffsetS` (the lead-in
-  is hidden). Below it: whose screen, who saved, date, duration, **Baixar original** (immediate, with the note "pode
-  começar até ~1 min antes") and **Baixar MP4**: when the MP4 exists it downloads at once, otherwise the button turns
-  into a progress bar with the real percentage and the time left ("Convertendo para MP4… 58% · cerca de 25 s");
-  "Na fila — 1 conversão na frente" when waiting; downloads by itself when ready; closing the tab does not cancel it.
-  Before it starts it shows the estimate ("leva ~X s").
+  `2x`, full screen, picture in picture; keys Space, ←/→ (5 s), F, M. The video plays from its first frame (no seek past
+  the lead-in) and a white mark on the timeline shows where the part that was asked for begins. Below it: whose screen,
+  who saved, date, duration, **Baixar original** (immediate, with the note "pode começar até ~1 min antes") and
+  **Baixar MP4**: when the MP4 exists it downloads at once, otherwise the button turns into a progress bar with the real
+  percentage and the time left ("Convertendo para MP4… 58% · cerca de 25 s"); "Na fila — 1 conversão na frente" when
+  waiting; downloads by itself when ready; closing the tab does not cancel it. **Only a click on that button converts**
+  (watching, seeking or a key press never does; the button gives the keyboard back after a mouse click so Space still
+  plays); before it, it says "só converte ao clicar · leva ~X s" (default 1.5 s of work per second of clip, learned per
+  browser).
 - Works on a phone width (single column).
 
 ## 8. Who builds what

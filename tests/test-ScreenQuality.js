@@ -2,11 +2,32 @@
 
 require('should');
 
+const fs = require('node:fs');
+const path = require('node:path');
 const Peer = require('../app/src/Peer');
 const rules = require('../public/js/ScreenQuality');
 const { pickLayer, pickTemporal, temporalLayersOf, decide, follow, layerScales, pickH264, chooseCodec } = rules;
 
 describe('test-ScreenQuality', () => {
+    // The people of the room did not want screens to stop when they leave a window or look at something else, and a
+    // stopped one takes 1 to 10 s to come back. A guard against putting it back by accident: the code of the page (not
+    // its comments) has no request to pause and does not look at whether the window is hidden.
+    describe('the page never pauses a screen', () => {
+        const source = fs
+            .readFileSync(path.join(__dirname, '../public/js/ScreenQuality.js'), 'utf8')
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/^\s*\/\/.*$/gm, '');
+
+        it('has no request to pause a video', () => {
+            source.should.not.match(/paused\s*:\s*true/);
+            source.should.not.match(/\.pause\(/);
+        });
+
+        it('does not read whether the window or the page is hidden', () => {
+            source.should.not.match(/visibilityState|visibilitychange|document\.hidden|IntersectionObserver/);
+        });
+    });
+
     describe('layers', () => {
         it('knows the size of each layer', () => {
             layerScales(1).should.deepEqual([1]);
@@ -62,11 +83,9 @@ describe('test-ScreenQuality', () => {
 
     describe('what a screen should get', () => {
         const visible = { visible: true, width: 960 };
-        const page = { hidden: false, pictureInPicture: false };
 
         it('asks for the layer of a visible tile', () => {
-            decide({ layers: 3, topWidth: 1920, tile: visible, page }).should.deepEqual({
-                paused: false,
+            decide({ layers: 3, topWidth: 1920, tile: visible }).should.deepEqual({
                 spatialLayer: 1,
                 temporalLayer: 0,
                 reason: 'visible',
@@ -75,41 +94,45 @@ describe('test-ScreenQuality', () => {
 
         it('asks for the frame-rate layer of a screen that is sent in one size', () => {
             const tile = (width, dpr = 1) => ({ visible: true, width: width * dpr, cssWidth: width });
-            const wanted = (width, dpr) => decide({ layers: 1, topWidth: 1920, tile: tile(width, dpr), page, temporalLayers: 3 });
-            wanted(300).should.deepEqual({ paused: false, spatialLayer: 0, temporalLayer: 0, reason: 'visible' });
+            const wanted = (width, dpr) => decide({ layers: 1, topWidth: 1920, tile: tile(width, dpr), temporalLayers: 3 });
+            wanted(300).should.deepEqual({ spatialLayer: 0, temporalLayer: 0, reason: 'visible' });
             wanted(600).should.containEql({ spatialLayer: 0, temporalLayer: 1 });
             wanted(1400).should.containEql({ spatialLayer: 0, temporalLayer: 2 });
             // the size on the screen counts, not the device pixels: a thumbnail on a 2x display is still a thumbnail
             wanted(300, 2).should.containEql({ temporalLayer: 0 });
             // without frame-rate layers (H.264) there is nothing to reduce
-            decide({ layers: 1, topWidth: 1920, tile: tile(300), page, temporalLayers: 1 }).should.containEql({ temporalLayer: 0 });
+            decide({ layers: 1, topWidth: 1920, tile: tile(300), temporalLayers: 1 }).should.containEql({ temporalLayer: 0 });
             // a screen sent in several sizes already has light small ones and keeps every frame
-            decide({ layers: 3, topWidth: 1920, tile: tile(300), page, temporalLayers: 3 }).should.containEql({
+            decide({ layers: 3, topWidth: 1920, tile: tile(300), temporalLayers: 3 }).should.containEql({
                 spatialLayer: 0,
                 temporalLayer: 2,
             });
         });
 
-        it('pauses a tile nobody can see and everything when the page is hidden', () => {
-            decide({ layers: 3, topWidth: 1920, tile: { visible: false, width: 0 }, page }).should.containEql({
-                paused: true,
-                reason: 'tile-hidden',
-            });
-            decide({ layers: 3, topWidth: 1920, tile: visible, page: { hidden: true } }).should.containEql({
-                paused: true,
-                reason: 'page-hidden',
-            });
+        // The people of the room did not want screens to stop when they leave a window, and a stopped one takes 1 to 10 s to
+        // come back (it needs a new full picture from the sender). Nothing pauses and nothing is lowered for it.
+        it('never pauses: a tile nobody can see keeps the best layers, which is what a new consumer gets', () => {
+            const out = { visible: false, width: 0, cssWidth: 0 };
+            const best = decide({ layers: 1, topWidth: 1920, tile: out, temporalLayers: 3 });
+            best.should.deepEqual({ spatialLayer: 0, temporalLayer: 2, reason: 'out-of-sight' });
+            (best.paused === undefined).should.be.true();
+            decide({ layers: 3, topWidth: 1920, tile: out, temporalLayers: 3 }).should.containEql({ spatialLayer: 2, temporalLayer: 2 });
+            decide({ layers: 1, topWidth: 1920, tile: out, temporalLayers: 1 }).should.containEql({ spatialLayer: 0, temporalLayer: 0 });
         });
 
-        it('keeps watching in picture in picture even if the page is hidden', () => {
-            decide({ layers: 3, topWidth: 1920, tile: visible, page: { hidden: true, pictureInPicture: true } }).paused.should.be.false();
+        it('does not look at the window at all: a hidden page asks for the same as a visible one', () => {
+            // a page argument (hidden, picture in picture) used to decide a pause; it is not read any more
+            const tile = { visible: true, width: 300, cssWidth: 300 };
+            const asked = decide({ layers: 1, topWidth: 1920, tile, temporalLayers: 3 });
+            decide({ layers: 1, topWidth: 1920, tile, temporalLayers: 3, page: { hidden: true } }).should.deepEqual(asked);
+            decide({ layers: 3, topWidth: 1920, tile: visible, temporalLayers: 3, page: { hidden: true } }).should.have.property('spatialLayer');
+            (asked.paused === undefined).should.be.true();
         });
     });
 
     describe('when to change', () => {
-        const fresh = () => ({ applied: { paused: false, spatialLayer: 2, temporalLayer: 0 }, candidate: null, lastChange: 0 });
-        const layer = (spatialLayer, temporalLayer = 0) => ({ paused: false, spatialLayer, temporalLayer, reason: 'visible' });
-        const hidden = (reason) => ({ paused: true, reason });
+        const fresh = () => ({ applied: { spatialLayer: 2, temporalLayer: 0 }, candidate: null, lastChange: 0 });
+        const layer = (spatialLayer, temporalLayer = 0) => ({ spatialLayer, temporalLayer, reason: 'visible' });
 
         it('does nothing while what is wanted is what is applied', () => {
             const state = fresh();
@@ -122,24 +145,24 @@ describe('test-ScreenQuality', () => {
             (follow(state, layer(0), 10_000) === null).should.be.true();
             (follow(state, layer(0), 10_800) === null).should.be.true();
             follow(state, layer(0), 11_600).should.containEql({ spatialLayer: 0 });
-            state.applied.should.deepEqual({ paused: false, spatialLayer: 0, temporalLayer: 0 });
+            state.applied.should.deepEqual({ spatialLayer: 0, temporalLayer: 0 });
         });
 
         it('goes up quickly: 0.3 s', () => {
-            const state = { applied: { paused: false, spatialLayer: 0, temporalLayer: 0 }, candidate: null, lastChange: 0 };
+            const state = { applied: { spatialLayer: 0, temporalLayer: 0 }, candidate: null, lastChange: 0 };
             (follow(state, layer(2), 10_000) === null).should.be.true();
             follow(state, layer(2), 10_320).should.containEql({ spatialLayer: 2 });
         });
 
         it('does the same with frame-rate layers: down after 1.5 s, up after 0.3 s', () => {
-            const state = { applied: { paused: false, spatialLayer: 0, temporalLayer: 2 }, candidate: null, lastChange: 0 };
+            const state = { applied: { spatialLayer: 0, temporalLayer: 2 }, candidate: null, lastChange: 0 };
             (follow(state, layer(0, 0), 10_000) === null).should.be.true();
             (follow(state, layer(0, 0), 11_400) === null).should.be.true();
             follow(state, layer(0, 0), 11_600).should.containEql({ temporalLayer: 0 });
             (follow(state, layer(0, 2), 20_000) === null).should.be.true();
             (follow(state, layer(0, 2), 20_200) === null).should.be.true();
             follow(state, layer(0, 2), 20_320).should.containEql({ temporalLayer: 2 });
-            state.applied.should.deepEqual({ paused: false, spatialLayer: 0, temporalLayer: 2 });
+            state.applied.should.deepEqual({ spatialLayer: 0, temporalLayer: 2 });
         });
 
         it('forgets a change that was only wanted for a moment', () => {
@@ -151,17 +174,13 @@ describe('test-ScreenQuality', () => {
             follow(state, layer(0), 12_400).should.containEql({ spatialLayer: 0 });
         });
 
-        it('waits before pausing: 1.5 s for a hidden tile, 3 s for a hidden page; resumes at once', () => {
-            const tile = fresh();
-            (follow(tile, hidden('tile-hidden'), 10_000) === null).should.be.true();
-            follow(tile, hidden('tile-hidden'), 11_600).should.containEql({ paused: true });
-
-            const page = fresh();
-            (follow(page, hidden('page-hidden'), 10_000) === null).should.be.true();
-            (follow(page, hidden('page-hidden'), 12_900) === null).should.be.true();
-            follow(page, hidden('page-hidden'), 13_100).should.containEql({ paused: true });
-
-            follow(page, layer(1), 13_200).should.containEql({ paused: false, spatialLayer: 1 });
+        it('a tile that comes back into view goes up at once to what it had: no pause, so no wait for a new picture', () => {
+            // a thumbnail (15 fps) that is put back as the big tile asks for all frames after 0.3 s, never a pause
+            const state = { applied: { spatialLayer: 0, temporalLayer: 0 }, candidate: null, lastChange: 0 };
+            (follow(state, decide({ layers: 1, topWidth: 1920, tile: { visible: true, width: 1900, cssWidth: 1900 }, temporalLayers: 3 }), 50_000) === null).should.be.true();
+            const change = follow(state, decide({ layers: 1, topWidth: 1920, tile: { visible: true, width: 1900, cssWidth: 1900 }, temporalLayers: 3 }), 50_300);
+            change.should.containEql({ spatialLayer: 0, temporalLayer: 2 });
+            (change.paused === undefined).should.be.true();
         });
     });
 
@@ -240,17 +259,44 @@ describe('test-ScreenQuality', () => {
             return peer;
         };
 
-        it('sets the layers, the priority and the pause, within the limits', async () => {
+        it('sets the layers and the priority within the limits, and the pause only when it is allowed', async () => {
             const c = consumer();
             const peer = withConsumer(c);
 
-            const applied = await peer.setConsumerPreferences('c1', { spatialLayer: 1, priority: 255, paused: true });
+            const applied = await peer.setConsumerPreferences('c1', { spatialLayer: 1, priority: 255, paused: true }, { allowPause: true });
 
             applied.should.deepEqual({ spatialLayer: 1, temporalLayer: 2, priority: 255, paused: true });
             c.calls.should.deepEqual([['layers', { spatialLayer: 1, temporalLayer: 2 }], ['priority', 255], ['pause']]);
 
-            const clamped = await peer.setConsumerPreferences('c1', { spatialLayer: 99, temporalLayer: -4, priority: 9999, paused: false });
+            const clamped = await peer.setConsumerPreferences('c1', { spatialLayer: 99, temporalLayer: -4, priority: 9999, paused: false }, { allowPause: true });
             clamped.should.deepEqual({ spatialLayer: 2, temporalLayer: 0, priority: 255, paused: false });
+        });
+
+        // People did not want screens to stop when they leave a window, and a stopped one needs a new full picture from the
+        // sender to start again (1 to 10 s). A browser with the first version of the page still asks for it: ignored.
+        it('does not pause a video because a browser asks, unless SELECTIVE_PAUSE_HIDDEN is on (the default is off)', async () => {
+            const c = consumer();
+            const peer = withConsumer(c);
+
+            const applied = await peer.setConsumerPreferences('c1', { spatialLayer: 1, paused: true });
+
+            applied.should.deepEqual({ spatialLayer: 1, temporalLayer: 2, paused: false });
+            c.paused.should.be.false();
+            c.calls.should.deepEqual([['layers', { spatialLayer: 1, temporalLayer: 2 }]]); // the layers still count, no pause, no resume
+
+            (await peer.setConsumerPreferences('c1', { paused: true }, {})).should.deepEqual({ paused: false });
+            (await peer.setConsumerPreferences('c1', { paused: true }, { allowPause: false })).should.deepEqual({ paused: false });
+            c.calls.should.have.length(1);
+        });
+
+        it('resumes a paused consumer when asked, whatever the setting', async () => {
+            const c = consumer({ paused: true });
+            const peer = withConsumer(c);
+
+            const applied = await peer.setConsumerPreferences('c1', { paused: false });
+
+            applied.should.deepEqual({ paused: false });
+            c.calls.should.deepEqual([['resume']]);
         });
 
         it('leaves alone what was not asked and does not pause twice', async () => {
@@ -276,11 +322,11 @@ describe('test-ScreenQuality', () => {
             clamped.should.containEql({ spatialLayer: 0, temporalLayer: 2 });
         });
 
-        it('ignores layers of a consumer that has none, but still pauses it', async () => {
+        it('ignores layers of a consumer that has none, but can still pause it when that is allowed', async () => {
             const c = consumer({ type: 'simple', rtpParameters: { encodings: [{}] } });
             const peer = withConsumer(c);
 
-            const applied = await peer.setConsumerPreferences('c1', { spatialLayer: 0, paused: true });
+            const applied = await peer.setConsumerPreferences('c1', { spatialLayer: 0, paused: true }, { allowPause: true });
 
             applied.should.deepEqual({ paused: true });
             c.calls.should.deepEqual([['pause']]);

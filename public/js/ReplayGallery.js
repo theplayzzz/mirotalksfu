@@ -13,7 +13,8 @@ window.ReplayGallery = (() => {
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const STREAM_EVENTS = ['clip.created', 'clip.deleted', 'mp4.progress', 'mp4.ready', 'mp4.error'];
     const SEEK_STEP_S = 5;
-    const MP4_RATIO_KEY = 'replay.mp4Ratio';
+    // (v2: the speed is now per second of the part that is converted, not of the whole file with its lead-in)
+    const MP4_RATIO_KEY = 'replay.mp4Ratio.v2';
     const VOLUME_KEY = 'replay.volume';
     const EXPIRES_SOON_MS = 24 * 3600 * 1000;
     const dayFormat = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -185,6 +186,8 @@ window.ReplayGallery = (() => {
 
     const clipTitle = (clip) => `Tela de ${clip.sharer || 'alguém'}`;
     const lengthOf = (clip) => L.playerRange(clip, NaN).length;
+    // What the MP4 conversion works on: the part that was asked for (the lead-in is cut off), as the recorder counts it
+    const convertLengthOf = (clip) => Math.max(0, (Number(clip.durationS) || 0) - (Number(clip.startOffsetS) || 0));
     const currentClip = () => app.clips.find((clip) => clip.id === app.openId) || null;
 
     // ---- the list ---------------------------------------------------------------------------------------------
@@ -736,7 +739,6 @@ window.ReplayGallery = (() => {
         raf: 0,
         idleTimer: 0,
         lastAria: -1,
-        startRetried: false,
         tapWasIdle: false,
         fullscreenChangedAt: 0,
     };
@@ -829,7 +831,6 @@ window.ReplayGallery = (() => {
         resetPlayer();
         P.clip = clip;
         P.triedMp4 = false;
-        P.startRetried = false;
         P.range = L.playerRange(clip, NaN);
         P.lastAria = -1;
         stage.style.setProperty('--rp-ar', String(ratio ? clamp(ratio, 0.4, 3.2).toFixed(4) : 1.7778));
@@ -868,7 +869,13 @@ window.ReplayGallery = (() => {
         }
         const created = new Date(clip.createdAt);
         parts.push(document.createTextNode(`${dayFormat.format(created)} às ${hourFormat.format(created)}`));
-        parts.push(document.createTextNode(`duração ${L.formatClock(lengthOf(clip))}`));
+        // the video starts a little before what was asked (at the key frame it needs): say where the asked part begins
+        const asked = L.playerRange(clip, NaN).asked;
+        parts.push(
+            document.createTextNode(
+                `duração ${L.formatClock(lengthOf(clip))}${asked >= 1 ? ` (o pedido começa em ${L.formatClock(asked)})` : ''}`
+            )
+        );
         parts.push(document.createTextNode(L.formatLeft(clip.expiresAt - now())));
         const nodes = [];
         parts.forEach((part, index) => {
@@ -968,6 +975,11 @@ window.ReplayGallery = (() => {
         }
         const bufferedFraction = range.length ? L.toTimeline(buffered, range) / range.length : 0;
         timeline.style.setProperty('--buf', `${(Math.max(bufferedFraction, fraction) * 100).toFixed(3)}%`);
+        // the mark of where the part that was asked for begins (the file starts a little before it)
+        const mark = $('rpAsked');
+        const showMark = !!range.length && range.asked >= 1;
+        if (mark.hidden === showMark) mark.hidden = !showMark;
+        if (showMark) timeline.style.setProperty('--ask', `${((range.asked / range.length) * 100).toFixed(3)}%`);
         $('rpTime').textContent = `${L.formatClock(at)} / ${L.formatClock(range.length)}`;
         const whole = Math.floor(at);
         if (whole !== P.lastAria) {
@@ -1005,16 +1017,11 @@ window.ReplayGallery = (() => {
             if (video.videoWidth && video.videoHeight) {
                 stage.style.setProperty('--rp-ar', clamp(video.videoWidth / video.videoHeight, 0.4, 3.2).toFixed(4));
             }
-            // The file starts at a key frame up to ~1 min before the part that was asked for: hide the lead-in.
-            if (P.range.start > 0 && video.currentTime < P.range.start - 0.05) video.currentTime = P.range.start;
+            // The file starts at a key frame up to ~30 s before the part that was asked for. It plays from its first
+            // frame: skipping the lead-in means decoding all of it before the first picture (ReplayLogic.playerRange).
             paintTimeline();
         });
-        video.addEventListener('loadeddata', () => {
-            $('rpSpinner').hidden = true;
-            if (P.clip && P.range.start > 0 && video.currentTime < P.range.start - 0.05 && !P.dragging) {
-                video.currentTime = P.range.start;
-            }
-        });
+        video.addEventListener('loadeddata', () => ($('rpSpinner').hidden = true));
         video.addEventListener('durationchange', () => {
             if (!P.clip) return;
             P.range = L.playerRange(P.clip, video.duration);
@@ -1029,11 +1036,6 @@ window.ReplayGallery = (() => {
             $('rpSpinner').hidden = true;
             syncPlayButtons();
             startLoop();
-            // A browser that could not seek yet starts from the first frame (the lead-in): once, try again now.
-            if (P.clip && !P.startRetried && P.range.start > 0 && video.currentTime < P.range.start - 0.3) {
-                P.startRetried = true;
-                video.currentTime = P.range.start;
-            }
         });
         video.addEventListener('pause', () => {
             syncPlayButtons();
@@ -1387,7 +1389,8 @@ window.ReplayGallery = (() => {
         let title = 'Baixar MP4';
         let detail = '';
         if (M.phase === 'idle') {
-            detail = L.estimateText(L.estimateMp4Seconds(clip.durationS, app.mp4Ratio));
+            // nothing is converted until somebody clicks here: watching the clip never starts it
+            detail = `só converte ao clicar · ${L.estimateText(L.estimateMp4Seconds(convertLengthOf(clip), app.mp4Ratio))}`;
         } else if (M.phase === 'ready') {
             const bytes = clip.files && clip.files.mp4 && clip.files.mp4.bytes;
             detail = `${bytes ? `${L.formatBytes(bytes)} · ` : ''}pronto para baixar`;
@@ -1454,7 +1457,7 @@ window.ReplayGallery = (() => {
     function mp4Done(clip) {
         stopMp4Watch();
         if (M.firstRunAt && isNumber(clip.durationS)) {
-            app.mp4Ratio = L.learnRatio(app.mp4Ratio, (Date.now() - M.firstRunAt) / 1000, clip.durationS);
+            app.mp4Ratio = L.learnRatio(app.mp4Ratio, (Date.now() - M.firstRunAt) / 1000, convertLengthOf(clip));
             store.set(MP4_RATIO_KEY, String(app.mp4Ratio));
         }
         if (!clip.files || !clip.files.mp4)
@@ -1508,9 +1511,12 @@ window.ReplayGallery = (() => {
         link.remove();
     }
 
-    async function onMp4Click() {
+    async function onMp4Click(event) {
         const clip = P.clip;
         if (!clip) return;
+        // A button the mouse just pressed gives the keyboard back, so Space plays or pauses the video instead of
+        // pressing this one again (and converting or downloading once more).
+        if (event && event.detail > 0 && event.currentTarget && event.currentTarget.blur) event.currentTarget.blur();
         if (M.phase === 'ready' || (clip.files && clip.files.mp4)) {
             downloadMp4(clip);
             return;

@@ -1,135 +1,82 @@
-# Subir para a produção — roteiro
+# Produção — o que foi feito em 03/10/2026, como desfazer e como seguir
 
-**Nada deste roteiro foi executado.** A produção (`livestream.grupogrowon.com.br`) continua exatamente como estava em
-01/10: contêiner `mirotalksfu` com a imagem `mirotalksfu-prod:screenshare-20261001` e dois arquivos corrigidos a quente.
-Tudo o que está aqui foi validado no dev (`mirotalk-dev`), e cada passo marcado com 🔒 só é feito com o seu "pode subir
-para produção" explícito, com a sala vazia e com o rollback pronto.
+**Executado em 03/10/2026, 21:14 UTC (18:14 em Brasília), numa única reinicialização.** A produção
+(`livestream.grupogrowon.com.br`) passou da imagem `mirotalksfu-prod:screenshare-20261001` (com dois arquivos corrigidos a
+quente) para a imagem construída pela CI, `ghcr.io/theplayzzz/mirotalksfu:main` (digest
+`sha256:0947a362261fa9e9205327c15e3947d5e79e9760c79dba49059f42255521e669`, commit `455141ee`), **com todos os interruptores
+ligados de uma vez**, a pedido do dono ("pode executar tudo agora jogando para produção"), que avisou a galera da queda.
 
-## Os três portões
+## O que aconteceu
 
-1. **Sessão com a galera no dev, com o medidor ligado** (parte do plano: "antes da produção"). O dev tem tudo ligado:
-   replay, recepção seletiva, limite de pedidos de quadro completo e o medidor de saúde. Peça para a galera entrar em
-   https://mirotalk-dev.40-160-143-32.sslip.io/join/link e jogar uma noite normal; depois eu leio o medidor
-   (`ops/health-summary.py`) e comparo.
-2. **O seu OK** a cada passo 🔒.
-3. **Sala vazia** na hora de trocar a imagem ou reiniciar o contêiner. Conferir:
-   `ssh ovh-mirotalk "ss -Htn state established '( dport = :3012 )' | wc -l"` deve dar `0`. O `deploy.sh prod` já se
-   recusa a rodar com gente conectada.
+| | |
+|---|---|
+| Tempo sem a sala | **11,3 s**: o contêiner antigo parou às 21:14:47,4 e o novo ficou saudável às 21:14:58,7. Havia 8 pessoas conectadas; elas voltaram sozinhas em um minuto |
+| Contêineres | `mirotalksfu` (imagem nova) e `mirotalk-replay` (o gravador, mesma imagem, núcleo 5, 2 GB), os dois `healthy` |
+| Ligado | `HEALTH_METER_ENABLED`, `KEYFRAME_REQUEST_DELAY_MS=1000`, `SELECTIVE_RECEPTION`, `REPLAY_ENABLED`, `REPLAY_UI_ENABLED` (em `/home/debian/.config/mirotalksfu-prod/features.env`) |
+| Fica desligado | `SCREEN_CODEC` (continua `vp8`; o medidor mostra H.264 só em software em todos os PCs que reportaram, então o `auto` escolheria VP8 de qualquer jeito) e `ROOM_DELIVERY_WORKERS` (a medição mostrou que não precisa) |
+| Máquina | `net.core.rmem_max` = 4 MB, gravado em `/etc/sysctl.d/99-replay.conf` (o gravador pede 8 MB de buffer UDP e o kernel concede o dobro do teto) |
+| Caddy | não foi tocado; `reverse_proxy 127.0.0.1:3012` continua servindo `/replay/` sem regra nova |
+| Primeiros minutos | ver "Produção, os primeiros minutos" em `docs/MEASUREMENTS.md`: primeiro replay salvo por um amigo (clipe pronto em 0,87 s, MP4 em 90 s), 0 pacotes perdidos no gravador, espectadores com 29-44 fps e perda ≤ 0,3% |
 
-## O que muda para quem usa a sala
+## Para desfazer — IMPORTANTE: não é o `ops/rollback.sh`
 
-- Com todos os interruptores desligados (`features.env` só com comentários) a sala se comporta como hoje, com estas
-  exceções pequenas que vêm junto com o código novo: quem compartilha a tela **antes de entrar** passa a pedir só o áudio
-  da janela (como já é dentro da sala; avise a galera); o áudio da tela fica identificado para o gravador; um codec
-  forçado nas configurações da câmera/tela passa a valer de verdade (antes era ignorado por um erro de nome).
-- Cada recurso novo liga por uma linha em `features.env` e desliga tirando a linha.
-
-## Passo 0 — a branch `main` (sem efeito na produção)
-
-Depois da sessão com a galera, levar o que está validado para a `main` (a imagem `:main` é a que a produção usa):
-
-```bash
-cd mirotalksfu
-git checkout main && git merge --no-ff develop -m "Release: replay, recepção seletiva, limite de quadros completos, medidor de saúde"
-git push origin main            # a CI constrói ghcr.io/theplayzzz/mirotalksfu:main
-```
-
-Isso não troca nada que está rodando: os servidores só puxam imagens por `deploy.sh`.
-
-## Passo 1 🔒 — trocar a imagem, sem ligar nada novo
-
-O que muda: a produção passa a rodar a imagem construída pela CI (a mesma lógica da de hoje, sem os arquivos corrigidos a
-quente nem o `config.js` montado), mais o segundo contêiner `mirotalk-replay`, parado em termos de trabalho (nada é enviado
-a ele com o replay desligado).
-
-**Antes (não mexe em nada que roda):**
+Esta primeira troca mudou o próprio `compose.yaml`. O `ops/rollback.sh prod` volta ao compose de *antes do último deploy*,
+que nesta primeira vez já era o compose novo. O caminho de volta ao sistema de 01/10 (contêiner antigo, `config.js`
+montado, arquivos corrigidos a quente incluídos) está pronto à parte:
 
 ```bash
 ssh ovh-mirotalk
 cd /home/debian/mirotalksfu
-# 1a. uma cópia exata do que roda hoje, arquivos corrigidos a quente incluídos. --pause=false: não congela a sala.
-sudo docker commit --pause=false mirotalksfu mirotalksfu-prod:antes-da-troca-20261003
-# 1b. o compose que traz de volta exatamente isso (o rollback manual; o do deploy.sh não serve na primeira troca)
-cp -a compose.yaml compose.yaml.antes-da-troca
-sed 's#^\([[:space:]]*image:[[:space:]]*\).*#\1mirotalksfu-prod:antes-da-troca-20261003#' compose.yaml > compose.rollback.yaml
-docker compose -p mirotalksfu -f compose.rollback.yaml config --quiet && echo "rollback compose ok"
-# 1c. os arquivos que o compose novo usa (cria features.env vazio, replay.env, pastas; não toca no .env nem em contêiner)
-bash /home/debian/mirotalk-dev/ops/setup-prod.sh      # (ou copiar ops/setup-prod.sh do repositório)
+sudo docker compose -p mirotalksfu -f compose.rollback.yaml up -d --force-recreate --remove-orphans
 ```
 
-**A troca:**
+- `compose.rollback.yaml` usa a imagem `mirotalksfu-prod:antes-da-troca-20261003` (uma cópia exata do contêiner de 01/10,
+  tirada antes da troca com `docker commit --no-pause`, sem congelar a sala). `--remove-orphans` tira o `mirotalk-replay`.
+- Conferir que continua válido: `sudo docker compose -p mirotalksfu -f compose.rollback.yaml config --quiet`.
+- `compose.yaml.antes-da-troca` é o compose de 01/10 como estava (a imagem dele era `joinfix-20261001`, que nunca subiu: não
+  use esse arquivo, use o `compose.rollback.yaml`).
+- Desligar só uma coisa não exige voltar: pôr `#` na linha em `features.env` e recriar
+  (`cd /home/debian/mirotalksfu && sudo docker compose up -d --force-recreate mirotalksfu`, derruba a sala por ~10 s).
+  Para desligar só o replay: `#` em `REPLAY_ENABLED` e `REPLAY_UI_ENABLED`; os clipes salvos continuam no disco até expirar.
+
+## Daqui para a frente
+
+A partir desta troca, `ops/deploy.sh` e `ops/rollback.sh` funcionam como foram desenhados: cada deploy guarda o compose
+anterior (`compose.yaml.pre-deploy-<data>`) e `ops/rollback.sh prod` volta a ele.
 
 ```bash
-# do PC: o compose novo e o script de deploy
-scp ops/compose.prod.yaml ops/deploy.sh ops/rollback.sh ovh-mirotalk:/tmp/
-ssh ovh-mirotalk
-cp /tmp/compose.prod.yaml /home/debian/mirotalksfu/compose.yaml
-mkdir -p /home/debian/mirotalksfu/ops && cp /tmp/deploy.sh /tmp/rollback.sh /home/debian/mirotalksfu/ops/ && chmod +x /home/debian/mirotalksfu/ops/*.sh
 cd /home/debian/mirotalksfu
-./ops/deploy.sh prod main --check            # só relata: gente conectada? divergência? disco?
-./ops/deploy.sh prod main --accept-drift     # a divergência é a conhecida (o contêiner roda screenshare, o compose dizia joinfix)
+./ops/deploy.sh prod main --check        # só relata: gente conectada? divergência entre o contêiner e o compose? disco?
+./ops/deploy.sh prod main                # recusa se houver gente conectada; --force deploya mesmo assim
+./ops/deploy.sh prod sha-abc1234         # uma imagem específica da CI
+./ops/rollback.sh prod                   # volta ao compose anterior ao último deploy
 ```
 
-**Conferir** (eu faço): contêiner `healthy`; `curl -s https://livestream.grupogrowon.com.br/config` sem `replay` ligado; entrar
-na sala, compartilhar uma tela com áudio e ver o outro lado; a doação do LivePix aparece na entrada; `docker logs --since 5m
-mirotalksfu` sem erros novos.
+O deploy troca a imagem por digest, espera o `healthy` de todos os contêineres do projeto e, se algo não subir, volta sozinho
+ao compose anterior.
 
-**Se algo estiver errado — rollback em um comando** (volta ao contêiner de hoje, arquivos corrigidos a quente incluídos):
+## O que olhar nos primeiros dias
 
-```bash
-cd /home/debian/mirotalksfu && docker compose -p mirotalksfu -f compose.rollback.yaml up -d --force-recreate --remove-orphans
-```
+- `sudo docker stats --no-stream mirotalksfu mirotalk-replay`: o gravador fica em ~1-10% do núcleo dele e sobe a ~100% **só
+  enquanto converte um MP4** (é para isso que o núcleo 5 é dele); o pico de memória medido foi 829 MiB, limite de 2 GiB.
+- `sudo docker logs --since 1h mirotalk-replay`: nada de "overflow", perdas, nem reinícios.
+- Disco: `du -sh /home/debian/mirotalksfu/data/replays`. O buffer de cada tela estabiliza em ~500-575 MB depois de ~7 minutos
+  de tela ligada (≈ 1,2-1,45 MB/s) e some 2 minutos depois que a tela para; clipes ficam 7 dias, cota de 20 GB.
+- Os números reais dos espectadores: `python3 ops/health-summary.py /home/debian/mirotalksfu/data/health --hours 12` (o script
+  vai por `ssh ovh-mirotalk 'python3 - <dir> --hours 12' < ops/health-summary.py`). Quadros por segundo, congelamentos e
+  perdas de quem assiste devem ficar como antes de ligar o replay; é a comparação que o teste de longa duração do dev
+  (`docs/MEASUREMENTS.md`) não conseguiu fechar sozinho.
+- Quando a galera converter MP4: comparar os congelamentos dos espectadores nos minutos com e sem conversão rodando.
+- Aviso do Caddy "aborting with incomplete response" em `/replay/media/.../clip.webm` e `ECONNRESET` no log do SFU: é o player
+  de vídeo do navegador cancelando as próprias requisições de trecho. Não é erro.
+- Reclamação de "travou" na live: desligar o replay (acima) e me avisar; os testes não mostraram mudança em quadros por
+  segundo, congelamentos nem perdas de quem assiste.
 
-## Passo 2 🔒 — interruptores, um de cada vez, com o medidor medindo
+## O que mudou para quem usa a sala (já em vigor)
 
-Editar `/home/debian/.config/mirotalksfu-prod/features.env` (tirar o `#` da linha) e aplicar:
-
-```bash
-cd /home/debian/mirotalksfu && docker compose up -d --force-recreate mirotalksfu   # derruba a sala por alguns segundos: sala vazia
-```
-
-Nesta ordem, um por noite se quiser medir de verdade:
-
-1. `HEALTH_METER_ENABLED=true` — só mede (quadros, congelamentos, perdas por navegador). Dá o "antes".
-2. `KEYFRAME_REQUEST_DELAY_MS=1000` — no máximo um pedido de quadro completo por segundo por remetente.
-3. `SELECTIVE_RECEPTION=true` — miniaturas a 15 fps, telas escondidas pausadas. Esperado (medido no dev com 10 espectadores ×
-   4 telas): worker de 52,8% para ~32% com uma tela grande e três miniaturas; espectador de 48,9 para 26,4 Mbps.
-
-Comparar o medidor antes e depois de cada um (`python3 ops/health-summary.py /home/debian/mirotalksfu/data/health --hours 12`)
-e a CPU do worker (`ops/tools/sample-health.sh`). Para desligar: voltar o `#` e recriar o contêiner.
-
-## Passo 3 🔒 — replay
-
-Antes, **uma mudança na máquina toda (precisa do seu OK separado)**: o gravador pede um buffer de recepção UDP maior do que
-o padrão do sistema (208 KB). Sem isso ele funciona (0 pacotes perdidos nos testes), mas uma travada de disco poderia
-perder alguns pacotes. A mudança só aumenta o teto que um programa pode pedir; nada passa a usar mais memória sozinho:
-
-```bash
-echo 'net.core.rmem_max=4194304' | sudo tee /etc/sysctl.d/99-replay.conf && sudo sysctl --system | grep rmem_max
-```
-
-Depois, ligar o replay:
-
-```bash
-# em features.env: tirar o # de   REPLAY_ENABLED=true   e   REPLAY_UI_ENABLED=true
-cd /home/debian/mirotalksfu && docker compose up -d --force-recreate mirotalksfu      # sala vazia
-docker compose ps                                                                      # os dois contêineres healthy
-curl -s https://livestream.grupogrowon.com.br/config | python3 -c "import sys,json; print(json.load(sys.stdin)['replay'])"
-```
-
-**Conferir com dois amigos (ou comigo + você):** um compartilha a tela com áudio, outro assiste; esperar 1 minuto; o botão
-de replay (relógio ao lado do alfinete) deve mostrar "Disponível: últimos 1:0x"; salvar 1 min; abrir "Ver" e a galeria
-(`/replay/`); baixar o original e o MP4. O que se espera, medido no dev: clipe pronto em ~1 s; MP4 de 30 s em ~55 s; CPU do
-gravador ~13% de um núcleo; disco: ~75 MB por minuto de tela a 10 Mbps (5 min de buffer por tela ≈ 400 MB; a cota é 20 GB,
-clipes somem em 7 dias).
-
-**Rollback do replay:** pôr o `#` de volta em `REPLAY_ENABLED` e recriar o `mirotalksfu`; o contêiner `mirotalk-replay`
-pode ficar parado (`docker compose stop mirotalk-replay`) e os clipes continuam no disco até expirar.
-
-## O que olhar no primeiro dia
-
-- `docker stats mirotalksfu mirotalk-replay` — o gravador não deve passar de ~20% do núcleo dele; o `mirotalksfu`, como antes.
-- `docker logs mirotalk-replay --since 1h` — nada de "overflow" ou perdas.
-- Disco: `du -sh /home/debian/mirotalksfu/data/replays`; deve estabilizar depois de ~7 minutos de tela ligada.
-- Reclamação de "travou" na live ao ligar o replay: desligar o interruptor (rollback acima) e me avisar; nos testes o replay
-  não mudou quadros por segundo, congelamentos nem perdas de quem assiste (`docs/MEASUREMENTS.md`).
+- Quem compartilha a tela **antes de entrar** passa a pedir só o áudio da janela (como já era dentro da sala).
+- O áudio da tela fica identificado para o gravador; um codec forçado nas configurações da câmera/tela passa a valer de
+  verdade (antes era ignorado por um erro de nome).
+- Cada tela mostra um botão de replay (relógio, ao lado do alfinete); a galeria está em `/replay/` (`/replays` redireciona).
+  Nada do replay faz som.
+- Miniaturas recebem a tela a 15 fps e telas escondidas ficam pausadas; a tela fixada continua em qualidade cheia.

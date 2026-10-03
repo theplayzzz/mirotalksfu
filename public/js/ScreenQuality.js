@@ -4,16 +4,19 @@
  * Screen quality: what each viewer really needs of every shared screen.
  *
  * Without it every viewer downloads every screen in full quality (4 screens of 12 Mbps = ~47 Mbps each), even
- * screens shown as small tiles, hidden by the focus mode or in a window nobody is looking at. With the server
- * setting SELECTIVE_RECEPTION the browser looks at its own screen and asks the server for:
+ * screens shown as small tiles. With the server setting SELECTIVE_RECEPTION the browser looks at its own screen and
+ * asks the server for:
  *   - the layer that fits the tile. A screen is sent in one size with 3 frame-rate layers (VP8 L1T3: 60, 30 and 15
  *     fps, which cost 100%, 60% and 40% of the bits), so a thumbnail gets 15 fps and a medium tile 30 fps. With
  *     SCREEN_SIMULCAST_LAYERS the screen can also be sent in up to 3 sizes (1/4, 1/2 and full), and then the size
  *     is chosen instead (off by default: Chrome does not hold the bandwidth estimate of a layered sender up, see
  *     docs/MEASUREMENTS.md),
- *   - priority for the biggest tile when the network is short,
- *   - a pause of the video of a tile that is hidden (or of all of them while the page itself is hidden).
- * Audio is never paused. Quality goes up quickly and down slowly, so resizing or unpinning does not make it flap.
+ *   - priority for the biggest tile when the network is short.
+ * Nothing is paused and nothing is lowered because the window is hidden or a tile is out of sight. It was, in the
+ * first version, and the people of the room did not want it: coming back to a window found the screens stopped, and
+ * a paused video can only start again at a new full picture from the sender, which takes from 1 to 10 seconds.
+ * Changing the frame-rate layer instead needs no full picture, but the rule is simply "what is on screen counts".
+ * Quality goes up quickly and down slowly, so resizing or unpinning does not make it flap.
  *
  * The rules at the top are pure functions, loaded also by the unit tests (tests/test-ScreenQuality.js).
  */
@@ -22,8 +25,6 @@
 
     const HOLD_UP_MS = 300; // a bigger layer is asked for after the need has lasted this long
     const HOLD_DOWN_MS = 1500; // a smaller one after this long
-    const HOLD_TILE_HIDDEN_MS = 1500;
-    const HOLD_PAGE_HIDDEN_MS = 3000;
     const POLL_MS = 250;
     const DEFAULT_TOP_WIDTH = 1920;
 
@@ -56,20 +57,21 @@
         return top;
     }
 
-    // What one screen should get now. tile: { visible, width (device pixels), cssWidth }, page: { hidden,
-    // pictureInPicture }, temporalLayers: how many frame-rate layers the screen has (1 = none).
-    function decide({ layers, topWidth, tile, page, temporalLayers = 1 }) {
-        if (page.hidden && !page.pictureInPicture) return { paused: true, reason: 'page-hidden' };
-        if (!tile.visible) return { paused: true, reason: 'tile-hidden' };
+    // What one screen should get now. tile: { visible, width (device pixels), cssWidth }, temporalLayers: how many
+    // frame-rate layers the screen has (1 = none). A tile that is not on screen (focus mode, scrolled away, a hidden
+    // window) keeps everything: the best layers are what a new consumer gets, so nothing has to be asked for, and
+    // when the person looks again the picture is there, already moving.
+    function decide({ layers, topWidth, tile, temporalLayers = 1 }) {
+        const bestTemporal = Math.max(0, temporalLayers - 1);
+        if (!tile.visible) return { spatialLayer: Math.max(0, layers - 1), temporalLayer: bestTemporal, reason: 'out-of-sight' };
         // A screen sent in several sizes already has light small ones; frame-rate layers are for the one-size screen
-        const temporalLayer = layers > 1 ? Math.max(0, temporalLayers - 1) : pickTemporal(temporalLayers, tile.cssWidth ?? tile.width);
-        return { paused: false, spatialLayer: pickLayer(layers, topWidth, tile.width), temporalLayer, reason: 'visible' };
+        const temporalLayer = layers > 1 ? bestTemporal : pickTemporal(temporalLayers, tile.cssWidth ?? tile.width);
+        return { spatialLayer: pickLayer(layers, topWidth, tile.width), temporalLayer, reason: 'visible' };
     }
 
     // Does `wanted` ask for something different from what is applied?
     function differs(applied, wanted) {
-        if (wanted.paused !== applied.paused) return true;
-        return !wanted.paused && (wanted.spatialLayer !== applied.spatialLayer || wanted.temporalLayer !== applied.temporalLayer);
+        return wanted.spatialLayer !== applied.spatialLayer || wanted.temporalLayer !== applied.temporalLayer;
     }
 
     // How much picture a layer pair carries, to tell a sharper request from a lighter one
@@ -82,23 +84,15 @@
             state.candidate = null;
             return null;
         }
-        const key = wanted.paused ? `paused:${wanted.reason}` : `layer:${wanted.spatialLayer}/${wanted.temporalLayer}`;
+        const key = `layer:${wanted.spatialLayer}/${wanted.temporalLayer}`;
         if (!state.candidate || state.candidate.key !== key) {
             state.candidate = { key, since: now };
         }
 
-        const resuming = state.applied.paused && !wanted.paused;
-        const sharper = !wanted.paused && !state.applied.paused && level(wanted) > level(state.applied);
-        let hold;
-        if (resuming) hold = 0;
-        else if (wanted.paused) hold = wanted.reason === 'page-hidden' ? HOLD_PAGE_HIDDEN_MS : HOLD_TILE_HIDDEN_MS;
-        else hold = sharper ? HOLD_UP_MS : HOLD_DOWN_MS;
-
+        const hold = level(wanted) > level(state.applied) ? HOLD_UP_MS : HOLD_DOWN_MS;
         if (now - state.candidate.since < hold) return null;
 
-        state.applied = wanted.paused
-            ? { paused: true }
-            : { paused: false, spatialLayer: wanted.spatialLayer, temporalLayer: wanted.temporalLayer };
+        state.applied = { spatialLayer: wanted.spatialLayer, temporalLayer: wanted.temporalLayer };
         state.candidate = null;
         state.lastChange = now;
         return wanted;
@@ -219,13 +213,6 @@
         return state.codec;
     }
 
-    function pageState() {
-        return {
-            hidden: document.visibilityState === 'hidden',
-            pictureInPicture: !!document.pictureInPictureElement || !!(window.documentPictureInPicture && window.documentPictureInPicture.window),
-        };
-    }
-
     function measureTile(consumerId) {
         const none = { visible: false, width: 0, cssWidth: 0, area: 0, pinned: false };
         const video = document.getElementById(consumerId);
@@ -266,7 +253,7 @@
             consumer,
             temporalLayers,
             // what the server gives a new consumer: the best it has
-            applied: { paused: false, spatialLayer: state.layers - 1, temporalLayer: temporalLayers - 1 },
+            applied: { spatialLayer: state.layers - 1, temporalLayer: temporalLayers - 1 },
             candidate: null,
             lastChange: 0,
             priority: 1,
@@ -287,17 +274,16 @@
         // Start at the right layer when the tile already has its size
         const tile = measureTile(consumer.id);
         if (tile.visible && (state.layers > 1 || temporalLayers > 1)) {
-            const wanted = decide({ layers: state.layers, topWidth: entry.topWidth, tile, page: { hidden: false }, temporalLayers });
+            const wanted = decide({ layers: state.layers, topWidth: entry.topWidth, tile, temporalLayers });
             if (differs(entry.applied, wanted)) {
                 const answer = await request(entry, { spatialLayer: wanted.spatialLayer, temporalLayer: wanted.temporalLayer });
-                if (answer && answer.ok) entry.applied = { paused: false, spatialLayer: wanted.spatialLayer, temporalLayer: wanted.temporalLayer };
+                if (answer && answer.ok) entry.applied = { spatialLayer: wanted.spatialLayer, temporalLayer: wanted.temporalLayer };
             }
         }
     }
 
     function poll() {
         const now = Date.now();
-        const page = pageState();
         const tiles = new Map();
         let biggest = null;
 
@@ -332,32 +318,30 @@
                 }
             }
 
-            const wanted = decide({ layers: state.layers, topWidth: entry.topWidth, tile, page, temporalLayers: entry.temporalLayers });
+            const wanted = decide({ layers: state.layers, topWidth: entry.topWidth, tile, temporalLayers: entry.temporalLayers });
             const change = follow(entry, wanted, now);
             const priority = biggest && biggest.id === id ? 255 : 1;
 
             if (change) {
-                const preferences = change.paused
-                    ? { paused: true }
-                    : { paused: false, spatialLayer: change.spatialLayer, temporalLayer: change.temporalLayer };
+                const preferences = { spatialLayer: change.spatialLayer, temporalLayer: change.temporalLayer };
                 if (priority !== entry.priority) preferences.priority = priority;
                 request(entry, preferences).then((answer) => {
                     if (answer && answer.ok && preferences.priority) entry.priority = preferences.priority;
                     if (!answer || !answer.ok) {
                         // not applied (reconnecting, consumer gone): try again from the real state
-                        entry.applied = { paused: !change.paused, spatialLayer: state.layers - 1, temporalLayer: entry.temporalLayers - 1 };
+                        entry.applied = { spatialLayer: state.layers - 1, temporalLayer: entry.temporalLayers - 1 };
                     }
                 });
-            } else if (priority !== entry.priority && !wanted.paused) {
+            } else if (priority !== entry.priority) {
                 entry.priority = priority;
                 request(entry, { priority });
             }
         }
     }
 
-    function isPaused(consumerId) {
-        const entry = state.entries.get(consumerId);
-        return !!entry && entry.applied.paused === true;
+    // The health meter asks (it leaves paused screens out of its numbers). Nothing is paused by the page any more.
+    function isPaused() {
+        return false;
     }
 
     root.ScreenQuality = { screenLayers, screenCodec, pickH264, onConsumerCreated, isPaused, state, rules };

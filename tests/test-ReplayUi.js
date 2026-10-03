@@ -194,7 +194,7 @@ describe('test-ReplayUi', () => {
         });
 
         it('estimates the conversion before it starts, from the clip and from the last speed seen', () => {
-            L.estimateMp4Seconds(60).should.equal(24);
+            L.estimateMp4Seconds(60).should.equal(90); // what the recorder really takes: 1.5 s of work per second of clip
             L.estimateMp4Seconds(60, 0.25).should.equal(15);
             L.estimateMp4Seconds(1).should.equal(3);
             L.estimateMp4Seconds(0).should.equal(3);
@@ -300,15 +300,25 @@ describe('test-ReplayUi', () => {
     });
 
     describe('the player timeline', () => {
-        it('starts at startOffsetS and hides the lead-in', () => {
+        // The first version hid the lead-in (the video before the part that was asked for) by seeking past it, and the
+        // browser had to decode all of it before the first picture: 6 s on a fast PC, 34 s on one that was busy. The
+        // player now starts at the first frame and only marks where the asked part begins.
+        it('is all of the file: it starts at the first frame, and `asked` says where the part that was asked begins', () => {
             const range = L.playerRange({ durationS: 63.4, startOffsetS: 3.4 }, 63.4);
-            range.start.should.equal(3.4);
+            range.start.should.equal(0);
             range.end.should.equal(63.4);
-            range.length.should.be.approximately(60, 1e-9);
+            range.length.should.equal(63.4);
+            range.asked.should.equal(3.4);
+        });
+
+        it('never needs a seek to start, whatever the lead-in', () => {
+            for (const lead of [0, 0.5, 3, 24.7, 37.7, 59]) {
+                L.playerRange({ durationS: 60 + lead, startOffsetS: lead }, 60 + lead).start.should.equal(0);
+            }
         });
 
         it('falls back to the length in the metadata when the file does not say', () => {
-            L.playerRange({ durationS: 20, startOffsetS: 3 }, Infinity).length.should.equal(17);
+            L.playerRange({ durationS: 20, startOffsetS: 3 }, Infinity).length.should.equal(20);
             L.playerRange({ durationS: 20, startOffsetS: 3 }, NaN).end.should.equal(20);
             L.playerRange({ durationS: 20, startOffsetS: 3 }, 0).end.should.equal(20);
         });
@@ -317,23 +327,23 @@ describe('test-ReplayUi', () => {
             L.playerRange({ durationS: 20, startOffsetS: 3 }, 20.04).end.should.equal(20.04);
         });
 
-        it('never starts past the end or before zero', () => {
-            L.playerRange({ durationS: 10, startOffsetS: 50 }, 10).start.should.be.below(10);
-            L.playerRange({ durationS: 10, startOffsetS: -4 }, 10).start.should.equal(0);
-            L.playerRange({ durationS: 10 }, 10).start.should.equal(0);
-            L.playerRange({}, NaN).should.deepEqual({ start: 0, end: 0, length: 0 });
-            L.playerRange(null, 5).should.deepEqual({ start: 0, end: 5, length: 5 });
+        it('keeps the mark inside the clip: never past the end or before zero', () => {
+            L.playerRange({ durationS: 10, startOffsetS: 50 }, 10).asked.should.be.below(10);
+            L.playerRange({ durationS: 10, startOffsetS: -4 }, 10).asked.should.equal(0);
+            L.playerRange({ durationS: 10 }, 10).asked.should.equal(0);
+            L.playerRange({}, NaN).should.deepEqual({ start: 0, end: 0, length: 0, asked: 0 });
+            L.playerRange(null, 5).should.deepEqual({ start: 0, end: 5, length: 5, asked: 0 });
         });
 
-        it('converts between file time and timeline time', () => {
+        it('converts between file time and timeline time (they are the same now)', () => {
             const range = L.playerRange({ durationS: 20, startOffsetS: 3 }, 20);
-            L.toTimeline(3, range).should.equal(0);
-            L.toTimeline(13, range).should.equal(10);
-            L.toTimeline(1, range).should.equal(0);
-            L.toTimeline(99, range).should.equal(17);
-            L.toMedia(0, range).should.equal(3);
-            L.toMedia(10, range).should.equal(13);
-            L.toMedia(-5, range).should.equal(3);
+            L.toTimeline(3, range).should.equal(3);
+            L.toTimeline(13, range).should.equal(13);
+            L.toTimeline(-1, range).should.equal(0);
+            L.toTimeline(99, range).should.equal(20);
+            L.toMedia(0, range).should.equal(0);
+            L.toMedia(10, range).should.equal(10);
+            L.toMedia(-5, range).should.equal(0);
             L.toMedia(99, range).should.equal(20);
         });
     });
