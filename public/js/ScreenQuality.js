@@ -43,25 +43,26 @@
         return scales.length - 1;
     }
 
-    // Frame-rate layer for a tile of `neededWidth` device pixels of a screen `topWidth` wide that has
-    // `temporalLayers` of them (3 = 60, 30 and 15 fps): a thumbnail of up to 30% of the width gets the lowest, a medium
-    // tile of up to 45% the middle one and everything bigger all frames.
-    function pickTemporal(temporalLayers, topWidth, neededWidth) {
+    // Frame-rate layer for a tile `cssWidth` pixels wide (what the eye sees, not the device pixels) of a screen that
+    // has `temporalLayers` of them (3 = 60, 30 and 15 fps): a thumbnail gets the lowest, a medium tile the middle one
+    // and everything bigger all frames, so a 2x2 grid on a 1080p window keeps every frame.
+    const THUMBNAIL_MAX_CSS_PX = 450;
+    const MEDIUM_MAX_CSS_PX = 720;
+    function pickTemporal(temporalLayers, cssWidth) {
         const top = Math.max(0, temporalLayers - 1);
-        if (top === 0 || !(topWidth > 0)) return top;
-        const share = neededWidth / topWidth;
-        if (share <= 0.3) return 0;
-        if (share <= 0.45) return Math.min(1, top);
+        if (top === 0 || !(cssWidth > 0)) return top;
+        if (cssWidth <= THUMBNAIL_MAX_CSS_PX) return 0;
+        if (cssWidth <= MEDIUM_MAX_CSS_PX) return Math.min(1, top);
         return top;
     }
 
-    // What one screen should get now. tile: { visible, width (device pixels) }, page: { hidden, pictureInPicture },
-    // temporalLayers: how many frame-rate layers the screen has (1 = none).
+    // What one screen should get now. tile: { visible, width (device pixels), cssWidth }, page: { hidden,
+    // pictureInPicture }, temporalLayers: how many frame-rate layers the screen has (1 = none).
     function decide({ layers, topWidth, tile, page, temporalLayers = 1 }) {
         if (page.hidden && !page.pictureInPicture) return { paused: true, reason: 'page-hidden' };
         if (!tile.visible) return { paused: true, reason: 'tile-hidden' };
         // A screen sent in several sizes already has light small ones; frame-rate layers are for the one-size screen
-        const temporalLayer = layers > 1 ? Math.max(0, temporalLayers - 1) : pickTemporal(temporalLayers, topWidth, tile.width);
+        const temporalLayer = layers > 1 ? Math.max(0, temporalLayers - 1) : pickTemporal(temporalLayers, tile.cssWidth ?? tile.width);
         return { paused: false, spatialLayer: pickLayer(layers, topWidth, tile.width), temporalLayer, reason: 'visible' };
     }
 
@@ -143,6 +144,8 @@
         layerScales,
         pickLayer,
         pickTemporal,
+        THUMBNAIL_MAX_CSS_PX,
+        MEDIUM_MAX_CSS_PX,
         temporalLayersOf,
         decide,
         differs,
@@ -224,7 +227,7 @@
     }
 
     function measureTile(consumerId) {
-        const none = { visible: false, width: 0, area: 0, pinned: false };
+        const none = { visible: false, width: 0, cssWidth: 0, area: 0, pinned: false };
         const video = document.getElementById(consumerId);
         if (!video || !video.getClientRects().length) return none;
 
@@ -240,9 +243,9 @@
 
         const ratio = window.devicePixelRatio || 1;
         const fullscreen = document.fullscreenElement && (document.fullscreenElement === video || document.fullscreenElement.contains(video));
-        const width = (fullscreen ? window.screen.width : rect.width) * ratio;
+        const cssWidth = fullscreen ? window.screen.width : rect.width;
         const pinned = (typeof rc !== 'undefined' && rc && rc.pinnedVideoPlayerId === consumerId) || !!video.closest('#videoPinMediaContainer');
-        return { visible: true, width, area: rect.width * rect.height, pinned: pinned || !!fullscreen, video };
+        return { visible: true, width: cssWidth * ratio, cssWidth, area: rect.width * rect.height, pinned: pinned || !!fullscreen, video };
     }
 
     function request(entry, preferences) {

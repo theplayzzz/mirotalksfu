@@ -48,7 +48,7 @@ try {
     const viewer = await chrome.newPage();
     await joinTestRoom(viewer, { origin, token, name: 'TL-Viewer' });
     for (let i = 0; i < 60 && !(await viewer.ev("[...rc.consumers.values()].some((c) => c.kind === 'video')")); i++) await sleep(500);
-    await sleep(8000);
+    await sleep(25000); // the sender needs ~20 s to reach its full frame rate and bitrate
 
     const ask = (temporalLayer) =>
         viewer.ev(`(async () => {

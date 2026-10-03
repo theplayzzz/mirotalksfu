@@ -97,7 +97,7 @@ try {
     // What the browser asks for as the tile shrinks: the spatial layer (sizes) or the temporal one (frame rates)
     const spatial = config.screen.layers > 1;
     const levelOf = (data) => (spatial ? data.spatialLayer : data.temporalLayer);
-    const mediumWidth = spatial ? 960 : 820; // medium: half the screen with sizes, under 45% of it with frame rates
+    const mediumWidth = spatial ? 960 : 700; // medium: half the screen with sizes, 450-720 px on the screen with frame rates
     console.log(spatial ? 'the screen is sent in 3 sizes' : 'the screen is sent in one size with 3 frame rates');
 
     const viewer = await chrome.newPage();
@@ -145,7 +145,7 @@ try {
 
     // e. a hidden tile pauses the video
     since = await now(viewer);
-    await viewer.ev("(() => { const v = [...document.querySelectorAll('video')].find((v) => v.id && !v.hasAttribute('name') && rc.consumers.has(v.id)); v.closest('.Camera').style.display = 'none'; return true; })()");
+    await viewer.ev("(() => { const v = [...document.querySelectorAll('video')].find((v) => v.id && !v.hasAttribute('name') && rc.consumers.has(v.id)); v.style.display = 'none'; return true; })()");
     asked = await waitForPreference(viewer, since, (d) => d.paused === true, 6);
     check('a hidden tile is paused', !!asked);
     await sleep(2500);
@@ -154,7 +154,7 @@ try {
     check('a paused screen receives (almost) nothing', phase.mbps < 0.3, `${phase.mbps} Mbps`);
 
     since = await now(viewer);
-    await viewer.ev("(() => { const v = [...document.querySelectorAll('video')].find((v) => v.id && !v.hasAttribute('name') && rc.consumers.has(v.id)); v.closest('.Camera').style.display = ''; return true; })()");
+    await viewer.ev("(() => { const v = [...document.querySelectorAll('video')].find((v) => v.id && !v.hasAttribute('name') && rc.consumers.has(v.id)); v.style.display = ''; return true; })()");
     asked = await waitForPreference(viewer, since, (d) => d.paused === false, 3);
     check('a tile that shows again is resumed at once', !!asked);
     await sleep(3000);

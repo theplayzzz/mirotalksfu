@@ -41,9 +41,10 @@ down to T1 or T0 with `consumer.setPreferredLayers`. `tests/e2e/temporal-layers.
 | T1 | 30 fps, 7.1 Mbps | 60% |
 | T0 | 15 fps, 4.6 Mbps | 39% |
 
-So a thumbnail costs 40% instead of 100%, a hidden tile (paused) 0%. `ScreenQuality.js` picks T0 for a tile up to 30%
-of the screen's width, T1 up to 45% and everything above, so a 2x2 grid on a 1080p window keeps all frames. H.264
-screens (`SCREEN_CODEC`) are `L1T1`: they have nothing to reduce, only the pause.
+So a thumbnail costs 40% instead of 100%, a hidden tile (paused) 0%. `ScreenQuality.js` picks T0 for a tile up to
+450 px wide on the screen (CSS pixels, not device pixels), T1 up to 720 px and every frame above, so a 2x2 grid on a
+1080p window (~950 px tiles) keeps all frames. H.264 screens (`SCREEN_CODEC`) are `L1T1`: they have nothing to reduce,
+only the pause.
 
 ## Key frame request limit (`KEYFRAME_REQUEST_DELAY_MS`), 2026-10-03
 

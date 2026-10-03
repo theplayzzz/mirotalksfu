@@ -43,20 +43,20 @@ describe('test-ScreenQuality', () => {
         });
 
         it('gives a thumbnail the lowest frame rate, a medium tile the middle one and a big tile all of it', () => {
-            // 3 layers = 60, 30 and 15 fps; the screen is 1920 px wide
-            pickTemporal(3, 1920, 250).should.equal(0); // a thumbnail
-            pickTemporal(3, 1920, 576).should.equal(0); // 30% is still a thumbnail
-            pickTemporal(3, 1920, 700).should.equal(1); // 3x3 grid on a 1080p window
-            pickTemporal(3, 1920, 864).should.equal(1); // 45%
-            pickTemporal(3, 1920, 960).should.equal(2); // a 2x2 grid keeps every frame
-            pickTemporal(3, 1920, 1920).should.equal(2);
-            pickTemporal(3, 1920, 5000).should.equal(2);
+            // 3 layers = 60, 30 and 15 fps; the width is the one the eye sees, in CSS pixels
+            pickTemporal(3, 250).should.equal(0); // a thumbnail
+            pickTemporal(3, 450).should.equal(0);
+            pickTemporal(3, 640).should.equal(1); // a 3x3 grid on a 1080p window
+            pickTemporal(3, 720).should.equal(1);
+            pickTemporal(3, 950).should.equal(2); // a 2x2 grid keeps every frame
+            pickTemporal(3, 1920).should.equal(2);
             // two layers: 30 and 15 fps; one layer (H.264) cannot be reduced
-            pickTemporal(2, 1920, 250).should.equal(0);
-            pickTemporal(2, 1920, 700).should.equal(1);
-            pickTemporal(1, 1920, 100).should.equal(0);
-            // the size of the screen is not known yet: do not reduce anything
-            pickTemporal(3, 0, 100).should.equal(2);
+            pickTemporal(2, 250).should.equal(0);
+            pickTemporal(2, 640).should.equal(1);
+            pickTemporal(1, 100).should.equal(0);
+            // the size of the tile is not known: do not reduce anything
+            pickTemporal(3, 0).should.equal(2);
+            pickTemporal(3, undefined).should.equal(2);
         });
     });
 
@@ -74,11 +74,13 @@ describe('test-ScreenQuality', () => {
         });
 
         it('asks for the frame-rate layer of a screen that is sent in one size', () => {
-            const tile = (width) => ({ visible: true, width });
-            const wanted = (width) => decide({ layers: 1, topWidth: 1920, tile: tile(width), page, temporalLayers: 3 });
+            const tile = (width, dpr = 1) => ({ visible: true, width: width * dpr, cssWidth: width });
+            const wanted = (width, dpr) => decide({ layers: 1, topWidth: 1920, tile: tile(width, dpr), page, temporalLayers: 3 });
             wanted(300).should.deepEqual({ paused: false, spatialLayer: 0, temporalLayer: 0, reason: 'visible' });
-            wanted(800).should.containEql({ spatialLayer: 0, temporalLayer: 1 });
-            wanted(1920).should.containEql({ spatialLayer: 0, temporalLayer: 2 });
+            wanted(600).should.containEql({ spatialLayer: 0, temporalLayer: 1 });
+            wanted(1400).should.containEql({ spatialLayer: 0, temporalLayer: 2 });
+            // the size on the screen counts, not the device pixels: a thumbnail on a 2x display is still a thumbnail
+            wanted(300, 2).should.containEql({ temporalLayer: 0 });
             // without frame-rate layers (H.264) there is nothing to reduce
             decide({ layers: 1, topWidth: 1920, tile: tile(300), page, temporalLayers: 1 }).should.containEql({ temporalLayer: 0 });
             // a screen sent in several sizes already has light small ones and keeps every frame
