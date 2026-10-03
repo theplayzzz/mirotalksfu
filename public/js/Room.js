@@ -1475,6 +1475,12 @@ async function whoAreYou() {
         if (!result.isConfirmed) return;
         // A later room popup can replace the join dialog before didClose runs.
         stopJoinBackground();
+        // LinkDoNotle: if the closed join dialog is still in the DOM (its invisible layer would swallow
+        // clicks and hovers over the room), finish the close with the event SweetAlert2 waits for.
+        setTimeout(() => {
+            const stale = document.querySelector('.swal2-popup.init-modal-size.animate__fadeOutUp');
+            stale?.dispatchEvent(new Event('webkitAnimationEnd'));
+        }, 1500);
         if (!usernameEmoji.classList.contains('hidden')) {
             usernameEmoji.classList.add('hidden');
         }

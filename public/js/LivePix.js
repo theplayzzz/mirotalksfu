@@ -497,14 +497,16 @@ window.LivePixPanel = (() => {
         connect();
         clearInterval(pollTimer);
         pollTimer = setInterval(poll, FALLBACK_POLL_MS);
-        // The dialog animates in; keep re-anchoring until it settles.
+        // The dialog animates in (1s); keep re-anchoring until it settles.
+        // Never listen to 'animationend' on the Swal popup: SweetAlert2 11.4.8 waits for the legacy
+        // webkitAnimationEnd to remove a closed dialog, and the browser skips that event when the
+        // popup has an 'animationend' listener, leaving an invisible layer over the whole room.
         let ticks = 0;
         clearInterval(placeTimer);
         placeTimer = setInterval(() => {
             place();
-            if (++ticks > 15) clearInterval(placeTimer);
+            if (++ticks > 20) clearInterval(placeTimer);
         }, 100);
-        popup.addEventListener('animationend', place);
         // Validation messages change the dialog height; keep the panel matching it.
         resizeObserver?.disconnect();
         resizeObserver = new ResizeObserver(place);
