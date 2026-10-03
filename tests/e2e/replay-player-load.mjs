@@ -179,6 +179,9 @@ try {
     const after = await state();
     note(`6 s later: ${JSON.stringify(after)}`);
 
+    // (before the skip below, which is a seek on purpose: did the player seek at all to get started?)
+    const eventsBeforeSkip = (await gallery.ev('window.__video && window.__video.events')) || [];
+
     // what skipping into the middle costs: the browser decodes from the key frame before the target (a GOP of a real
     // screen is ~30 s), so this is the part that still depends on how often the sender makes key frames
     let seekS = null;
@@ -215,7 +218,9 @@ try {
     check('the file is asked for in a handful of requests, not hundreds', media.length <= 12, `${media.length} requests`);
     check('it keeps playing', !!after && after.ct > start + 2 && !after.paused, JSON.stringify(after));
     // no seek at all to get started: a seek past the lead-in is what made the first version wait (decoding all of it)
-    check('the player did not seek past the lead-in', !(events || []).some((e) => e.name === 'seeking' && e.ct > 1), JSON.stringify((events || []).filter((e) => e.name === 'seeking')));
+    check('the player did not seek past the lead-in to get started', !eventsBeforeSkip.some((e) => e.name === 'seeking' && e.ct > 1), JSON.stringify(eventsBeforeSkip.filter((e) => e.name === 'seeking')));
+    // a skip into the middle is allowed to take a while on a busy PC, but not forever (a GOP of ~30 s: seconds, not minutes)
+    if (seekS !== null || process.env.SEEK !== '0') check('skipping into the middle plays there', seekS !== null, seekS === null ? 'never' : `${seekS.toFixed(1)} s`);
 } finally {
     stopHogs();
     chrome.close();
