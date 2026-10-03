@@ -955,6 +955,7 @@ body.rg-body * {
 .rp-timeline {
     --pos: 0%;
     --buf: 0%;
+    --ask: 0%;
     --hx: 0px;
     position: relative;
     display: flex;
@@ -1019,6 +1020,21 @@ body.rg-body * {
 .rp-timeline.is-drag .rp-knob,
 .rp-stage:not(.is-playing) .rp-knob {
     transform: scale(1);
+}
+
+/* where the part that was asked for begins: the file starts a little before it, at the key frame the video needs */
+.rp-asked {
+    position: absolute;
+    top: 50%;
+    left: var(--ask, 0%);
+    width: 3px;
+    height: 14px;
+    margin: -7px 0 0 -1px;
+    border-radius: 2px;
+    background: #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+    opacity: 0.9;
+    pointer-events: none;
 }
 
 .rp-timeline:focus-visible {

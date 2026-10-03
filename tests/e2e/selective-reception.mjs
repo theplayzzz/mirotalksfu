@@ -1,7 +1,9 @@
 // Selective reception, end to end: a sharer sends its screen, a viewer resizes its window, hides the tile and hides
 // the page, and the test checks what the browser asked the server for (setConsumerPreferences) and how much video it
 // really received after each change. A screen sent in one size (SCREEN_SIMULCAST_LAYERS=1, the default) is reduced
-// by its frame-rate layers (60, 30 and 15 fps); one sent in 3 sizes (SCREEN_SIMULCAST_LAYERS=3) by size.
+// by its frame-rate layers (60, 30 and 15 fps); one sent in 3 sizes (SCREEN_SIMULCAST_LAYERS=3) by size. Hiding a
+// tile or the page pauses nothing (people did not want screens stopped when they come back to a window), and the
+// server ignores a request to pause too (SELECTIVE_PAUSE_HIDDEN is off), also from a tab with the old code.
 //
 //   needs the dev instance with SELECTIVE_RECEPTION=true
 //   E2E_CHROME=... E2E_ORIGIN=https://mirotalk-dev... E2E_TOKEN=$(ssh ... dev-test-token.sh 20) node tests/e2e/selective-reception.mjs
@@ -143,33 +145,48 @@ try {
     check('a big tile asks for the top layer again', !!asked);
     await sleep(4000);
 
-    // e. a hidden tile pauses the video
+    // e. a hidden tile and a hidden page do NOT pause anything: the people of the room did not want screens stopped when
+    // they leave a window (a paused video needs a new full picture from the sender to start again, 1-10 s)
+    const stillFlowing = (what) => async () => {
+        const result = await measure(viewer, 4);
+        console.log(`${what}:`, JSON.stringify(result));
+        return result;
+    };
     since = await now(viewer);
     await viewer.ev("(() => { const v = [...document.querySelectorAll('video')].find((v) => v.id && !v.hasAttribute('name') && rc.consumers.has(v.id)); v.style.display = 'none'; return true; })()");
-    asked = await waitForPreference(viewer, since, (d) => d.paused === true, 6);
-    check('a hidden tile is paused', !!asked);
-    await sleep(2500);
-    phase = await measure(viewer, 4);
-    console.log('hidden tile:', JSON.stringify(phase));
-    check('a paused screen receives (almost) nothing', phase.mbps < 0.3, `${phase.mbps} Mbps`);
+    await sleep(6000); // well past the 1.5 s the first version waited before pausing
+    check('a hidden tile asks for no pause', !(await viewer.ev('window.__prefs')).some((p) => p.t > since && p.data.paused === true));
+    phase = await stillFlowing('hidden tile')();
+    check('and the screen keeps arriving, at the same frame rate as before', phase.fps > 15 && phase.mbps > 0.5, JSON.stringify(phase));
 
     since = await now(viewer);
     await viewer.ev("(() => { const v = [...document.querySelectorAll('video')].find((v) => v.id && !v.hasAttribute('name') && rc.consumers.has(v.id)); v.style.display = ''; return true; })()");
-    asked = await waitForPreference(viewer, since, (d) => d.paused === false, 3);
-    check('a tile that shows again is resumed at once', !!asked);
-    await sleep(3000);
-    phase = await measure(viewer, 4);
-    check('the video flows again after resuming', phase.fps > 15 && phase.mbps > 0.5, JSON.stringify(phase));
+    await sleep(1500);
+    phase = await measure(viewer, 3);
+    check('a tile that shows again is already playing: no wait for a new picture', phase.fps > 15 && phase.mbps > 0.5, JSON.stringify(phase));
 
-    // f. a hidden page pauses everything
+    // f. a hidden page (another tab, a window behind a game, a minimized window) pauses nothing either
     since = await now(viewer);
     await viewer.ev("Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); true");
-    asked = await waitForPreference(viewer, since, (d) => d.paused === true, 8);
-    check('a hidden page pauses the video (after about 3 s)', !!asked);
-    since = await now(viewer);
+    await sleep(8000); // well past the 3 s the first version waited before pausing
+    check('a hidden page asks for no pause', !(await viewer.ev('window.__prefs')).some((p) => p.t > since && p.data.paused === true));
+    phase = await stillFlowing('hidden page')();
+    check('and the screens keep arriving', phase.fps > 15 && phase.mbps > 0.5, JSON.stringify(phase));
     await viewer.ev("delete document.visibilityState; true");
-    asked = await waitForPreference(viewer, since, (d) => d.paused === false, 3);
-    check('a page that shows again resumes the video', !!asked);
+    await sleep(1000);
+    phase = await measure(viewer, 3);
+    check('coming back to the page finds the screen moving', phase.fps > 15 && phase.mbps > 0.5, JSON.stringify(phase));
+
+    // the server refuses to pause even when an old page asks (the tabs of people who have not reloaded yet)
+    const oldPage = await viewer.ev(`(async () => {
+        const consumer = [...rc.consumers.values()].find((c) => c.kind === 'video' && !c.closed);
+        const answer = await rc.socket.request('setConsumerPreferences', { consumer_id: consumer.id, paused: true });
+        return { answer, paused: consumer.paused };
+    })()`);
+    check('a request to pause, from a page that still has the old code, is answered but not applied', oldPage.answer && oldPage.answer.ok === true && oldPage.answer.paused === false, JSON.stringify(oldPage));
+    await sleep(2000);
+    phase = await measure(viewer, 3);
+    check('and the video goes on', phase.fps > 15 && phase.mbps > 0.5, JSON.stringify(phase));
 
     const layers = await viewer.ev('window.__layers');
     console.log('layer changes reported by the server:', JSON.stringify(layers.map((l) => (spatial ? l.spatialLayer : l.temporalLayer))));

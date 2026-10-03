@@ -88,6 +88,45 @@ So replay does not change it, and the long waits are there without replay: a sen
 1080p software encoders) answers a request for a full picture slowly, now and then. The 1000 ms limit of
 `KEYFRAME_REQUEST_DELAY_MS` was not worse than none in this test.
 
+## Soak: one screen for 18.5 minutes, a clip of the whole buffer, two MP4 conversions, 2026-10-03
+
+`tests/e2e/replay-soak.mjs` on the development instance (a sampler on the server wrote the container CPU/memory and the
+size of the data folder every 30 s). One sharer (1080p60 animation, sound, clap board), one viewer.
+
+| what | result |
+|---|---|
+| seconds the room says it keeps, every 30 s | 27, 57, 87 ... 297, **300 at 5.5 min and flat for the next 2.5 min**; never went back |
+| size of the ring on disk | grew 107 MB per 1.6 min to **~575 MB at 6.5 min**, then 500-565 MB (5 min + the 90 s of slack, ~1.45 MB/s); 0 MB two minutes after the screen stopped |
+| a clip of 5 min, asked after 8 min | ready in **2.8 s**; 326 s (300 s + 25.9 s up to the previous key frame), 472.7 MB; downloads whole (473 MB in 80 s on a ~50 Mbps line); VP8 + Opus, decodes from start to end without one error |
+| picture and sound over the 5 minutes | 163 flashes and 163 beeps: median **-13 ms**, worst 34 ms |
+| MP4 of the 5 min clip (720p, one core) | ready after **519 s** (the estimate given before it started was 535 s): 1.7 s of work per second of clip; 271 MB, H.264 + AAC, 300.0 s |
+| a second MP4 asked while the first ran | said "queued, 1 ahead" with its own estimate, and was ready after the first (570 s) |
+| recorder container | CPU 1-13% while recording, **102% (its single core) only while converting**; memory peaked at **829 MiB** (2 GiB limit), 83-90 MiB when idle |
+| SFU container | CPU peak 32% (sharer + viewer + serving the 473 MB download), 224 MiB at most |
+
+**The viewer's freezes in this run were not conclusive.** Chrome counted 149 freezes (53.9 s in total) over the 18.5
+minutes at an average of 55 fps. The test PC was, during part of that time, decoding the 5 minute clip with ffmpeg,
+looking for flashes and beeps and downloading 744 MB, and the soak only logs totals at the start and at the end, so these
+freezes cannot be placed in time or told apart from the PC's own load. The clean comparison above (3 runs of 60 s with
+nothing else running on the PC) had 0 freezes with replay on. What a real viewer sees with the recorder working is read
+from production's health meter instead (next section).
+
+## Production, the first minutes after the rollout, 2026-10-03
+
+The swap was done at 21:14 UTC (18:14 in Brazil) with 8 people connected, all the switches on at once (health meter, key
+frame limit 1000 ms, selective reception, replay and its interface). Read from the server and from the health meter of the
+real viewers (`ops/health-summary.py`).
+
+| what | result |
+|---|---|
+| time without the room | the old container stopped at 21:14:47.4 and the new one was healthy at 21:14:58.7: **11.3 s** (people reconnected by themselves within a minute: 11-14 connections) |
+| the recorder with 3-4 real screens | 1.15 MB/s per screen (~9 Mbps) written; **0 packets lost, late or dropped**, 0 malformed, 8 MB receive buffer in effect; kernel UDP `RcvbufErrors` 0 |
+| first replay saved by a friend | 84.7 s clip (60 s asked + 24.7 s up to the key frame), 106 MB, 1080p VP8 + Opus with thumbnail, built in **0.87 s** |
+| its MP4 | ready after **89.9 s** (1.5 s of work per second of clip), 7.6 MB; the recorder container ran at ~99% of its core for that time and fell back to ~7% |
+| the SFU container | 17-32% of one core with 3 screens and 11-14 connections; 350-380 MiB |
+| people watching (health meter, 29-44 fps received at 1830-1920 px) | loss 0-0.3%, 0-3 freezes in 2-6 min of reports, jitter buffer 35-115 ms; the screen that was being sent ran at 31.8 fps and ~11 Mbps (encoder libvpx, not limited by cpu or bandwidth) |
+| noise in the log | 311 "aborting with incomplete response" in Caddy (and as many `ECONNRESET` warnings in the SFU) right when the first clip was opened: the browser's video player cancelling its own range requests (`H3_REQUEST_CANCELLED`); two per minute afterwards |
+
 ## What a viewer can be spared: sizes do not work, frame rates do, 2026-10-03
 
 The idea of selective reception is that a thumbnail or a hidden tile should not cost a viewer (and the server) the
@@ -129,8 +168,17 @@ down to T1 or T0 with `consumer.setPreferredLayers`. `tests/e2e/temporal-layers.
 
 So a thumbnail costs 40% instead of 100%, a hidden tile (paused) 0%. `ScreenQuality.js` picks T0 for a tile up to
 450 px wide on the screen (CSS pixels, not device pixels), T1 up to 720 px and every frame above, so a 2x2 grid on a
-1080p window (~950 px tiles) keeps all frames. H.264 screens (`SCREEN_CODEC`) are `L1T1`: they have nothing to reduce,
-only the pause.
+1080p window (~950 px tiles) keeps all frames. H.264 screens (`SCREEN_CODEC`) are `L1T1`: they have nothing to reduce.
+
+**The pause of hidden tiles and windows is not used (changed the evening of 2026-10-03).** The server can pause the
+video of a consumer, and the rows above with "paused" are what that saves, but a paused video can only start again at
+a new full picture from the sender: the median wait measured for a person who joins a screen that is already being
+shared is 1.4-1.5 s, with waits of 9-10 s now and then (section on the recorder above). In production, the first
+night, the people of the room found their screens stopped when they came back to the window ("não estava assim antes")
+and the first version, which paused a tile out of sight after 1.5 s and everything after 3 s with the page hidden,
+was taken out: `ScreenQuality.js` only chooses the frame-rate layer from the size of a tile that is on screen, a tile
+out of sight keeps everything, and the server ignores a request to pause unless `SELECTIVE_PAUSE_HIDDEN=true` (which
+also covers a tab that still runs the old page). A change of frame-rate layer needs no full picture.
 
 ## Key frame request limit (`KEYFRAME_REQUEST_DELAY_MS`), 2026-10-03
 

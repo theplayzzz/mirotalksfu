@@ -281,13 +281,13 @@ async function gallerySuite(kind) {
         'a card says whose screen, who saved it, how long ago, the length and the time left',
         cards[0].title === 'Tela de Beltrano' &&
             cards[0].sub === 'Salvo por Fulano · há 2 min' &&
-            cards[0].dur === '0:17' &&
+            cards[0].dur === '0:20' &&
             cards[0].foot === 'expira em 6 d',
         show(cards[0])
     );
     check(
-        'the duration is what plays (the lead-in is not counted)',
-        cards[1].dur === '0:40' && cards[0].dur === '0:17',
+        'the duration is what plays: the whole file, lead-in included (it starts at the first frame)',
+        cards[1].dur === '0:45' && cards[0].dur === '0:20',
         show([cards[0].dur, cards[1].dur])
     );
     check(
@@ -446,17 +446,19 @@ async function gallerySuite(kind) {
     );
     check(
         'who saved it, when and for how long',
-        /Salvo por Fulano · \d\d\/\d\d\/\d{4} às \d\d:\d\d · duração 0:17 · expira em 6 d/.test(
+        /Salvo por Fulano · \d\d\/\d\d\/\d{4} às \d\d:\d\d · duração 0:20 \(o pedido começa em 0:03\) · expira em 6 d/.test(
             await page.ev(`document.getElementById('rpMeta').textContent`)
         ),
         await page.ev(`document.getElementById('rpMeta').textContent`)
     );
     const start = await page.ev(
-        `({ t: document.getElementById('rpVideo').currentTime, time: document.getElementById('rpTime').textContent, max: document.getElementById('rpTimeline').getAttribute('aria-valuemax') })`
+        `({ t: document.getElementById('rpVideo').currentTime, time: document.getElementById('rpTime').textContent, max: document.getElementById('rpTimeline').getAttribute('aria-valuemax'), mark: (() => { const m = document.getElementById('rpAsked'); return { hidden: m.hidden, at: document.getElementById('rpTimeline').style.getPropertyValue('--ask') }; })() })`
     );
+    // The lead-in is not hidden by a seek (the browser would decode all of it before the first picture: seconds, and
+    // very many on a PC busy with a game): the video starts at its first frame and a mark shows where the asked part begins
     check(
-        'the timeline starts at startOffsetS: the lead-in is hidden',
-        near(start.t, clips.A.startOffsetS, 0.35) && start.time === '0:00 / 0:17' && start.max === '17',
+        'the timeline starts at the first frame, with no seek, and marks where the asked part begins (3 s of 20)',
+        near(start.t, 0, 0.35) && start.time === '0:00 / 0:20' && start.max === '20' && start.mark.hidden === false && near(parseFloat(start.mark.at), 15, 0.1),
         show(start)
     );
     check(
@@ -474,13 +476,13 @@ async function gallerySuite(kind) {
     await shot(page, 'gallery-player');
 
     await activate(page, '#rpBig', { scroll: false });
-    await until(page, `document.getElementById('rpVideo').currentTime > ${clips.A.startOffsetS} + 1.1`, 6000);
+    await until(page, `document.getElementById('rpVideo').currentTime > 1.1`, 6000);
     const playing = await page.ev(
         `({ paused: document.getElementById('rpVideo').paused, t: document.getElementById('rpVideo').currentTime, time: document.getElementById('rpTime').textContent, cls: document.getElementById('rpStage').className })`
     );
     check(
         'the big button plays: the video runs and the timeline follows',
-        !playing.paused && /^0:0[1-9] \/ 0:17$/.test(playing.time) && playing.cls.includes('is-playing'),
+        !playing.paused && /^0:0[1-9] \/ 0:20$/.test(playing.time) && playing.cls.includes('is-playing'),
         show(playing)
     );
     check(
@@ -524,15 +526,15 @@ async function gallerySuite(kind) {
     await press(page, 'ArrowLeft');
     await sleep(400);
     const atStart = await page.ev(`document.getElementById('rpVideo').currentTime`);
-    check('it never goes back to before the start of the clip', atStart >= clips.A.startOffsetS - 0.2, String(atStart));
+    check('it never goes back to before the start of the file', atStart >= 0 && atStart < 0.4, String(atStart));
     await press(page, 'End');
     await sleep(500);
-    check('End goes to the end', (await page.ev(`document.getElementById('rpTime').textContent`)) === '0:17 / 0:17');
+    check('End goes to the end', (await page.ev(`document.getElementById('rpTime').textContent`)) === '0:20 / 0:20');
     await press(page, 'Home');
     await sleep(400);
     check(
         'Home goes back to the start',
-        (await page.ev(`document.getElementById('rpTime').textContent`)) === '0:00 / 0:17'
+        (await page.ev(`document.getElementById('rpTime').textContent`)) === '0:00 / 0:20'
     );
     await press(page, ' ');
     await sleep(500);
@@ -580,7 +582,7 @@ async function gallerySuite(kind) {
     }
     await sleep(500);
     const half = await page.ev(`document.getElementById('rpVideo').currentTime`);
-    check('a click on the timeline seeks there', near(half, clips.A.startOffsetS + 8.5, 0.8), String(half));
+    check('a click on the timeline seeks there', near(half, 10, 0.8), String(half));
     if (!phone) {
         await move(page, bar.left + bar.w * 0.1, bar.y);
         await page.send('Input.dispatchMouseEvent', {
@@ -603,11 +605,11 @@ async function gallerySuite(kind) {
         });
         await sleep(600);
         const dragged = await page.ev(`document.getElementById('rpVideo').currentTime`);
-        check('the timeline can be dragged', near(dragged, clips.A.startOffsetS + 15.3, 0.9), String(dragged));
+        check('the timeline can be dragged', near(dragged, 18, 0.9), String(dragged));
         await move(page, bar.left + bar.w * 0.25, bar.y);
         check(
             'hovering the timeline shows the time under the pointer',
-            /^0:0[3-5]$/.test(
+            /^0:0[4-6]$/.test(
                 await page.ev(
                     `document.getElementById('rpHover').hidden ? '' : document.getElementById('rpHover').textContent`
                 )
@@ -617,7 +619,7 @@ async function gallerySuite(kind) {
     check(
         'the timeline is a slider with its values for a screen reader',
         await page.ev(
-            `(() => { const t = document.getElementById('rpTimeline'); return t.getAttribute('role') === 'slider' && t.getAttribute('aria-valuemax') === '17' && /de 0:17$/.test(t.getAttribute('aria-valuetext')); })()`
+            `(() => { const t = document.getElementById('rpTimeline'); return t.getAttribute('role') === 'slider' && t.getAttribute('aria-valuemax') === '20' && /de 0:20$/.test(t.getAttribute('aria-valuetext')); })()`
         )
     );
     await page.ev(`document.getElementById('rpTimeline').focus()`);
@@ -626,7 +628,7 @@ async function gallerySuite(kind) {
     await sleep(300);
     check(
         'the timeline also answers to the arrow keys',
-        near(await page.ev(`document.getElementById('rpVideo').currentTime`), clips.A.startOffsetS + 5, 0.7)
+        near(await page.ev(`document.getElementById('rpVideo').currentTime`), 5, 0.7)
     );
 
     if (!phone) {
@@ -645,6 +647,14 @@ async function gallerySuite(kind) {
             check('F again leaves it', !(await page.ev(`document.fullscreenElement`)));
         }
     }
+
+    // Watching a clip never converts it: only a click on "Baixar MP4" does (the people of the room open clips to watch
+    // them, and keep most of them in the gallery; converting costs the recorder's core for a minute or more)
+    check(
+        'nothing was converted while the clip was opened, played, paused, sought and sped up',
+        (await mockState()).stats.mp4Requests === 0,
+        String((await mockState()).stats.mp4Requests)
+    );
 
     // a portrait clip: the player takes the shape of the picture
     await press(page, 'Escape');
@@ -672,7 +682,7 @@ async function gallerySuite(kind) {
             portrait.stage.height > portrait.stage.width,
         show(portrait)
     );
-    check('its timeline is its own length (0:40)', portrait.time === '0:00 / 0:40', portrait.time);
+    check('its timeline is its own length (0:45, the lead-in included)', portrait.time === '0:00 / 0:45', portrait.time);
     await shot(page, 'gallery-player-portrait');
     check(
         'a clip with an MP4 says it is ready, with the size',
@@ -706,7 +716,11 @@ async function gallerySuite(kind) {
 
     await ctl('/config', { mp4: { mode: 'manual', ahead: 1 } });
     const estimate = await page.ev(`document.getElementById('rpMp4Note').textContent`);
-    check('before it starts, the MP4 button says how long it takes', /^leva ~\d+ s$/.test(estimate), estimate);
+    check(
+        'before it starts, the MP4 button says it only converts when clicked, and how long it takes',
+        /^só converte ao clicar · leva ~\d+ s$/.test(estimate),
+        estimate
+    );
     await activate(page, '#rpMp4');
     check(
         'waiting in the queue says how many conversions are ahead',

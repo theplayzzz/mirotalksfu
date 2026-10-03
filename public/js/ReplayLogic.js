@@ -11,8 +11,9 @@ const ReplayLogic = (() => {
     const MEDIA_FILES = new Set(['clip.webm', 'clip.mkv', 'clip.mp4', 'thumb.jpg']);
     // Used to forgive float noise when comparing the buffer with an option.
     const OPTION_EPSILON_S = 0.5;
-    // Conversion speed before this browser has seen one: seconds of work per second of clip.
-    const DEFAULT_MP4_RATIO = 0.4;
+    // Conversion speed before this browser has seen one: seconds of work per second of the part that is converted.
+    // Measured on the production recorder (one core, 720p): 1.5 (a 60 s clip took 90 s); the development one, 1.7.
+    const DEFAULT_MP4_RATIO = 1.5;
 
     const isNumber = (value) => typeof value === 'number' && Number.isFinite(value);
     const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -230,14 +231,17 @@ const ReplayLogic = (() => {
 
     // ---- the gallery: the player ---------------------------------------------------------------------------
 
-    // The timeline of a clip: the file starts at a key frame, up to ~1 min before what was asked; playback starts at
-    // `startOffsetS`, so the part before it is hidden. `mediaDuration` is what the file says (it may be Infinity).
+    // The timeline of a clip: all of the file. It starts at a key frame, up to ~30 s before what was asked
+    // (`startOffsetS`, here `asked`), and the browser needs that picture and every one after it to show a later frame:
+    // to start at the asked part it has to decode the whole lead-in first, before it shows anything. That is seconds
+    // on a fast PC and a long "loading" on one that is busy with a game (first version: the lead-in was hidden by a
+    // seek, and people waited). So the player starts at the first frame and only marks where the asked part begins.
+    // `mediaDuration` is what the file says (it may be Infinity).
     function playerRange(clip, mediaDuration) {
         const total =
             isNumber(mediaDuration) && mediaDuration > 0 ? mediaDuration : Number(clip && clip.durationS) || 0;
-        const wanted = Number(clip && clip.startOffsetS) || 0;
-        const start = clamp(wanted, 0, Math.max(total - 0.1, 0));
-        return { start, end: total, length: Math.max(total - start, 0) };
+        const asked = clamp(Number(clip && clip.startOffsetS) || 0, 0, Math.max(total - 0.1, 0));
+        return { start: 0, end: total, length: total, asked };
     }
 
     // Position on the visible timeline (0 at the start of the clip) for a media time, and back.
