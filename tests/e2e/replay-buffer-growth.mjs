@@ -9,6 +9,7 @@
 //   MODE=game|desktop|idle   what is on the screen (default desktop)
 //   SECONDS=75               how long to share (default 75; the "1 min" option needs 60+)
 //   AUDIO=1                  share the sound too (a steady quiet tone)
+//   WIDTH=2560 HEIGHT=1440   the size of the screen (default 1920x1080)
 //   E2E_CHROME=... E2E_ORIGIN=https://mirotalk-dev... E2E_TOKEN=$(ssh ... dev-test-token.sh 30) node tests/e2e/replay-buffer-growth.mjs
 import { joinTestRoom, launchChrome, sleep, startScreenShare, stubScreenCapture } from './lib.mjs';
 
@@ -65,7 +66,7 @@ const chrome = await launchChrome({ chrome: chromePath });
 try {
     const sharer = await chrome.newPage();
     await sharer.send('Page.addScriptToEvaluateOnNewDocument', { source: soundSpy });
-    await stubScreenCapture(sharer, { mode: MODE, withAudio: WITH_AUDIO, fps: MODE === 'game' ? 60 : 30 });
+    await stubScreenCapture(sharer, { mode: MODE, withAudio: WITH_AUDIO, fps: MODE === 'game' ? 60 : 30, width: Number(process.env.WIDTH || 1920), height: Number(process.env.HEIGHT || 1080) });
     await joinTestRoom(sharer, { origin, token, name: 'BG-Sharer' });
 
     const viewer = await chrome.newPage();
