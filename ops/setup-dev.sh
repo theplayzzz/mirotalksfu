@@ -46,4 +46,13 @@ else
     echo "kept    $CONF/test-room.env"
 fi
 
+if [ ! -f "$CONF/replay.env" ]; then
+    echo "REPLAY_INTERNAL_SECRET=$(random_hex)" > "$CONF/replay.env"
+    echo "created $CONF/replay.env"
+else
+    echo "kept    $CONF/replay.env"
+fi
+
+install -d -m 755 -o 1000 -g 1000 "$DEV/data/replays" 2> /dev/null || sudo install -d -m 755 -o 1000 -g 1000 "$DEV/data/replays"
+
 ls -la "$CONF" "$DEV/data"

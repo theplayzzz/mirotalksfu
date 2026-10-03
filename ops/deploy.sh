@@ -115,8 +115,12 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 BACKUP=$COMPOSE.pre-deploy-$STAMP
 cp -a "$COMPOSE" "$BACKUP"
 
-awk -v img="$DIGEST" '
-    !done && /^[[:space:]]+image:[[:space:]]/ { sub(/image:[[:space:]].*/, "image: " img); done = 1 }
+awk -v img="$DIGEST" -v reg="$REGISTRY" '
+    /^[[:space:]]+image:[[:space:]]/ {
+        if ($0 ~ reg) {
+            sub(/image:[[:space:]].*/, "image: " img)
+        }
+    }
     { print }
 ' "$BACKUP" > "$COMPOSE.new"
 mv "$COMPOSE.new" "$COMPOSE"
@@ -126,13 +130,13 @@ compose() { docker compose -p "$PROJECT" -f "$COMPOSE" "$@"; }
 rollback() {
     echo "!! $1 - putting the previous compose file back"
     cp -a "$BACKUP" "$COMPOSE"
-    compose up -d --no-build --force-recreate "$SERVICE" || true
+    compose up -d --no-build --force-recreate || true
     echo "$STAMP $ENVIRONMENT FAILED $DIGEST ($1)" >> "$DIR/deploy-history.log"
     exit 1
 }
 
 compose config --quiet || { cp -a "$BACKUP" "$COMPOSE"; die "the new compose file is not valid, nothing was changed"; }
-compose up -d --no-build --force-recreate "$SERVICE"
+compose up -d --no-build --force-recreate
 
 # ---- 4. wait and verify --------------------------------------------------------------------------------------
 HEALTH=starting
@@ -142,6 +146,17 @@ for _ in $(seq 1 60); do
     sleep 3
 done
 [ "$HEALTH" = healthy ] || rollback "the container is '$HEALTH' after 3 minutes"
+
+REPLAY_CONTAINER=$(docker ps --format '{{.Names}}' | grep -E "replay" | grep -E "$ENVIRONMENT" | head -1 || true)
+if [ -n "$REPLAY_CONTAINER" ]; then
+    RHEALTH=starting
+    for _ in $(seq 1 60); do
+        RHEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$REPLAY_CONTAINER" 2>/dev/null || echo missing)
+        [ "$RHEALTH" = healthy ] && break
+        sleep 3
+    done
+    [ "$RHEALTH" = healthy ] || rollback "the replay container $REPLAY_CONTAINER is '$RHEALTH' after 3 minutes"
+fi
 
 NOW_ID=$(docker inspect -f '{{.Image}}' "$CONTAINER")
 [ "$NOW_ID" = "$IMAGE_ID" ] || rollback "the container runs $NOW_ID instead of $IMAGE_ID"
