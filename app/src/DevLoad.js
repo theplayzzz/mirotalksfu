@@ -38,9 +38,11 @@ async function bytesSent(transports) {
 /*
  * viewers: virtual viewers; screens: screens each of them consumes (the shared screens are repeated if there are
  * fewer); layers: spatial layer of each screen of a viewer, for example [2, 0, 0, 0] = one in full size and three
- * small; seconds: how long to measure.
+ * small (only for screens sent in several sizes); temporal: frame-rate layer of each screen, [2, 0, 0, 0] = one at
+ * the full frame rate and three at the lowest (screens sent in one size with L1T3 have it); paused: screens a
+ * viewer does not look at, [false, true, true, true]; seconds: how long to measure.
  */
-async function runLoad(room, { viewers = 10, screens = 4, layers = [], seconds = 30 } = {}) {
+async function runLoad(room, { viewers = 10, screens = 4, layers = [], temporal = [], paused = [], seconds = 30 } = {}) {
     viewers = Math.min(40, Math.max(1, Math.floor(viewers)));
     screens = Math.min(12, Math.max(1, Math.floor(screens)));
     seconds = Math.min(120, Math.max(5, Math.floor(seconds)));
@@ -75,9 +77,16 @@ async function runLoad(room, { viewers = 10, screens = 4, layers = [], seconds =
                     paused: false,
                 });
                 const layer = layers[s];
-                if (Number.isInteger(layer) && consumer.type === 'simulcast') {
-                    await consumer.setPreferredLayers({ spatialLayer: layer, temporalLayer: 2 });
+                const frameRate = temporal[s];
+                if (consumer.type === 'simulcast' && (Number.isInteger(layer) || Number.isInteger(frameRate))) {
+                    await consumer.setPreferredLayers({
+                        spatialLayer: Number.isInteger(layer) ? layer : 2,
+                        temporalLayer: Number.isInteger(frameRate) ? frameRate : 2,
+                    });
+                } else if (consumer.type === 'svc' && Number.isInteger(frameRate)) {
+                    await consumer.setPreferredLayers({ spatialLayer: 0, temporalLayer: frameRate });
                 }
+                if (paused[s] === true) await consumer.pause();
                 consumers.push(consumer);
             }
         }
@@ -97,7 +106,8 @@ async function runLoad(room, { viewers = 10, screens = 4, layers = [], seconds =
         const cpuMs = usageAfter.ru_utime - usageBefore.ru_utime + (usageAfter.ru_stime - usageBefore.ru_stime);
         const layerNow = {};
         for (const consumer of consumers) {
-            const layer = consumer.currentLayers ? consumer.currentLayers.spatialLayer : 'none';
+            const current = consumer.currentLayers;
+            const layer = consumer.paused ? 'paused' : current ? `${current.spatialLayer}/${current.temporalLayer ?? '-'}` : 'none';
             layerNow[layer] = (layerNow[layer] || 0) + 1;
         }
 
@@ -106,6 +116,8 @@ async function runLoad(room, { viewers = 10, screens = 4, layers = [], seconds =
             screens,
             consumers: consumers.length,
             layersAsked: layers,
+            temporalAsked: temporal,
+            pausedAsked: paused,
             sharedScreens: producers.length,
             seconds: Math.round(wallMs / 100) / 10,
             workerCpuPercent: Math.round((cpuMs / wallMs) * 1000) / 10,

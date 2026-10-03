@@ -34,7 +34,7 @@ services:
       HOST_USER_AUTH: "false"
       # features under test in development
       KEYFRAME_REQUEST_DELAY_MS: "1000"
-      SCREEN_SIMULCAST_LAYERS: "3"
+      SCREEN_SIMULCAST_LAYERS: "1"
       SELECTIVE_RECEPTION: "true"
       DEV_LOAD_ENABLED: "true"
       HEALTH_METER_ENABLED: "true"

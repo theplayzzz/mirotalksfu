@@ -6,7 +6,11 @@
  * Without it every viewer downloads every screen in full quality (4 screens of 12 Mbps = ~47 Mbps each), even
  * screens shown as small tiles, hidden by the focus mode or in a window nobody is looking at. With the server
  * setting SELECTIVE_RECEPTION the browser looks at its own screen and asks the server for:
- *   - the layer that fits the tile (screens are sent in up to 3 sizes: 1/4, 1/2 and full, see SCREEN_SIMULCAST_LAYERS),
+ *   - the layer that fits the tile. A screen is sent in one size with 3 frame-rate layers (VP8 L1T3: 60, 30 and 15
+ *     fps, which cost 100%, 60% and 40% of the bits), so a thumbnail gets 15 fps and a medium tile 30 fps. With
+ *     SCREEN_SIMULCAST_LAYERS the screen can also be sent in up to 3 sizes (1/4, 1/2 and full), and then the size
+ *     is chosen instead (off by default: Chrome does not hold the bandwidth estimate of a layered sender up, see
+ *     docs/MEASUREMENTS.md),
  *   - priority for the biggest tile when the network is short,
  *   - a pause of the video of a tile that is hidden (or of all of them while the page itself is hidden).
  * Audio is never paused. Quality goes up quickly and down slowly, so resizing or unpinning does not make it flap.
@@ -39,18 +43,36 @@
         return scales.length - 1;
     }
 
-    // What one screen should get now. tile: { visible, width (device pixels) }, page: { hidden, pictureInPicture }.
-    function decide({ layers, topWidth, tile, page }) {
+    // Frame-rate layer for a tile of `neededWidth` device pixels of a screen `topWidth` wide that has
+    // `temporalLayers` of them (3 = 60, 30 and 15 fps): a thumbnail of up to 30% of the width gets the lowest, a medium
+    // tile of up to 45% the middle one and everything bigger all frames.
+    function pickTemporal(temporalLayers, topWidth, neededWidth) {
+        const top = Math.max(0, temporalLayers - 1);
+        if (top === 0 || !(topWidth > 0)) return top;
+        const share = neededWidth / topWidth;
+        if (share <= 0.3) return 0;
+        if (share <= 0.45) return Math.min(1, top);
+        return top;
+    }
+
+    // What one screen should get now. tile: { visible, width (device pixels) }, page: { hidden, pictureInPicture },
+    // temporalLayers: how many frame-rate layers the screen has (1 = none).
+    function decide({ layers, topWidth, tile, page, temporalLayers = 1 }) {
         if (page.hidden && !page.pictureInPicture) return { paused: true, reason: 'page-hidden' };
         if (!tile.visible) return { paused: true, reason: 'tile-hidden' };
-        return { paused: false, spatialLayer: pickLayer(layers, topWidth, tile.width), reason: 'visible' };
+        // A screen sent in several sizes already has light small ones; frame-rate layers are for the one-size screen
+        const temporalLayer = layers > 1 ? Math.max(0, temporalLayers - 1) : pickTemporal(temporalLayers, topWidth, tile.width);
+        return { paused: false, spatialLayer: pickLayer(layers, topWidth, tile.width), temporalLayer, reason: 'visible' };
     }
 
     // Does `wanted` ask for something different from what is applied?
     function differs(applied, wanted) {
         if (wanted.paused !== applied.paused) return true;
-        return !wanted.paused && wanted.spatialLayer !== applied.spatialLayer;
+        return !wanted.paused && (wanted.spatialLayer !== applied.spatialLayer || wanted.temporalLayer !== applied.temporalLayer);
     }
+
+    // How much picture a layer pair carries, to tell a sharper request from a lighter one
+    const level = (layer) => (layer.spatialLayer || 0) * 10 + (layer.temporalLayer || 0);
 
     // Tells when a change should be sent. `state` is { applied, candidate, lastChange } and is updated.
     // Returns the change to send or null.
@@ -59,13 +81,13 @@
             state.candidate = null;
             return null;
         }
-        const key = wanted.paused ? `paused:${wanted.reason}` : `layer:${wanted.spatialLayer}`;
+        const key = wanted.paused ? `paused:${wanted.reason}` : `layer:${wanted.spatialLayer}/${wanted.temporalLayer}`;
         if (!state.candidate || state.candidate.key !== key) {
             state.candidate = { key, since: now };
         }
 
         const resuming = state.applied.paused && !wanted.paused;
-        const sharper = !wanted.paused && !state.applied.paused && wanted.spatialLayer > state.applied.spatialLayer;
+        const sharper = !wanted.paused && !state.applied.paused && level(wanted) > level(state.applied);
         let hold;
         if (resuming) hold = 0;
         else if (wanted.paused) hold = wanted.reason === 'page-hidden' ? HOLD_PAGE_HIDDEN_MS : HOLD_TILE_HIDDEN_MS;
@@ -73,7 +95,9 @@
 
         if (now - state.candidate.since < hold) return null;
 
-        state.applied = wanted.paused ? { paused: true } : { paused: false, spatialLayer: wanted.spatialLayer };
+        state.applied = wanted.paused
+            ? { paused: true }
+            : { paused: false, spatialLayer: wanted.spatialLayer, temporalLayer: wanted.temporalLayer };
         state.candidate = null;
         state.lastChange = now;
         return wanted;
@@ -109,7 +133,25 @@
         return 'vp8';
     }
 
-    const rules = { layerScales, pickLayer, decide, differs, follow, pickH264, chooseCodec, HOLD_UP_MS, HOLD_DOWN_MS };
+    // How many frame-rate layers a scalability mode has: 'L1T3' = 3, 'L3T3' = 3, 'S1T2' = 2, none = 1
+    function temporalLayersOf(scalabilityMode) {
+        const found = /T(\d+)/.exec(String(scalabilityMode || ''));
+        return found ? Math.max(1, Number(found[1])) : 1;
+    }
+
+    const rules = {
+        layerScales,
+        pickLayer,
+        pickTemporal,
+        temporalLayersOf,
+        decide,
+        differs,
+        follow,
+        pickH264,
+        chooseCodec,
+        HOLD_UP_MS,
+        HOLD_DOWN_MS,
+    };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = rules;
         return;
@@ -215,10 +257,13 @@
         if (!state.selective || consumer.kind !== 'video') return;
         if (typeof RoomClient === 'undefined' || type !== RoomClient.mediaType.screen) return;
 
+        const temporalLayers = temporalLayersOf(consumer.rtpParameters && consumer.rtpParameters.encodings && consumer.rtpParameters.encodings[0] && consumer.rtpParameters.encodings[0].scalabilityMode);
         const entry = {
             room,
             consumer,
-            applied: { paused: false, spatialLayer: state.layers - 1 }, // what the server gives a new consumer
+            temporalLayers,
+            // what the server gives a new consumer: the best it has
+            applied: { paused: false, spatialLayer: state.layers - 1, temporalLayer: temporalLayers - 1 },
             candidate: null,
             lastChange: 0,
             priority: 1,
@@ -238,11 +283,11 @@
 
         // Start at the right layer when the tile already has its size
         const tile = measureTile(consumer.id);
-        if (tile.visible && state.layers > 1) {
-            const layer = pickLayer(state.layers, entry.topWidth, tile.width);
-            if (layer !== entry.applied.spatialLayer) {
-                const answer = await request(entry, { spatialLayer: layer });
-                if (answer && answer.ok) entry.applied = { paused: false, spatialLayer: layer };
+        if (tile.visible && (state.layers > 1 || temporalLayers > 1)) {
+            const wanted = decide({ layers: state.layers, topWidth: entry.topWidth, tile, page: { hidden: false }, temporalLayers });
+            if (differs(entry.applied, wanted)) {
+                const answer = await request(entry, { spatialLayer: wanted.spatialLayer, temporalLayer: wanted.temporalLayer });
+                if (answer && answer.ok) entry.applied = { paused: false, spatialLayer: wanted.spatialLayer, temporalLayer: wanted.temporalLayer };
             }
         }
     }
@@ -273,25 +318,31 @@
         for (const [id, entry] of state.entries) {
             const tile = tiles.get(id);
 
-            // The size of the full picture is learned from what the server says it sends (consumerLayers)
+            // The size of the full picture: with several sizes it is learned from what the server says it sends
+            // (consumerLayers); with one size it is the picture itself
             const video = tile.video;
-            if (video && video.videoWidth > 0 && Number.isInteger(entry.activeLayer)) {
-                const scale = layerScales(state.layers)[entry.activeLayer];
-                if (scale) entry.topWidth = video.videoWidth / scale;
+            if (video && video.videoWidth > 0) {
+                if (state.layers === 1) entry.topWidth = video.videoWidth;
+                else if (Number.isInteger(entry.activeLayer)) {
+                    const scale = layerScales(state.layers)[entry.activeLayer];
+                    if (scale) entry.topWidth = video.videoWidth / scale;
+                }
             }
 
-            const wanted = decide({ layers: state.layers, topWidth: entry.topWidth, tile, page });
+            const wanted = decide({ layers: state.layers, topWidth: entry.topWidth, tile, page, temporalLayers: entry.temporalLayers });
             const change = follow(entry, wanted, now);
             const priority = biggest && biggest.id === id ? 255 : 1;
 
             if (change) {
-                const preferences = change.paused ? { paused: true } : { paused: false, spatialLayer: change.spatialLayer };
+                const preferences = change.paused
+                    ? { paused: true }
+                    : { paused: false, spatialLayer: change.spatialLayer, temporalLayer: change.temporalLayer };
                 if (priority !== entry.priority) preferences.priority = priority;
                 request(entry, preferences).then((answer) => {
                     if (answer && answer.ok && preferences.priority) entry.priority = preferences.priority;
                     if (!answer || !answer.ok) {
                         // not applied (reconnecting, consumer gone): try again from the real state
-                        entry.applied = { paused: !change.paused, spatialLayer: state.layers - 1 };
+                        entry.applied = { paused: !change.paused, spatialLayer: state.layers - 1, temporalLayer: entry.temporalLayers - 1 };
                     }
                 });
             } else if (priority !== entry.priority && !wanted.paused) {

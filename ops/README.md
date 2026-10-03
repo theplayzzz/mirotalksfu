@@ -88,6 +88,10 @@ per second) and `peer-traffic.py` (upload and download of every participant, nee
 |---|---|---|
 | `SINGLE_ROOM_ID`, `SINGLE_ROOM_PASSWORD` | the only room and its password | none |
 | `KEYFRAME_REQUEST_DELAY_MS` | minimum time between two key frame requests to the same sender | 0 (no limit) |
+| `SELECTIVE_RECEPTION` | every browser asks the server for the layer its tile needs and pauses hidden screens (frame rates of a one-size screen, or sizes if `SCREEN_SIMULCAST_LAYERS` > 1) | off |
+| `SCREEN_SIMULCAST_LAYERS` | sizes a screen is sent in, 1-3. Keep 1: Chrome's bandwidth estimate collapses with 2-3 (`docs/MEASUREMENTS.md`) | 1 |
+| `SCREEN_CODEC` | `vp8`, `h264` or `auto` (H.264 where the browser encodes it in hardware) | vp8 |
+| `DEV_LOAD_ENABLED` | development only: `/dev/load`, virtual viewers to measure the worker (`tests/e2e/worker-load.mjs`) | off |
 | `HEALTH_METER_ENABLED`, `HEALTH_DIR`, `HEALTH_INTERVAL_S`, `HEALTH_RETENTION_DAYS` | the health meter | off |
 | `APP_ENV`, `DEV_TEST_ROOM_ID`, `DEV_TEST_ROOM_KEY` | development test room | off |
 

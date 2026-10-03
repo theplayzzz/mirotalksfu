@@ -1,13 +1,17 @@
 // What does the room cost the server with many viewers, and how much does selective reception save?
-// A real sharer sends a screen (in 3 layers); the development instance then makes virtual viewers (DevLoad.js)
-// that consume it several times, with SRTP, and measures the CPU of the mediasoup worker (one core: when it
-// saturates, everybody stutters) and the traffic. Scenarios, for 10 viewers each seeing 4 screens:
-//   today          every screen of every viewer in full size (what production does now)
-//   one big        one screen in full size and three small (a pinned screen and three tiles)
+// A real sharer sends a screen; the development instance then makes virtual viewers (DevLoad.js) that consume it
+// several times, with SRTP, and measures the CPU of the mediasoup worker (one core: when it saturates, everybody
+// stutters) and the traffic. Scenarios, for 10 viewers each seeing 4 screens:
+//   today          every screen of every viewer in full (what production does now)
+//   one big        one screen in full and three as thumbnails (a pinned screen and three small tiles)
 //   grid           four medium tiles (a 2x2 grid)
+//   one big, rest hidden    one screen in full, the other three hidden (paused)
+//   page hidden    nothing watched at all (the tab of every viewer in the background)
+// A screen sent in one size (SCREEN_SIMULCAST_LAYERS=1, the default) is reduced by its frame-rate layers
+// (T2 = 60 fps, T1 = 30, T0 = 15); one sent in 3 sizes (SCREEN_SIMULCAST_LAYERS=3) by its size layers.
 // The same screen is repeated for the four, which costs the server exactly what four different ones do.
 //
-//   needs APP_ENV=dev, DEV_LOAD_ENABLED=true and SCREEN_SIMULCAST_LAYERS=3 on the instance
+//   needs APP_ENV=dev and DEV_LOAD_ENABLED=true on the instance
 //   E2E_CHROME=... E2E_ORIGIN=https://mirotalk-dev... E2E_TOKEN=$(ssh ... dev-test-token.sh 20) node tests/e2e/worker-load.mjs [viewers] [seconds]
 import { joinTestRoom, launchChrome, sleep, startScreenShare, stubScreenCapture } from './lib.mjs';
 
@@ -46,11 +50,18 @@ try {
     })()`);
     console.log('what the sharer sends (one entry per layer):', JSON.stringify(sharerStats));
 
+    const config = await sharer.ev("fetch('/config').then((r) => r.json())");
+    const spatial = config.screen.layers > 1;
+    console.log('server screen settings', JSON.stringify(config.screen));
+    const big = spatial ? { layers: [2, 0, 0, 0] } : { temporal: [2, 0, 0, 0] };
+    const grid = spatial ? { layers: [1, 1, 1, 1] } : { temporal: [1, 1, 1, 1] };
     const scenarios = [
-        { name: 'idle (no virtual viewers)', body: { viewers: 1, screens: 1, layers: [], seconds: 10 }, tiny: true },
-        { name: 'today: 4 screens in full size', body: { viewers, screens: 4, layers: [2, 2, 2, 2], seconds } },
-        { name: 'one big, three small', body: { viewers, screens: 4, layers: [2, 0, 0, 0], seconds } },
-        { name: 'grid of four medium tiles', body: { viewers, screens: 4, layers: [1, 1, 1, 1], seconds } },
+        { name: 'idle (no virtual viewers)', body: { viewers: 1, screens: 1, seconds: 10 } },
+        { name: 'today: 4 screens in full', body: { viewers, screens: 4, seconds } },
+        { name: 'one big, three thumbnails', body: { viewers, screens: 4, seconds, ...big } },
+        { name: 'grid of four medium tiles', body: { viewers, screens: 4, seconds, ...grid } },
+        { name: 'one big, three hidden', body: { viewers, screens: 4, seconds, paused: [false, true, true, true] } },
+        { name: 'page hidden (all paused)', body: { viewers, screens: 4, seconds, paused: [true, true, true, true] } },
     ];
     const results = [];
     for (const scenario of scenarios) {
@@ -63,11 +74,11 @@ try {
         await sleep(3000);
     }
     const today = results[1];
-    const selective = results[2];
-    if (today && selective) {
+    for (const other of results.slice(2)) {
         console.log(
-            `\nselective reception (one big, three small) vs today: worker CPU ${selective.workerCpuPercent}% vs ${today.workerCpuPercent}% ` +
-                `(${Math.round((selective.workerCpuPercent / Math.max(0.1, today.workerCpuPercent)) * 100)}%), traffic per viewer ${selective.sentMbpsPerViewer} vs ${today.sentMbpsPerViewer} Mbps`
+            `${other.name.padEnd(34)} vs today: worker CPU ${other.workerCpuPercent}% vs ${today.workerCpuPercent}% ` +
+                `(${Math.round((other.workerCpuPercent / Math.max(0.1, today.workerCpuPercent)) * 100)}%), ` +
+                `traffic per viewer ${other.sentMbpsPerViewer} vs ${today.sentMbpsPerViewer} Mbps`
         );
     }
 } finally {

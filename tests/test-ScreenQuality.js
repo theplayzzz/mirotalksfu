@@ -4,7 +4,7 @@ require('should');
 
 const Peer = require('../app/src/Peer');
 const rules = require('../public/js/ScreenQuality');
-const { pickLayer, decide, follow, layerScales, pickH264, chooseCodec } = rules;
+const { pickLayer, pickTemporal, temporalLayersOf, decide, follow, layerScales, pickH264, chooseCodec } = rules;
 
 describe('test-ScreenQuality', () => {
     describe('layers', () => {
@@ -32,6 +32,32 @@ describe('test-ScreenQuality', () => {
             pickLayer(3, 1280, 900).should.equal(2);
             pickLayer(3, 1280, 600).should.equal(1);
         });
+
+        it('knows how many frame-rate layers a scalability mode has', () => {
+            temporalLayersOf('L1T3').should.equal(3);
+            temporalLayersOf('L3T3').should.equal(3);
+            temporalLayersOf('S1T2').should.equal(2);
+            temporalLayersOf('L1T1').should.equal(1);
+            temporalLayersOf(undefined).should.equal(1);
+            temporalLayersOf('').should.equal(1);
+        });
+
+        it('gives a thumbnail the lowest frame rate, a medium tile the middle one and a big tile all of it', () => {
+            // 3 layers = 60, 30 and 15 fps; the screen is 1920 px wide
+            pickTemporal(3, 1920, 250).should.equal(0); // a thumbnail
+            pickTemporal(3, 1920, 576).should.equal(0); // 30% is still a thumbnail
+            pickTemporal(3, 1920, 700).should.equal(1); // 3x3 grid on a 1080p window
+            pickTemporal(3, 1920, 864).should.equal(1); // 45%
+            pickTemporal(3, 1920, 960).should.equal(2); // a 2x2 grid keeps every frame
+            pickTemporal(3, 1920, 1920).should.equal(2);
+            pickTemporal(3, 1920, 5000).should.equal(2);
+            // two layers: 30 and 15 fps; one layer (H.264) cannot be reduced
+            pickTemporal(2, 1920, 250).should.equal(0);
+            pickTemporal(2, 1920, 700).should.equal(1);
+            pickTemporal(1, 1920, 100).should.equal(0);
+            // the size of the screen is not known yet: do not reduce anything
+            pickTemporal(3, 0, 100).should.equal(2);
+        });
     });
 
     describe('what a screen should get', () => {
@@ -42,7 +68,23 @@ describe('test-ScreenQuality', () => {
             decide({ layers: 3, topWidth: 1920, tile: visible, page }).should.deepEqual({
                 paused: false,
                 spatialLayer: 1,
+                temporalLayer: 0,
                 reason: 'visible',
+            });
+        });
+
+        it('asks for the frame-rate layer of a screen that is sent in one size', () => {
+            const tile = (width) => ({ visible: true, width });
+            const wanted = (width) => decide({ layers: 1, topWidth: 1920, tile: tile(width), page, temporalLayers: 3 });
+            wanted(300).should.deepEqual({ paused: false, spatialLayer: 0, temporalLayer: 0, reason: 'visible' });
+            wanted(800).should.containEql({ spatialLayer: 0, temporalLayer: 1 });
+            wanted(1920).should.containEql({ spatialLayer: 0, temporalLayer: 2 });
+            // without frame-rate layers (H.264) there is nothing to reduce
+            decide({ layers: 1, topWidth: 1920, tile: tile(300), page, temporalLayers: 1 }).should.containEql({ temporalLayer: 0 });
+            // a screen sent in several sizes already has light small ones and keeps every frame
+            decide({ layers: 3, topWidth: 1920, tile: tile(300), page, temporalLayers: 3 }).should.containEql({
+                spatialLayer: 0,
+                temporalLayer: 2,
             });
         });
 
@@ -63,8 +105,8 @@ describe('test-ScreenQuality', () => {
     });
 
     describe('when to change', () => {
-        const fresh = () => ({ applied: { paused: false, spatialLayer: 2 }, candidate: null, lastChange: 0 });
-        const layer = (spatialLayer) => ({ paused: false, spatialLayer, reason: 'visible' });
+        const fresh = () => ({ applied: { paused: false, spatialLayer: 2, temporalLayer: 0 }, candidate: null, lastChange: 0 });
+        const layer = (spatialLayer, temporalLayer = 0) => ({ paused: false, spatialLayer, temporalLayer, reason: 'visible' });
         const hidden = (reason) => ({ paused: true, reason });
 
         it('does nothing while what is wanted is what is applied', () => {
@@ -78,13 +120,24 @@ describe('test-ScreenQuality', () => {
             (follow(state, layer(0), 10_000) === null).should.be.true();
             (follow(state, layer(0), 10_800) === null).should.be.true();
             follow(state, layer(0), 11_600).should.containEql({ spatialLayer: 0 });
-            state.applied.should.deepEqual({ paused: false, spatialLayer: 0 });
+            state.applied.should.deepEqual({ paused: false, spatialLayer: 0, temporalLayer: 0 });
         });
 
         it('goes up quickly: 0.3 s', () => {
-            const state = { applied: { paused: false, spatialLayer: 0 }, candidate: null, lastChange: 0 };
+            const state = { applied: { paused: false, spatialLayer: 0, temporalLayer: 0 }, candidate: null, lastChange: 0 };
             (follow(state, layer(2), 10_000) === null).should.be.true();
             follow(state, layer(2), 10_320).should.containEql({ spatialLayer: 2 });
+        });
+
+        it('does the same with frame-rate layers: down after 1.5 s, up after 0.3 s', () => {
+            const state = { applied: { paused: false, spatialLayer: 0, temporalLayer: 2 }, candidate: null, lastChange: 0 };
+            (follow(state, layer(0, 0), 10_000) === null).should.be.true();
+            (follow(state, layer(0, 0), 11_400) === null).should.be.true();
+            follow(state, layer(0, 0), 11_600).should.containEql({ temporalLayer: 0 });
+            (follow(state, layer(0, 2), 20_000) === null).should.be.true();
+            (follow(state, layer(0, 2), 20_200) === null).should.be.true();
+            follow(state, layer(0, 2), 20_320).should.containEql({ temporalLayer: 2 });
+            state.applied.should.deepEqual({ paused: false, spatialLayer: 0, temporalLayer: 2 });
         });
 
         it('forgets a change that was only wanted for a moment', () => {
@@ -206,6 +259,19 @@ describe('test-ScreenQuality', () => {
 
             applied.should.deepEqual({ paused: false });
             c.calls.should.deepEqual([]);
+        });
+
+        it('sets the frame-rate layer of a screen sent in one size (svc type, L1T3)', async () => {
+            const c = consumer({ type: 'svc', rtpParameters: { encodings: [{ scalabilityMode: 'L1T3' }] } });
+            const peer = withConsumer(c);
+
+            const applied = await peer.setConsumerPreferences('c1', { spatialLayer: 0, temporalLayer: 0, paused: false });
+
+            applied.should.deepEqual({ spatialLayer: 0, temporalLayer: 0, paused: false });
+            c.calls.should.deepEqual([['layers', { spatialLayer: 0, temporalLayer: 0 }]]);
+
+            const clamped = await peer.setConsumerPreferences('c1', { spatialLayer: 3, temporalLayer: 9 });
+            clamped.should.containEql({ spatialLayer: 0, temporalLayer: 2 });
         });
 
         it('ignores layers of a consumer that has none, but still pauses it', async () => {

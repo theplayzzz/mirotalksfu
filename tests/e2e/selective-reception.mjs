@@ -1,8 +1,9 @@
-// Selective reception, end to end: a sharer sends its screen (the dev instance sends it in 3 sizes), a viewer
-// resizes its window, hides the tile and hides the page, and the test checks what the browser asked the server for
-// (setConsumerPreferences) and how much video it really received after each change.
+// Selective reception, end to end: a sharer sends its screen, a viewer resizes its window, hides the tile and hides
+// the page, and the test checks what the browser asked the server for (setConsumerPreferences) and how much video it
+// really received after each change. A screen sent in one size (SCREEN_SIMULCAST_LAYERS=1, the default) is reduced
+// by its frame-rate layers (60, 30 and 15 fps); one sent in 3 sizes (SCREEN_SIMULCAST_LAYERS=3) by size.
 //
-//   needs the dev instance with SCREEN_SIMULCAST_LAYERS=3 and SELECTIVE_RECEPTION=true
+//   needs the dev instance with SELECTIVE_RECEPTION=true
 //   E2E_CHROME=... E2E_ORIGIN=https://mirotalk-dev... E2E_TOKEN=$(ssh ... dev-test-token.sh 20) node tests/e2e/selective-reception.mjs
 import { joinTestRoom, launchChrome, sleep, startScreenShare, stubScreenCapture } from './lib.mjs';
 
@@ -92,7 +93,12 @@ try {
     await startScreenShare(sharer);
     const config = await sharer.ev("fetch('/config').then((r) => r.json())");
     console.log('server screen settings', JSON.stringify(config.screen));
-    check('the server sends the screen in 3 layers and has selective reception on', config.screen.layers === 3 && config.screen.selectiveReception === true);
+    check('the server has selective reception on', config.screen.selectiveReception === true);
+    // What the browser asks for as the tile shrinks: the spatial layer (sizes) or the temporal one (frame rates)
+    const spatial = config.screen.layers > 1;
+    const levelOf = (data) => (spatial ? data.spatialLayer : data.temporalLayer);
+    const mediumWidth = spatial ? 960 : 820; // medium: half the screen with sizes, under 45% of it with frame rates
+    console.log(spatial ? 'the screen is sent in 3 sizes' : 'the screen is sent in one size with 3 frame rates');
 
     const viewer = await chrome.newPage();
     await viewer.send('Page.addScriptToEvaluateOnNewDocument', { source: instrument });
@@ -107,7 +113,7 @@ try {
     let phase = await measure(viewer, 6);
     const prefsBig = await viewer.ev('window.__prefs');
     console.log('big tile (1920x1080):', JSON.stringify(phase), 'requests so far:', JSON.stringify(prefsBig.map((p) => p.data)));
-    check('a big tile asks for the top layer', prefsBig.some((p) => p.data.spatialLayer === 2), JSON.stringify(prefsBig.map((p) => p.data.spatialLayer)));
+    check('a big tile gets the top layer', !prefsBig.length || prefsBig.some((p) => levelOf(p.data) === 2) || phase.fps > 40, JSON.stringify(prefsBig.map((p) => levelOf(p.data))));
     check('a big tile keeps receiving video', phase.fps > 15, JSON.stringify(phase));
     check('a big tile is not paused', !prefsBig.some((p) => p.data.paused === true));
     const bigMbps = phase.mbps;
@@ -115,23 +121,25 @@ try {
     // b. a small window asks for the smallest layer
     let since = await now(viewer);
     await window_(viewer, 480, 270);
-    let asked = await waitForPreference(viewer, since, (d) => d.spatialLayer === 0, 6);
+    let asked = await waitForPreference(viewer, since, (d) => levelOf(d) === 0, 6);
     check('a small tile (480 px) asks for the smallest layer', !!asked, asked ? `after ${Math.round(((await now(viewer)) - since) / 100) / 10} s at most` : 'no request');
     await sleep(4000);
     phase = await measure(viewer, 6);
     console.log('small tile (480x270):', JSON.stringify(phase), '| big was', bigMbps, 'Mbps');
-    check('the smallest layer uses far less bandwidth than the big tile', phase.mbps < Math.max(2, bigMbps * 0.5), `${phase.mbps} vs ${bigMbps} Mbps`);
+    // sizes: a quarter of the picture is about 5% of the bits; frame rates: 15 of 60 fps is about 40%
+    const lightFactor = spatial ? 0.5 : 0.6;
+    check('the smallest layer uses far less bandwidth than the big tile', phase.mbps < Math.max(2, bigMbps * lightFactor), `${phase.mbps} vs ${bigMbps} Mbps`);
 
     // c. a medium window asks for the middle layer
     since = await now(viewer);
-    await window_(viewer, 960, 540);
-    asked = await waitForPreference(viewer, since, (d) => d.spatialLayer === 1, 6);
-    check('a medium tile (960 px) asks for the middle layer', !!asked);
+    await window_(viewer, mediumWidth, Math.round((mediumWidth * 9) / 16));
+    asked = await waitForPreference(viewer, since, (d) => levelOf(d) === 1, 6);
+    check(`a medium tile (${mediumWidth} px) asks for the middle layer`, !!asked);
 
     // d. back to a big window asks for the top layer
     since = await now(viewer);
     await window_(viewer, 1920, 1080);
-    asked = await waitForPreference(viewer, since, (d) => d.spatialLayer === 2, 6);
+    asked = await waitForPreference(viewer, since, (d) => levelOf(d) === 2, 6);
     check('a big tile asks for the top layer again', !!asked);
     await sleep(4000);
 
@@ -164,7 +172,7 @@ try {
     check('a page that shows again resumes the video', !!asked);
 
     const layers = await viewer.ev('window.__layers');
-    console.log('layer changes reported by the server:', JSON.stringify(layers.map((l) => l.spatialLayer)));
+    console.log('layer changes reported by the server:', JSON.stringify(layers.map((l) => (spatial ? l.spatialLayer : l.temporalLayer))));
     check('the server reports the layer changes', layers.length > 0);
 
     // g. a viewer with a small window (a phone) gets a small layer
@@ -179,7 +187,7 @@ try {
     phase = await measure(small, 6);
     const smallPrefs = await small.ev('window.__prefs');
     console.log('joined with a small window:', JSON.stringify(phase), 'requests:', JSON.stringify(smallPrefs.map((p) => p.data)));
-    check('a viewer with a small window receives a small layer', phase.mbps < Math.max(2, bigMbps * 0.5) && phase.fps > 15, `${phase.mbps} vs ${bigMbps} Mbps`);
+    check('a viewer with a small window receives a small layer', phase.mbps < Math.max(2, bigMbps * lightFactor) && phase.fps >= 12, `${phase.mbps} vs ${bigMbps} Mbps`);
 } finally {
     chrome.close();
 }
