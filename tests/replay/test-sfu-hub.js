@@ -138,6 +138,27 @@ describe('test-sfu-hub (room events and replay coordination)', () => {
         socketEvents.filter((e) => e.event === 'replayTicket').should.have.length(2);
     });
 
+    it('tells a room once, with an empty list, when its last screen stops (and then stops telling it)', () => {
+        const f = fakes();
+        const hub = new ReplayHub({ io: f.io, access: f.access, client: f.client, getRoom: () => f.room, log: silent });
+        hub.attachBridge(f.bridge);
+        f.peers.set('sock-1', { peer_name: 'Friend' });
+        f.bridge.shares = [{ shareId: 'screen-1', roomId: 'room-1', peerName: 'Sharer', peerUuid: 'u1', codec: 'vp8', hasAudio: true, startedAt: Date.now() - 20000 }];
+
+        hub.broadcastBuffers();
+        const sent = () => f.emitted.filter((e) => e.event === 'replayBuffers');
+        sent().should.have.length(1);
+        sent()[0].data.shares.should.have.length(1);
+
+        f.bridge.shares = []; // the screen stopped
+        hub.broadcastBuffers();
+        sent().should.have.length(2);
+        sent()[1].data.shares.should.deepEqual([]); // the room is told it is empty now
+
+        hub.broadcastBuffers();
+        sent().should.have.length(2); // and nothing more is sent to a room without screens
+    });
+
     it('rejects clip requests when replay is unavailable', async () => {
         const f = fakes();
         f.bridge.available = false;

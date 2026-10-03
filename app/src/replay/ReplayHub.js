@@ -51,6 +51,7 @@ class ReplayHub {
         this.bridge = null; // set when the bridge is up
         this.buffers = new Map(); // shareId -> { bufferSeconds, codec, hasAudio } as reported by the recorder
         this.sseClients = new Set();
+        this.announcedRooms = new Set(); // rooms that were last told about at least one screen
         this.lastRequestAt = new Map(); // socket id -> time
         this.announced = new Map(); // clip id -> time, so a clip is announced to the room once
         this.requests = new Map(); // requestId -> { socketId, uuid, at }
@@ -168,10 +169,16 @@ class ReplayHub {
         }
     }
 
+    // Tells every room what is being kept. A room whose last screen just stopped is told once more, with an empty list:
+    // otherwise its people would keep the screen that ended in their list for ever.
     broadcastBuffers() {
         if (!this.bridge) return;
-        for (const roomId of this.roomsWithShares()) {
-            this.sendToRoom(this.getRoom(roomId), 'replayBuffers', this.buffersPayload(roomId));
+        const rooms = new Set([...this.roomsWithShares(), ...this.announcedRooms]);
+        this.announcedRooms = new Set();
+        for (const roomId of rooms) {
+            const payload = this.buffersPayload(roomId);
+            this.sendToRoom(this.getRoom(roomId), 'replayBuffers', payload);
+            if (payload.shares.length) this.announcedRooms.add(roomId);
         }
     }
 
