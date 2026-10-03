@@ -127,6 +127,30 @@ real viewers (`ops/health-summary.py`).
 | people watching (health meter, 29-44 fps received at 1830-1920 px) | loss 0-0.3%, 0-3 freezes in 2-6 min of reports, jitter buffer 35-115 ms; the screen that was being sent ran at 31.8 fps and ~11 Mbps (encoder libvpx, not limited by cpu or bandwidth) |
 | noise in the log | 311 "aborting with incomplete response" in Caddy (and as many `ECONNRESET` warnings in the SFU) right when the first clip was opened: the browser's video player cancelling its own range requests (`H3_REQUEST_CANCELLED`); two per minute afterwards |
 
+### Production, the rest of the first night: the viewers' freezes went up, and it is not known why
+
+Read from the health meter (`ops/health-summary.py` and `ops/tools/health-windows.py`, `health-buckets.py`, `health-spike.py`, five or six viewers):
+
+| window (UTC, 03/10) | viewer-screen-minutes | freezes per minute | frozen share of the time | received fps |
+|---|---|---|---|---|
+| 21:15-21:30 (the first quarter hour, first version) | 145 | 0.94 | 1.5% | 24.4 |
+| 21:30-21:54 (same code, a bigger session) | 325 | 3.09 | 3.8% | 19.4 |
+| 21:56-22:06 (after the second deploy, 2-5 viewers) | ~25 | 4-16 | 4-15% | 23-45 |
+
+What is known: it began to rise at ~21:33 and is present in the full frame rate samples too (4-6 freezes/min at 21:36-21:48), so
+it is not only the 15 fps thumbnails (the freeze test is stricter at a low frame rate); it had **already risen before** the
+deploy of the fixes (so the fixes did not cause it); at 21:49-21:51 four of six viewers froze at the same time (up to 18% of
+the minute) with NACKs 5x and PLIs 4x the usual (packets lost before they reached several viewers at once), while the server
+had **0** UDP errors, 0 receive-buffer errors and 0 NIC drops, the senders showed nothing limited by CPU or bandwidth, and
+the SFU container was at ~21% of a core; the recorder's container never went over ~11% except while converting an MP4. What is
+not known: whether it is the senders' or the viewers' networks and PCs (one viewer froze 5-14% of the time all night, and
+the PC that runs these tests, which is also a viewer, was running a game and my heavy tests at the time: not a clean
+night), the load of more simultaneous screens, or the recorder. A/B on the development instance (key frames at the recorder's
+request, 0 s against 10 and 5 s) was started and stopped because the PC was busy with a game: its first run is not valid
+(33 fps, 32 freezes with nothing else running on the room), so **there is no measurement of what periodic key frames cost
+the people watching**. To settle it: compare a quiet night with `REPLAY_ENABLED` on and off (a restart each), with no test
+running on any PC of the people of the room.
+
 ## The gallery player: why the clip "never loaded", 2026-10-03 (night of the rollout)
 
 The first people to open a clip in production waited a long time. `tests/e2e/replay-player-load.mjs` (a real Chrome
