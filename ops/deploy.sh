@@ -115,11 +115,12 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 BACKUP=$COMPOSE.pre-deploy-$STAMP
 cp -a "$COMPOSE" "$BACKUP"
 
+# The first image line is the main service and is always replaced (production's file may still name a local image);
+# any later one is replaced when it is this registry's image (the replay recorder runs the same image).
 awk -v img="$DIGEST" -v reg="$REGISTRY" '
     /^[[:space:]]+image:[[:space:]]/ {
-        if ($0 ~ reg) {
-            sub(/image:[[:space:]].*/, "image: " img)
-        }
+        if (!done || index($0, reg) > 0) sub(/image:[[:space:]].*/, "image: " img)
+        done = 1
     }
     { print }
 ' "$BACKUP" > "$COMPOSE.new"
@@ -147,16 +148,18 @@ for _ in $(seq 1 60); do
 done
 [ "$HEALTH" = healthy ] || rollback "the container is '$HEALTH' after 3 minutes"
 
-REPLAY_CONTAINER=$(docker ps --format '{{.Names}}' | grep -E "replay" | grep -E "$ENVIRONMENT" | head -1 || true)
-if [ -n "$REPLAY_CONTAINER" ]; then
-    RHEALTH=starting
+# The other containers of the same compose project (the replay recorder) must be healthy too
+for OTHER in $(docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Names}}'); do
+    [ "$OTHER" = "$CONTAINER" ] && continue
+    OTHER_HEALTH=starting
     for _ in $(seq 1 60); do
-        RHEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$REPLAY_CONTAINER" 2>/dev/null || echo missing)
-        [ "$RHEALTH" = healthy ] && break
+        OTHER_HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$OTHER" 2>/dev/null || echo missing)
+        [ "$OTHER_HEALTH" = healthy ] && break
+        [ "$OTHER_HEALTH" = none ] && break # no healthcheck defined: nothing to wait for
         sleep 3
     done
-    [ "$RHEALTH" = healthy ] || rollback "the replay container $REPLAY_CONTAINER is '$RHEALTH' after 3 minutes"
-fi
+    [ "$OTHER_HEALTH" = healthy ] || [ "$OTHER_HEALTH" = none ] || rollback "the container $OTHER is '$OTHER_HEALTH' after 3 minutes"
+done
 
 NOW_ID=$(docker inspect -f '{{.Image}}' "$CONTAINER")
 [ "$NOW_ID" = "$IMAGE_ID" ] || rollback "the container runs $NOW_ID instead of $IMAGE_ID"
