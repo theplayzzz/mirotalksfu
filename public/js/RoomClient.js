@@ -3064,9 +3064,10 @@ class RoomClient {
         }
 
         // The server setting SCREEN_CODEC decides, for this browser, whether the screen is sent in H.264 (when it is
-        // encoded in hardware) or in VP8 (see ScreenQuality.js)
-        if (!codec && window.ScreenQuality?.screenCodec?.() === 'h264') {
-            codec = window.ScreenQuality.pickH264(this.device.rtpCapabilities.codecs) || undefined;
+        // encoded in hardware: the Main profile, not the Constrained Baseline that Chrome encodes in software) or in VP8
+        // (see ScreenQuality.js)
+        if (!codec && window.ScreenQuality?.screenCodecEntry) {
+            codec = window.ScreenQuality.screenCodecEntry(this.device.rtpCapabilities.codecs) || undefined;
         }
         const isH264 = codec?.mimeType?.toLowerCase() === 'video/h264';
 

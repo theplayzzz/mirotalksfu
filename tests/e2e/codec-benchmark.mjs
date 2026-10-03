@@ -5,9 +5,16 @@
 //
 //   E2E_CHROME="C:\Program Files\Google\Chrome\Application\chrome.exe" node tests/e2e/codec-benchmark.mjs
 //   CODECS=VP8,VP9,H264,AV1   SIZES=1920x1080,2560x1440   FPS=60   SECONDS=8   HINT=motion   BITRATE=12000000
+//   CODECS=VP8,H264@42e01f,H264@4d001f   an H.264 entry by profile (Chrome on Windows gives the hardware encoder to Baseline,
+//                 Main and High, and keeps the software one for Constrained Baseline 42e0xx)
+//   HOG=8         start that many CPU-hungry processes (low priority) while it measures: a PC that is also running a game
 //   LOW=1      run the browser at a low priority (when somebody is playing on this PC): the speeds are then not exact
 //   HEADLESS=1 a headless Chrome (no graphics card: it never uses a hardware encoder)
-import { launchChrome, sleep } from './lib.mjs';
+import { spawn } from 'node:child_process';
+import os from 'node:os';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { launchChrome, serveAssets, sleep } from './lib.mjs';
 
 if (!process.env.E2E_CHROME) throw new Error('set E2E_CHROME');
 const codecs = (process.env.CODECS || 'VP8,VP9,H264,AV1').split(',');
@@ -17,17 +24,48 @@ const SECONDS = Number(process.env.SECONDS || 8);
 const HINT = process.env.HINT === undefined ? 'motion' : process.env.HINT;
 const BITRATE = Number(process.env.BITRATE || 12000000);
 const DEGRADE = process.env.DEGRADE || ''; // maintain-resolution | maintain-framerate | balanced (default: leave Chrome's own)
+const HOG = Number(process.env.HOG || 0);
 
-const chrome = await launchChrome({ chrome: process.env.E2E_CHROME, headless: process.env.HEADLESS === '1', lowPriority: process.env.LOW === '1' });
+const hogs = [];
+const stopHogs = () => {
+    for (const hog of hogs.splice(0)) hog.kill();
+};
+process.once('exit', stopHogs);
+
+// --use-fake-device-for-media-stream + a fake camera that stays open: Chrome only says which encoder it uses (software or a
+// hardware one) to a page that has a capture open
+const chrome = await launchChrome({ chrome: process.env.E2E_CHROME, headless: process.env.HEADLESS === '1', lowPriority: process.env.LOW === '1', extraFlags: ['--use-fake-device-for-media-stream'] });
 const rows = [];
 try {
     const page = await chrome.newPage('about:blank');
-    await page.send('Page.navigate', { url: 'data:text/html,<title>bench</title><body></body>' });
+    // a page on localhost is a secure context (a data: page is not, and has no camera API)
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'codec-bench-'));
+    writeFileSync(path.join(dir, 'blank.html'), '<!doctype html><meta charset="utf-8"><title>bench</title><body></body>');
+    const assets = await serveAssets(dir);
+    await page.send('Page.navigate', { url: `${assets.url}/blank.html` });
     await sleep(800);
+    await page.ev("navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => { window.__gate = stream; return true; }, (e) => String(e))");
+    for (let i = 0; i < HOG; i++) {
+        const hog = spawn(process.execPath, ['-e', 'for (;;) {}'], { stdio: 'ignore' });
+        try {
+            os.setPriority(hog.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+        } catch (error) {
+            // normal priority
+        }
+        hogs.push(hog);
+    }
+    if (HOG) console.log(`${HOG} CPU-hungry processes running (low priority)`);
 
+    // seconds of processor time of the whole browser, by kind of process: the software encoders run in the renderer, a
+    // hardware encoder is driven from the graphics process
     const browserCpu = async () => {
         const info = (await chrome.browser.send('SystemInfo.getProcessInfo')).result?.processInfo || [];
-        return info.reduce((sum, p) => sum + (p.cpuTime || 0), 0);
+        const by = { total: 0 };
+        for (const p of info) {
+            by[p.type] = (by[p.type] || 0) + (p.cpuTime || 0);
+            by.total += p.cpuTime || 0;
+        }
+        return by;
     };
 
     for (const [W, H] of sizes) {
@@ -35,7 +73,7 @@ try {
             const startedAt = Date.now();
             const cpu0 = await browserCpu();
             const result = await page.ev(`(async () => {
-                const W = ${W}, H = ${H}, FPS = ${FPS}, SECONDS = ${SECONDS}, want = ${JSON.stringify(codec)};
+                const W = ${W}, H = ${H}, FPS = ${FPS}, SECONDS = ${SECONDS}, [want, profile] = ${JSON.stringify(codec)}.split('@');
                 document.body.innerHTML = '';
                 const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H; document.body.appendChild(canvas);
                 const ctx = canvas.getContext('2d');
@@ -58,9 +96,8 @@ try {
                 pc2.onicecandidate = (e) => e.candidate && pc1.addIceCandidate(e.candidate);
                 const tx = pc1.addTransceiver(track, { direction: 'sendonly', sendEncodings: [{ maxBitrate: ${BITRATE} }] });
                 const codecs = RTCRtpSender.getCapabilities('video').codecs;
-                const preferred = codecs.filter((c) => c.mimeType === 'video/' + want);
-                if (!preferred.length) { alive = false; return { error: 'the browser does not offer ' + want }; }
-                // H.264: prefer the entry with the highest level so that 1080p60 and 1440p60 fit
+                const preferred = codecs.filter((c) => c.mimeType === 'video/' + want && (!profile || (c.sdpFmtpLine || '').includes('profile-level-id=' + profile)));
+                if (!preferred.length) { alive = false; return { error: 'the browser does not offer ' + want + (profile ? ' ' + profile : '') }; }
                 tx.setCodecPreferences([...preferred, ...codecs.filter((c) => c.mimeType !== 'video/' + want)]);
                 await pc1.setLocalDescription(await pc1.createOffer());
                 await pc2.setRemoteDescription(pc1.localDescription);
@@ -115,9 +152,10 @@ try {
             })()`);
             const cpu1 = await browserCpu();
             const wall = (Date.now() - startedAt) / 1000;
-            const row = { size: `${W}x${H}`, codec, ...result, cores: result.error ? 0 : (cpu1 - cpu0) / wall };
+            const per = (type) => ((cpu1[type] || 0) - (cpu0[type] || 0)) / wall;
+            const row = { size: `${W}x${H}`, codec, ...result, cores: result.error ? 0 : per('total'), renderer: per('renderer'), gpu: per('gpu'), utility: per('utility') };
             rows.push(row);
-            console.log(row.error ? `${row.size} ${codec}: ${row.error}` : `${row.size}  ${codec.padEnd(5)} sent ${row.fps.toFixed(1)} fps (source ${row.srcFps.toFixed(1)}) at ${row.w}x${row.h} | ${row.encMs.toFixed(1)} ms/frame | ${row.mbps.toFixed(1)} Mbps | limit ${row.limit} (cpu ${row.limitCpuS.toFixed(1)} s, bandwidth ${row.limitBwS.toFixed(1)} s) | degradation ${row.degradation} | whole browser ${row.cores.toFixed(1)} cores`);
+            console.log(row.error ? `${row.size} ${codec}: ${row.error}` : `${row.size}  ${codec.padEnd(5)} sent ${row.fps.toFixed(1)} fps (source ${row.srcFps.toFixed(1)}) at ${row.w}x${row.h} | ${row.encMs.toFixed(1)} ms/frame | ${row.mbps.toFixed(1)} Mbps | limit ${row.limit} (cpu ${row.limitCpuS.toFixed(1)} s, bandwidth ${row.limitBwS.toFixed(1)} s) | encoder ${row.impl || '?'}${row.hw === undefined ? '' : row.hw ? ' (hardware)' : ' (software)'} | key frames ${row.keyFrames} | degradation ${row.degradation} | whole browser ${row.cores.toFixed(2)} cores (renderer ${row.renderer.toFixed(2)}, graphics ${row.gpu.toFixed(2)}, utility ${row.utility.toFixed(2)})`);
             await sleep(1500);
         }
     }

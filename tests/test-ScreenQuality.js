@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const Peer = require('../app/src/Peer');
 const rules = require('../public/js/ScreenQuality');
-const { pickLayer, pickTemporal, temporalLayersOf, decide, follow, layerScales, pickH264, chooseCodec, fractionOf, lowestAllowed, struggling, adapt } = rules;
+const { pickLayer, pickTemporal, temporalLayersOf, decide, follow, layerScales, pickH264, h264Rank, chooseCodec, pickScreenCodec, fractionOf, lowestAllowed, struggling, adapt } = rules;
 
 describe('test-ScreenQuality', () => {
     // The people of the room did not want screens to stop when they leave a window or look at something else, and a
@@ -304,15 +304,42 @@ describe('test-ScreenQuality', () => {
             chooseCodec(undefined, null).should.equal('vp8');
         });
 
-        it('picks the H.264 entry that covers 1080p60 and has the simplest profile', () => {
+        it('picks the H.264 entry that covers 1080p60 and has a profile the hardware encoders take (Main first)', () => {
             const codecs = [vp8, h264('42e01f'), h264('42e02a'), h264('4d0032')];
-            pickH264(codecs).parameters['profile-level-id'].should.equal('42e02a');
-            // no 4.2 baseline: main 5.0
-            pickH264([vp8, h264('42e01f'), h264('4d0032')]).parameters['profile-level-id'].should.equal('4d0032');
+            // Chrome on Windows encodes the Constrained Baseline in software: Main it is, though the Baseline 4.2 is "simpler"
+            pickH264(codecs).parameters['profile-level-id'].should.equal('4d0032');
+            pickH264([vp8, h264('42e01f'), h264('42e02a')]).parameters['profile-level-id'].should.equal('42e02a');
+            // the plain Baseline (42001f) is hardware too, ahead of the constrained one
+            pickH264([h264('42e02a'), h264('42002a')]).parameters['profile-level-id'].should.equal('42002a');
+            // main before high
+            pickH264([h264('640032'), h264('4d0032')]).parameters['profile-level-id'].should.equal('4d0032');
             // only a low level: better than nothing
             pickH264([vp8, h264('42e01f')]).parameters['profile-level-id'].should.equal('42e01f');
             // high profile only
             pickH264([h264('640032')]).parameters['profile-level-id'].should.equal('640032');
+        });
+
+        it('ranks the profiles: Main, High, Baseline, Constrained Baseline', () => {
+            h264Rank(h264('4d0032')).should.equal(0);
+            h264Rank(h264('640028')).should.equal(1);
+            h264Rank(h264('42001f')).should.equal(2);
+            h264Rank(h264('42e01f')).should.equal(3);
+            h264Rank(h264('f4001f')).should.equal(4);
+            h264Rank({ mimeType: 'video/H264', parameters: {} }).should.equal(4);
+        });
+
+        it('sends the screen in H.264 only where it is the hardware encoder (auto), or always when the server says so', () => {
+            const hardware = { supported: true, powerEfficient: true, smooth: true };
+            const room = [vp8, h264('42e01f'), h264('42e02a'), h264('4d0032')];
+            pickScreenCodec('auto', hardware, room).parameters['profile-level-id'].should.equal('4d0032');
+            (pickScreenCodec('auto', { supported: true, powerEfficient: false, smooth: true }, room) === null).should.be.true();
+            (pickScreenCodec('auto', null, room) === null).should.be.true();
+            (pickScreenCodec('vp8', hardware, room) === null).should.be.true();
+            // a room that offers only the Constrained Baseline would give the software encoder: auto stays with VP8
+            (pickScreenCodec('auto', hardware, [vp8, h264('42e01f'), h264('42e02a')]) === null).should.be.true();
+            // the server said h264: the best entry there is
+            pickScreenCodec('h264', null, [vp8, h264('42e01f'), h264('42e02a')]).parameters['profile-level-id'].should.equal('42e02a');
+            (pickScreenCodec('h264', null, [vp8]) === null).should.be.true();
         });
 
         it('ignores entries it cannot use and finds nothing without H.264', () => {

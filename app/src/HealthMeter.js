@@ -118,6 +118,7 @@ function sanitizeTx(t) {
         sendMs: num(t.sendMs, 0, 60000),
         // the sender guard (SendGuard.js): the step of its ladder, what it decided last and in which mode
         gRung: num(t.gRung, 0, 20),
+        gCap: num(t.gCap, 0, 20),
         gWhy: text(t.gWhy, 24),
         gMode: pick(t.gMode, ['observe', 'apply']),
     });
@@ -138,6 +139,7 @@ function sanitizeEnv(e) {
         caps: clean({
             vp8e: capLabel(caps.vp8e),
             h264e: capLabel(caps.h264e),
+            h264cbe: capLabel(caps.h264cbe),
             vp8d: capLabel(caps.vp8d),
             h264d: capLabel(caps.h264d),
             vp9e: capLabel(caps.vp9e),
@@ -168,7 +170,8 @@ function sanitize(report) {
     const env = sanitizeEnv(report.env);
 
     if (!rx.length && !tx.length && !env) return null;
-    return clean({ dt: num(report.dt, 0, 600000), cb: text(report.cb, 12), vis: bool(report.vis), net, rx: rx.length ? rx : null, tx: tx.length ? tx : null, env });
+    // press: the worst processor pressure the browser reported for the whole PC in the interval (Compute Pressure API)
+    return clean({ dt: num(report.dt, 0, 600000), cb: text(report.cb, 12), vis: bool(report.vis), press: pick(report.press, ['nominal', 'fair', 'serious', 'critical']), net, rx: rx.length ? rx : null, tx: tx.length ? tx : null, env });
 }
 
 class HealthMeter {

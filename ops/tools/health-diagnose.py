@@ -6,9 +6,13 @@ every window of time, labels each sender and each viewer with the most likely ca
     python3 health-diagnose.py DIR --day 2026-10-03 --from 21:30 --to 22:30 --window 10 --names
 
 Causes for a SENDER (a screen it sends):
-  capture    the screen capture gives few frames while the encoder has time (the source is slow: a whole 1440p screen with a
-             game using the GPU). A smaller picture does not fix it
-  encoder    the encoder is busy nearly all the time, or frames the source gave never came out of it (the PC is overloaded)
+  capture    the screen capture gives few frames while the encoder has time and the picture is moving (the source is slow:
+             Chrome converts and scales every captured frame on the processor and may use at most half of the time for it,
+             so a whole 1440p screen, or a game using the GPU, can leave 16-32 fps: fps = 500 / milliseconds per captured
+             frame). A smaller picture for the ENCODER does not fix it; a smaller capture may
+  still      few frames and few bits: a screen that hardly changes (the capture gives frames only when it changes). Not a problem
+  encoder    the encoder is busy nearly all the time, or frames the source gave never came out of it (the PC is overloaded).
+             The time per frame of a hardware encoder (the graphics card's) is a delay, not a load: it is not counted as busy
   uplink     the way from the sender to the server loses packets / repeats a lot / has a long round trip while limited by bandwidth
   ok         about 60 fps and none of the above
 Causes for a VIEWER (what it got of the screens):
@@ -28,8 +32,11 @@ import glob
 import gzip
 import json
 import os
+import re
 
 FPS_TARGET = 60.0
+MOVING_KBPS = 1500  # below this the picture hardly moves
+PRESSURE = ["nominal", "fair", "serious", "critical"]
 
 
 def read_records(directory, day):
@@ -54,7 +61,22 @@ def hhmm(value):
     return int(h) * 60 + int(m)
 
 
+def is_hardware(row):
+    """The browser's own word (powerEfficientEncoder), or the name of the encoder when it does not say"""
+    if row.get("hw") is True:
+        return True
+    if row.get("hw") is False:
+        return False
+    name = str(row.get("enc") or "")
+    if not name or re.search(r"fallback|libvpx|openh264|libaom|dav1d|software", name, re.I):
+        return False
+    return bool(re.search(r"external|d3d11|mediafoundation|nvenc|amf|qsv|videotoolbox|vaapi|v4l2", name, re.I))
+
+
 def busy(row):
+    # the time per frame of a hardware encoder is the delay of its pipeline, not how busy it is
+    if is_hardware(row):
+        return 0.0
     return row.get("encMs", 0) * row.get("fps", 0) / 1000.0
 
 
@@ -66,14 +88,27 @@ def sender_cause(rows):
     have_source = all("srcFps" in r for r in rows)
     src = mean("srcFps") if have_source else None
     lost, retx, rtt = mean("lost"), mean("retx"), mean("rtt")
+    kbps = mean("kbps")
+    moving = "kbps" not in rows[0] or kbps >= MOVING_KBPS
+    hardware = sum(1 for r in rows if is_hardware(r)) / n > 0.5
     bw_limited = sum(1 for r in rows if r.get("lim") == "bandwidth") / n > 0.4
-    details = f"fps {fps:4.1f}" + (f" (source {src:4.1f})" if src is not None else "") + f"  encoder busy {enc_busy:4.2f}  loss {lost:4.1f}%  repeats {retx:4.1f}%  rtt {rtt:4.0f} ms"
+    cpu_limited = sum(r.get("limCpuMs", 0) for r in rows) / max(1.0, sum(r.get("dt", 2000) for r in rows)) > 0.1
+    encoder_text = "hardware" if hardware else "busy %4.2f" % enc_busy
+    details = (
+        f"fps {fps:4.1f}" + (f" (source {src:4.1f})" if src is not None else "")
+        + "  encoder " + encoder_text
+        + f"  {kbps:5.0f} kbps  loss {lost:4.1f}%  repeats {retx:4.1f}%  rtt {rtt:4.0f} ms"
+    )
     if lost >= 4 or retx >= 15 or (rtt >= 450 and bw_limited):
         return "uplink", details
     given = src if src is not None else fps
     if given < FPS_TARGET * 0.8 and enc_busy < 0.7:
+        if not moving:
+            return "still", details
+        if given > 0:
+            details += f"  (capture takes ~{500.0 / given:4.1f} ms per frame)"
         return ("capture" if have_source else "capture?"), details
-    if enc_busy >= 0.85 or (src is not None and fps < src * 0.75):
+    if enc_busy >= 0.85 or cpu_limited or (src is not None and fps < src * 0.75):
         return "encoder", details
     if fps >= FPS_TARGET * 0.9:
         return "ok", details
@@ -101,7 +136,7 @@ def main():
         return names[name]
 
     epochs = []
-    cells = collections.defaultdict(lambda: {"tx": collections.defaultdict(list), "rx": collections.defaultdict(list), "srv": [], "builds": set(), "cb": set()})
+    cells = collections.defaultdict(lambda: {"tx": collections.defaultdict(list), "rx": collections.defaultdict(list), "srv": [], "builds": set(), "cb": set(), "press": collections.defaultdict(int)})
     for record in read_records(args.directory, args.day):
         m = minutes(record["ts"])
         if record.get("kind") == "epoch":
@@ -119,6 +154,8 @@ def main():
         if record.get("cb"):
             cell["cb"].add(record["cb"])
         peer = who(record.get("peer"))
+        if record.get("press") in PRESSURE:
+            cell["press"][peer] = max(cell["press"][peer], PRESSURE.index(record["press"]))
         for row in record.get("tx", []) or []:
             if row.get("type") == "screen":
                 cell["tx"][peer].append(row)
@@ -143,7 +180,10 @@ def main():
                 continue
             cause, details = sender_cause(rows)
             verdict[peer] = cause
-            print(f"  SEND  {peer:<14} {cause:<9} {details}")
+            pressure = PRESSURE[cell["press"][peer]] if peer in cell["press"] else None
+            guard = [r for r in rows if r.get("gWhy")]
+            extra = (f"  PC pressure {pressure}" if pressure else "") + (f"  guard rung {guard[-1].get('gRung', 0)} capture rung {guard[-1].get('gCap', 0)} ({guard[-1]['gWhy']})" if guard else "")
+            print(f"  SEND  {peer:<14} {cause:<9} {details}{extra}")
         workers = [w.get("cpu", 0) for rec in cell["srv"] for w in rec.get("workers", [])]
         worker_peak = max(workers) if workers else None
         if worker_peak is not None:

@@ -58,7 +58,7 @@ describe('test-HealthMeter', () => {
                 pid: 'a1b2c3d4', type: 'screen', fps: 15.8, w: 1920, h: 1080, encMs: 32.4, lim: 'none', hw: false,
                 srcFps: 16.2, srcW: 2560, srcH: 1440, setW: 1920, setH: 1080, setFps: 60,
                 scale: 1.25, maxKbps: 9000, maxFps: 60, degr: 'maintain-framerate', hint: 'motion', codec: 'VP8',
-                retx: 12.5, huge: 1, qlr: 2, sendMs: 4.5, gRung: 1, gWhy: 'uplink', gMode: 'observe',
+                retx: 12.5, huge: 1, qlr: 2, sendMs: 4.5, gRung: 1, gCap: 2, gWhy: 'uplink', gMode: 'observe',
             };
             const viewer = { pid: 'a1b2c3d4', from: 'Sender One', type: 'screen', fps: 29, tl: 1, lw: 'struggle', tw: 650, decMs: 11.2, pause: 0 };
             const clean = sanitize({ cb: 'b707d0a', vis: false, tx: [sender], rx: [viewer] });
@@ -74,9 +74,16 @@ describe('test-HealthMeter', () => {
             clean.tx[0].should.deepEqual({ type: 'screen', fps: 60 });
         });
 
+        it('accepts the processor pressure of the PC, only as one of the four words', () => {
+            sanitize({ press: 'serious', tx: [tx] }).press.should.equal('serious');
+            sanitize({ press: 'nominal', rx: [rx] }).press.should.equal('nominal');
+            sanitize({ press: 'on fire', rx: [rx] }).should.not.have.property('press');
+            sanitize({ press: 3, rx: [rx] }).should.not.have.property('press');
+        });
+
         it('accepts the graphics card, the screen and the codecs the browser says it can encode and decode', () => {
-            const clean = sanitize({ env: { gpu: 'AMD Radeon RX 9060 XT', scr: '2560x1440@1', caps: { vp9e: 'sw', vp9d: 'hw', av1e: 'sw', av1d: 'hw', vp8d: 'sw' } } });
-            clean.env.should.deepEqual({ gpu: 'AMD Radeon RX 9060 XT', scr: '2560x1440@1', caps: { vp9e: 'sw', vp9d: 'hw', av1e: 'sw', av1d: 'hw', vp8d: 'sw' } });
+            const clean = sanitize({ env: { gpu: 'AMD Radeon RX 9060 XT', scr: '2560x1440@1', caps: { vp9e: 'sw', vp9d: 'hw', av1e: 'sw', av1d: 'hw', vp8d: 'sw', h264e: 'hw', h264cbe: 'sw' } } });
+            clean.env.should.deepEqual({ gpu: 'AMD Radeon RX 9060 XT', scr: '2560x1440@1', caps: { vp9e: 'sw', vp9d: 'hw', av1e: 'sw', av1d: 'hw', vp8d: 'sw', h264e: 'hw', h264cbe: 'sw' } });
         });
 
         it('refuses reports that are not objects or have nothing in them', () => {

@@ -14,13 +14,15 @@ export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // ---- the page that plays the shared content -------------------------------------------------------------------
 
 export async function serveAssets(dir = path.join(here, 'assets')) {
-    const types = { '.html': 'text/html; charset=utf-8', '.mp4': 'video/mp4', '.js': 'text/javascript' };
+    const types = { '.html': 'text/html; charset=utf-8', '.mp4': 'video/mp4', '.webm': 'video/webm', '.js': 'text/javascript' };
     const server = http.createServer((req, res) => {
         const file = path.join(dir, decodeURIComponent(new URL(req.url, 'http://x').pathname));
         if (!file.startsWith(dir)) return res.writeHead(403).end();
         let size;
         try {
-            size = statSync(file).size;
+            const stat = statSync(file);
+            if (stat.isDirectory()) return res.writeHead(404).end();
+            size = stat.size;
         } catch {
             return res.writeHead(404).end();
         }

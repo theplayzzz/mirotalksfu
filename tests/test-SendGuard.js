@@ -3,7 +3,7 @@
 require('should');
 
 const guard = require('../public/js/SendGuard');
-const { assess, initialState, step, rungKbps, LADDER, DOWN_BUSY_MS, DOWN_UPLINK_MS, COOLDOWN_MS, UP_AFTER_MS } = guard;
+const { assess, isHardware, capacityKbps, captureSize, captureFailed, initialState, step, rungKbps, LADDER, CAPTURE_SCALES, MOVING_KBPS, CAPTURE_EVAL_MS, CAPTURE_BLOCK_MS, CAPTURE_UP_AFTER_MS, DOWN_BUSY_MS, DOWN_UPLINK_MS, COOLDOWN_MS, UP_AFTER_MS } = guard;
 
 // What the sender guard decides for the senders of the room, with the numbers the health meter really reported on
 // 03/10/2026 (a healthy sender, the owner's PC sharing the whole 2K screen while a game runs, and a sender on a weak uplink).
@@ -59,6 +59,38 @@ describe('test-SendGuard (what the sender does about its own screen)', () => {
             assess(null).calm.should.be.false();
             assess({}).capture.should.be.false();
         });
+
+        it('does not read the time per frame of a hardware encoder as a load: it is the delay of the pipeline', () => {
+            const hardware = { fps: 59, encMs: 15, srcFps: 60, lost: 0, rtt: 100, lim: 'none', retx: 0, hw: true, enc: 'ExternalEncoder' };
+            const a = assess(hardware); // 15 ms x 59 fps would be 89% busy for a software encoder
+            a.hardware.should.be.true();
+            a.busy.should.equal(0);
+            a.encoder.should.be.false();
+            a.calm.should.be.true();
+            assess({ ...hardware, hw: false, enc: 'libvpx' }).encoder.should.be.true();
+            // frames that never come out of a hardware encoder still count, and so does the browser blaming the processor
+            assess({ ...hardware, fps: 30 }).encoder.should.be.true();
+            assess({ ...hardware, limCpuMs: 1500 }).encoder.should.be.true();
+        });
+
+        it('knows a hardware encoder by its own word, and by its name when the browser does not say', () => {
+            isHardware({ hw: true }).should.be.true();
+            isHardware({ hw: false, enc: 'ExternalEncoder' }).should.be.false();
+            isHardware({ enc: 'ExternalEncoder' }).should.be.true();
+            isHardware({ enc: 'D3D11VideoEncoder' }).should.be.true();
+            isHardware({ enc: 'libvpx, fallback from D3D11VideoEncoder' }).should.be.false();
+            isHardware({ enc: 'libvpx' }).should.be.false();
+            isHardware({ enc: 'OpenH264' }).should.be.false();
+            isHardware({}).should.be.false();
+            isHardware(null).should.be.false();
+        });
+
+        it('sees what a line carries: what was sent minus what was lost', () => {
+            capacityKbps({ kbps: 7000, lost: 20 }).should.equal(5600);
+            capacityKbps({ kbps: 7000 }).should.equal(7000);
+            capacityKbps({ kbps: 0, lost: 5 }).should.equal(0);
+            capacityKbps(null).should.equal(0);
+        });
     });
 
     describe('the ladder', () => {
@@ -92,7 +124,7 @@ describe('test-SendGuard (what the sender does about its own screen)', () => {
             state.rung.should.equal(0);
         });
 
-        it('does nothing about a slow capture: a smaller picture would not give frames the capture does not have', () => {
+        it('does nothing about a slow capture when it does not know the capture rate: a smaller picture would not give frames the capture does not have', () => {
             const state = initialState(0);
             run(state, slowPc, 2000, 120).should.deepEqual([]);
             state.rung.should.equal(0);
@@ -113,6 +145,20 @@ describe('test-SendGuard (what the sender does about its own screen)', () => {
             actions[0].should.containEql({ rung: 1, why: 'uplink', kbps: 9000 });
             // not before the first 10 s of a share (its bandwidth estimate is still settling), and then at once
             actions[0].at.should.be.within(COOLDOWN_MS, COOLDOWN_MS + 2000);
+        });
+
+        it('goes straight to the rung a weak line can carry, not one rung at a time', () => {
+            // 7 Mbps sent, 20% lost: the line carries about 5.6 Mbps, a rung may ask for 80% of it: 4.0 Mbps (540p)
+            const line = { fps: 40, kbps: 7000, lost: 20, retx: 23, rtt: 600, lim: 'bandwidth', limBwMs: 2000, srcFps: 60, encMs: 5 };
+            const state = initialState(0);
+            const actions = run(state, line, 2000, 20);
+            actions[0].should.containEql({ rung: 3, scale: 2, kbps: 4000, why: 'uplink' });
+            // a smaller capture needs less: a 720p window on the same line only goes one rung down
+            const window = initialState(0);
+            run(window, line, 2000, 20, { width: 1280, height: 720 })[0].should.containEql({ rung: 1, why: 'uplink' });
+            // and a line that carries almost nothing goes to the last rung, never past it
+            const nothing = initialState(0);
+            run(nothing, { ...line, kbps: 1200, lost: 40 }, 2000, 20)[0].rung.should.equal(LADDER.length - 1);
         });
 
         it('waits 10 s between steps, so the numbers can show the effect of the last one', () => {
@@ -160,6 +206,158 @@ describe('test-SendGuard (what the sender does about its own screen)', () => {
             const down = run(state, saturated, up[0].at + 2000, 40);
             down[0].should.containEql({ rung: 1 });
             state.upAfterMs.should.equal(UP_AFTER_MS * 2);
+        });
+    });
+    describe('the capture ladder (a slow capture is tried at a smaller size, and taken back if it does not help)', () => {
+        const base = { width: 1920, height: 1080 };
+        const slow = (srcFps) => ({ fps: srcFps, srcFps, encMs: 6, kbps: 8000, lost: 0, rtt: 150, lim: 'none', limBwMs: 0, retx: 0 });
+        const calm = { fps: 59.5, srcFps: 59.8, encMs: 5, kbps: 9000, lost: 0, rtt: 150, lim: 'none', limBwMs: 0, retx: 0 };
+
+        // One row every 2 s from `from` for `seconds`; `rows(t)` gives the row for the moment t
+        function runWith(state, rows, from, seconds, options = {}, size = base) {
+            const actions = [];
+            for (let t = from; t < from + seconds * 1000; t += 2000) {
+                const { action } = step(state, typeof rows === 'function' ? rows(t) : rows, t, size, options);
+                if (action) actions.push({ at: t, ...action });
+            }
+            return actions;
+        }
+
+        it('asks the capture for 80% of its size after 8 s of a slow capture of a moving picture, with the bitrate that fits it', () => {
+            const state = initialState(0);
+            const actions = runWith(state, slow(32), 2000, 12); // the trial starts at 10 s and has not ended yet
+            actions[0].should.containEql({ kind: 'capture', capRung: 1, width: 1536, height: 864, why: 'capture' });
+            actions[0].kbps.should.equal(rungKbps(0, 1536, 864));
+            actions[0].at.should.be.within(10000, 12000);
+            state.capTrial.should.containEql({ from: 0, to: 1, before: 32 });
+        });
+
+        it('knows the sizes of the capture ladder: 100%, 80%, 67%, 50% of the size it started at, in even numbers', () => {
+            CAPTURE_SCALES.should.deepEqual([1, 1.25, 1.5, 2]);
+            [0, 1, 2, 3].map((rung) => captureSize(base, rung)).should.deepEqual([
+                { width: 1920, height: 1080 },
+                { width: 1536, height: 864 },
+                { width: 1280, height: 720 },
+                { width: 960, height: 540 },
+            ]);
+            captureSize({ width: 1366, height: 768 }, 1).should.deepEqual({ width: 1092, height: 614 });
+        });
+
+        it('keeps a smaller capture that gives at least 20% more frames', () => {
+            const state = initialState(0);
+            // the capture gives 32 fps until the smaller size is asked for (at 10 s), 57 after it
+            const first = runWith(state, (t) => slow(t <= 10000 ? 32 : 57), 2000, 40);
+            first.length.should.equal(1); // only the trial: no verdict that undoes it
+            state.capRung.should.equal(1);
+            (state.capTrial === null).should.be.true();
+            state.why.should.not.equal('capture-undo');
+        });
+
+        it('takes a smaller capture back when it does not give more frames, and leaves that size alone for 5 minutes', () => {
+            const state = initialState(0);
+            const actions = runWith(state, slow(31), 2000, 60);
+            actions.length.should.equal(2);
+            actions[0].should.containEql({ kind: 'capture', capRung: 1 });
+            actions[1].should.containEql({ kind: 'capture', capRung: 0, width: 1920, height: 1080, why: 'capture-undo' });
+            (actions[1].at - actions[0].at).should.be.within(CAPTURE_EVAL_MS, CAPTURE_EVAL_MS + 2000);
+            state.capRung.should.equal(0);
+            state.capFails.should.equal(1);
+            // five minutes of the same slow capture: no new try before the block ends
+            const later = runWith(state, slow(31), 62000, 230);
+            later.should.deepEqual([]);
+            // and then it tries again
+            const again = runWith(state, slow(31), 292000, 40);
+            again[0].should.containEql({ kind: 'capture', capRung: 1 });
+        });
+
+        it('waits twice as long after a second failure, up to an hour', () => {
+            const state = initialState(0);
+            runWith(state, slow(31), 2000, 60); // try, undo (block 5 min)
+            runWith(state, slow(31), 62000, 260); // nothing
+            const retry = runWith(state, slow(31), 322000, 60); // try again at ~5 min after the first undo, and undo
+            retry.map((a) => a.why).should.deepEqual(['capture', 'capture-undo']);
+            state.capFails.should.equal(2);
+            // now the block is 10 minutes (from the second undo, at about 333 s)
+            runWith(state, slow(31), 382000, 540).should.deepEqual([]);
+            runWith(state, slow(31), 922000, 40)[0].should.containEql({ kind: 'capture', capRung: 1 });
+            CAPTURE_BLOCK_MS.should.equal(300000);
+        });
+
+        it('never touches a screen that hardly moves: few frames and few bits is the content, not the capture', () => {
+            const still = { fps: 3, srcFps: 3, encMs: 2, kbps: 300, lost: 0, rtt: 150, lim: 'none', limBwMs: 0, retx: 0 };
+            assess(still).capture.should.be.false();
+            runWith(initialState(0), still, 2000, 600).should.deepEqual([]);
+            assess({ ...still, kbps: MOVING_KBPS }).capture.should.be.true();
+        });
+
+        it('does not try anything in observe mode (the capture is not changed, so a trial would mean nothing)', () => {
+            const state = initialState(0);
+            runWith(state, slow(32), 2000, 120, { trials: false }).should.deepEqual([]);
+            state.why.should.equal('capture');
+        });
+
+        it('does not go below the last size of the ladder', () => {
+            const state = initialState(0);
+            // every trial "helps": the capture gets a little faster each time but never reaches 60
+            let fps = 24;
+            const actions = [];
+            for (let t = 2000; t < 400000; t += 2000) {
+                const { action } = step(state, slow(fps), t, base);
+                if (action && action.kind === 'capture') {
+                    actions.push(action);
+                    fps = Math.min(50, fps * 1.4);
+                }
+            }
+            state.capRung.should.be.belowOrEqual(CAPTURE_SCALES.length - 1);
+            actions.every((a) => a.capRung <= CAPTURE_SCALES.length - 1).should.be.true();
+            actions.map((a) => a.capRung).should.containEql(3);
+        });
+
+        it('tries the bigger capture again after 3 minutes of calm, keeps it if it holds 60 fps, takes it back if not', () => {
+            const kept = initialState(0);
+            kept.base = base;
+            kept.capRung = 1;
+            const tryUp = runWith(kept, calm, 2000, CAPTURE_UP_AFTER_MS / 1000 + 20, {}, { width: 1536, height: 864 });
+            tryUp[0].should.containEql({ kind: 'capture', capRung: 0, width: 1920, height: 1080, why: 'capture-up-try' });
+            tryUp.length.should.equal(1);
+            (kept.capTrial === null || kept.capTrial.up === true).should.be.true();
+            // the same try, but the bigger capture is slow again: taken back, and blocked
+            const undone = initialState(0);
+            undone.base = base;
+            undone.capRung = 1;
+            let tried = null;
+            const seen = [];
+            for (let t = 2000; t < CAPTURE_UP_AFTER_MS + 60000; t += 2000) {
+                // the bigger capture is slow again from the moment it is asked for until it is taken back
+                const row = tried !== null && t >= tried && t < tried + CAPTURE_EVAL_MS + 1000 ? slow(35) : calm;
+                const { action } = step(undone, row, t, { width: 1536, height: 864 });
+                if (action) {
+                    seen.push(action.why);
+                    if (action.why === 'capture-up-try') tried = t;
+                }
+            }
+            seen.should.deepEqual(['capture-up-try', 'capture-undo']);
+            undone.capRung.should.equal(1);
+        });
+
+        it('forgets a trial the browser could not carry out and leaves that size alone for an hour', () => {
+            const state = initialState(0);
+            runWith(state, slow(32), 2000, 12);
+            state.capTrial.should.be.ok();
+            captureFailed(state, 12000);
+            (state.capTrial === null).should.be.true();
+            state.capRung.should.equal(0);
+            state.capBlocked[1].should.equal(12000 + 3600000);
+            runWith(state, slow(32), 14000, 600).should.deepEqual([]);
+        });
+
+        it('lets nothing else change the picture while a trial is running', () => {
+            const state = initialState(0);
+            runWith(state, slow(32), 2000, 12); // the trial starts
+            state.capTrial.should.be.ok();
+            // the encoder is saturated during the trial: the trial's verdict comes first
+            const busy = { fps: 40, srcFps: 60, encMs: 24, kbps: 9000, lost: 0, rtt: 150, lim: 'cpu', limBwMs: 0, retx: 0 };
+            runWith(state, busy, 14000, 6).should.deepEqual([]);
         });
     });
 });

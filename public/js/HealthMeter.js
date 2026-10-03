@@ -9,7 +9,17 @@
  * never gets in the way: every error is swallowed and a report is skipped while the previous one runs.
  */
 (function () {
-    const state = { enabled: false, intervalMs: 10000, timer: null, busy: false, previous: new Map(), envSent: false, build: undefined };
+    const state = {
+        enabled: false,
+        intervalMs: 10000,
+        timer: null,
+        busy: false,
+        previous: new Map(),
+        envSent: false,
+        build: undefined,
+        pressure: { current: -1, worst: -1 }, // the processor pressure the browser reports (index in PRESSURE_STATES)
+    };
+    const PRESSURE_STATES = ['nominal', 'fair', 'serious', 'critical'];
 
     const round = (value, decimals = 0) => {
         if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
@@ -30,6 +40,35 @@
 
     function hasRoom() {
         return typeof rc !== 'undefined' && rc && rc.socket && rc.socket.connected;
+    }
+
+    // ---- how busy this PC is: the browser's own word on the processor (Compute Pressure), where it has it --------
+
+    // 'nominal' < 'fair' < 'serious' < 'critical', for the whole PC and not only this browser: the best sign that a game that
+    // runs on the same PC is taking the processor the encoder needs. The report carries the worst state of the interval.
+    function watchPressure() {
+        try {
+            if (typeof PressureObserver === 'undefined' || !(PressureObserver.knownSources || []).includes('cpu')) return;
+            const observer = new PressureObserver((records) => {
+                for (const record of records) {
+                    const rank = PRESSURE_STATES.indexOf(record.state);
+                    if (rank < 0) continue;
+                    state.pressure.current = rank;
+                    if (rank > state.pressure.worst) state.pressure.worst = rank;
+                }
+            });
+            observer.observe('cpu', { sampleInterval: 1000 }).catch(() => {});
+            state.pressure.observer = observer;
+        } catch (error) {
+            // not available here: the report just has no word on it
+        }
+    }
+
+    // The worst state since the last report, which then starts again from the state it is in
+    function takePressure() {
+        const worst = state.pressure.worst;
+        state.pressure.worst = state.pressure.current;
+        return worst >= 0 ? PRESSURE_STATES[worst] : undefined;
     }
 
     // ---- what this browser can do (sent once per page load) --------------------------------------------
@@ -70,7 +109,10 @@
     async function environment() {
         const brands = navigator.userAgentData?.brands?.filter((b) => !/not.?a.?brand/i.test(b.brand)) || [];
         const browser = brands.length ? brands.map((b) => `${b.brand} ${b.version}`).join(', ') : undefined;
-        const h264 = 'video/H264;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f';
+        // H.264 in two profiles: Chrome on Windows gives the hardware encoders to Main (h264e) and keeps its software encoder for the
+        // Constrained Baseline (h264cbe), which is the one a room usually offers
+        const h264 = 'video/H264;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d0032';
+        const h264cb = 'video/H264;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f';
         return {
             browser: browser ? browser.slice(0, 60) : undefined,
             os: (navigator.userAgentData?.platform || navigator.platform || '').slice(0, 60) || undefined,
@@ -81,6 +123,7 @@
             caps: {
                 vp8e: await capability('encodingInfo', 'video/VP8'),
                 h264e: await capability('encodingInfo', h264),
+                h264cbe: await capability('encodingInfo', h264cb),
                 vp9e: await capability('encodingInfo', 'video/VP9'),
                 av1e: await capability('encodingInfo', 'video/AV1'),
                 vp8d: await capability('decodingInfo', 'video/VP8'),
@@ -184,7 +227,7 @@
                     mime: producer.rtpParameters && producer.rtpParameters.codecs && producer.rtpParameters.codecs[0] && producer.rtpParameters.codecs[0].mimeType,
                 });
                 if (!row) continue;
-                tx.push({ pid: String(id).slice(0, 8), type: producerType(id), ...row, ...(guard ? { gRung: guard.rung, gWhy: guard.why, gMode: guard.mode } : {}) });
+                tx.push({ pid: String(id).slice(0, 8), type: producerType(id), ...row, ...(guard ? { gRung: guard.rung, gCap: guard.cap, gWhy: guard.why, gMode: guard.mode } : {}) });
             }
         }
         return tx;
@@ -229,7 +272,7 @@
         try {
             const rx = await readReceived();
             const tx = await readSent();
-            const report = { dt: state.intervalMs, cb: state.build, vis: document.visibilityState === 'visible', rx, tx, net: await readNetwork() };
+            const report = { dt: state.intervalMs, cb: state.build, vis: document.visibilityState === 'visible', press: takePressure(), rx, tx, net: await readNetwork() };
             if (!state.envSent) {
                 state.envSent = true;
                 report.env = await environment();
@@ -258,6 +301,7 @@
             return;
         }
         state.timer = setInterval(tick, state.intervalMs);
+        watchPressure();
     }
 
     window.HealthMeter = { start, tick, state };

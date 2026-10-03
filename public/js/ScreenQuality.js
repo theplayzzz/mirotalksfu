@@ -160,16 +160,24 @@
         return wanted;
     }
 
-    // H.264 entry of the browser's codec list to send the screen with: the level has to cover 1920x1080 at 60 fps
-    // (4.2 or more; 3.1 is 720p30), and among those the simplest profile (Constrained Baseline, then Main, then High),
-    // which every hardware encoder handles.
+    // H.264 entry of the browser's codec list to send the screen with. The level has to cover 1920x1080 at 60 fps (4.2 or
+    // more; 3.1 is 720p30). And Chrome on Windows gives its hardware encoders (NVENC, AMF, Quick Sync) to the Baseline,
+    // Main and High profiles and keeps the software one (OpenH264) for the Constrained Baseline (42e0xx) that rooms
+    // usually offer: so Main comes first, then High, then the plain Baseline, and the Constrained Baseline last.
     function h264Level(codec) {
         const id = String((codec.parameters && codec.parameters['profile-level-id']) || '');
         return id.length === 6 ? parseInt(id.slice(4), 16) : 0;
     }
-    function h264Profile(codec) {
+    // 0 Main, 1 High, 2 Baseline, 3 Constrained Baseline (the software encoder on Windows), 4 anything else
+    function h264Rank(codec) {
         const id = String((codec.parameters && codec.parameters['profile-level-id']) || '');
-        return id.length === 6 ? parseInt(id.slice(0, 2), 16) : 0;
+        if (id.length !== 6) return 4;
+        const profile = parseInt(id.slice(0, 2), 16);
+        const constraints = parseInt(id.slice(2, 4), 16);
+        if (profile === 0x4d) return 0;
+        if (profile === 0x64) return 1;
+        if (profile === 0x42) return constraints & 0x40 ? 3 : 2;
+        return 4;
     }
     function pickH264(codecs) {
         const all = (codecs || []).filter(
@@ -177,8 +185,7 @@
         );
         if (!all.length) return null;
         const fits = all.filter((c) => h264Level(c) >= 0x2a);
-        const rank = (c) => ({ 0x42: 0, 0x4d: 1, 0x64: 2 })[h264Profile(c)] ?? 3;
-        return (fits.length ? fits : all).slice().sort((a, b) => rank(a) - rank(b) || h264Level(a) - h264Level(b))[0];
+        return (fits.length ? fits : all).slice().sort((a, b) => h264Rank(a) - h264Rank(b) || h264Level(a) - h264Level(b))[0];
     }
 
     // The codec for the screen of this browser: the server setting, and for 'auto' what the browser says it can do.
@@ -188,6 +195,16 @@
             return 'h264';
         }
         return 'vp8';
+    }
+
+    // The entry of the codec list to send the screen with, or null to leave it to the browser (VP8, the first in the
+    // list). For 'auto' the question was whether the browser encodes the Main profile in hardware: an entry that is
+    // not one of the profiles it gives to the hardware (a room that offers only the Constrained Baseline) is no answer.
+    function pickScreenCodec(setting, capability, codecs) {
+        if (chooseCodec(setting, capability) !== 'h264') return null;
+        const picked = pickH264(codecs);
+        if (picked && setting === 'auto' && h264Rank(picked) > 2) return null;
+        return picked;
     }
 
     // How many frame-rate layers a scalability mode has: 'L1T3' = 3, 'L3T3' = 3, 'S1T2' = 2, none = 1
@@ -211,7 +228,9 @@
         differs,
         follow,
         pickH264,
+        h264Rank,
         chooseCodec,
+        pickScreenCodec,
         HOLD_UP_MS,
         HOLD_DOWN_MS,
         FLOOR_TILE_FPS,
@@ -235,6 +254,8 @@
         selective: false,
         mode: 'off', // 'off' | 'tile' | 'adaptive' (the server's SELECTIVE_MODE)
         codec: 'vp8',
+        codecSetting: 'vp8', // the server's SCREEN_CODEC
+        capability: null, // what the browser said about encoding H.264 (only asked for 'auto')
         entries: new Map(),
         timer: null,
         healthTimer: null,
@@ -261,25 +282,23 @@
         return state.loaded;
     }
 
-    // What the browser says about encoding 1080p60 H.264 at 12 Mbps (only asked when the server says 'auto')
+    // What the browser says about encoding 1080p60 H.264 at 12 Mbps in the Main profile, the one the room offers that the
+    // hardware encoders take (only asked when the server says 'auto')
+    const H264_MAIN = 'video/H264;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d0032';
     async function probeCodec(setting) {
         let capability = null;
         if (setting === 'auto') {
             try {
                 capability = await navigator.mediaCapabilities.encodingInfo({
                     type: 'webrtc',
-                    video: {
-                        contentType: 'video/H264;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e02a',
-                        width: 1920,
-                        height: 1080,
-                        bitrate: 12000000,
-                        framerate: 60,
-                    },
+                    video: { contentType: H264_MAIN, width: 1920, height: 1080, bitrate: 12000000, framerate: 60 },
                 });
             } catch (error) {
                 capability = null;
             }
         }
+        state.codecSetting = setting;
+        state.capability = capability;
         state.codec = chooseCodec(setting, capability);
     }
 
@@ -291,6 +310,11 @@
     // 'h264' or 'vp8': the codec this browser sends its screen with (RoomClient.getScreenEncoding).
     function screenCodec() {
         return state.codec;
+    }
+
+    // The entry of the codec list this browser sends its screen with, or null for the browser's own first choice (VP8)
+    function screenCodecEntry(codecs) {
+        return pickScreenCodec(state.codecSetting, state.capability, codecs);
     }
 
     function measureTile(consumerId) {
@@ -525,6 +549,6 @@
         return false;
     }
 
-    root.ScreenQuality = { screenLayers, screenCodec, pickH264, onConsumerCreated, isPaused, layerInfo, state, rules };
+    root.ScreenQuality = { screenLayers, screenCodec, screenCodecEntry, pickH264, onConsumerCreated, isPaused, layerInfo, state, rules };
     loadConfig();
 })(typeof window !== 'undefined' ? window : globalThis);

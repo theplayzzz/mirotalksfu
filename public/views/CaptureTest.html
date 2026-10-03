@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="pt-BR">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="robots" content="noindex" />
+        <title>Teste de captura de tela</title>
+        <style>
+            :root {
+                --bg: #14090c;
+                --panel: #22111a;
+                --line: #4a2331;
+                --text: #f3e8ec;
+                --muted: #b9a0aa;
+                --accent: #e0546f;
+                --good: #6fd08c;
+                --warn: #f0b95a;
+                --bad: #ff7a7a;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--text);
+                font: 15px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
+            }
+            main {
+                max-width: 860px;
+                margin: 0 auto;
+                padding: 24px 16px 64px;
+            }
+            h1 {
+                font-size: 22px;
+                margin: 0 0 8px;
+            }
+            h2 {
+                font-size: 16px;
+                margin: 28px 0 8px;
+                color: var(--accent);
+            }
+            p,
+            li {
+                color: var(--muted);
+            }
+            b {
+                color: var(--text);
+            }
+            .panel {
+                background: var(--panel);
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 14px 16px;
+                margin: 14px 0;
+            }
+            button {
+                background: var(--accent);
+                color: #fff;
+                border: 0;
+                border-radius: 8px;
+                padding: 10px 18px;
+                font-size: 15px;
+                cursor: pointer;
+            }
+            button:disabled {
+                opacity: 0.5;
+                cursor: default;
+            }
+            button.ghost {
+                background: transparent;
+                border: 1px solid var(--line);
+                color: var(--text);
+            }
+            label {
+                display: block;
+                margin: 10px 0;
+                color: var(--text);
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 13px;
+            }
+            th,
+            td {
+                text-align: left;
+                padding: 6px 8px;
+                border-bottom: 1px solid var(--line);
+                vertical-align: top;
+            }
+            th {
+                color: var(--muted);
+                font-weight: 600;
+            }
+            .good {
+                color: var(--good);
+            }
+            .warn {
+                color: var(--warn);
+            }
+            .bad {
+                color: var(--bad);
+            }
+            #stage {
+                display: none;
+            }
+            #bar {
+                height: 8px;
+                background: var(--line);
+                border-radius: 4px;
+                overflow: hidden;
+                margin: 10px 0;
+            }
+            #fill {
+                height: 100%;
+                width: 0;
+                background: var(--accent);
+                transition: width 0.4s;
+            }
+            #dance {
+                position: relative;
+                height: 56px;
+                background: #000;
+                border-radius: 8px;
+                overflow: hidden;
+            }
+            #dot {
+                position: absolute;
+                top: 8px;
+                left: 0;
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                background: var(--accent);
+            }
+            textarea {
+                width: 100%;
+                height: 190px;
+                background: #0d0508;
+                color: var(--text);
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                font: 12px/1.4 ui-monospace, Consolas, monospace;
+                padding: 10px;
+            }
+            ul {
+                padding-left: 20px;
+            }
+            .verdict li {
+                color: var(--text);
+                margin: 6px 0;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1>Teste de captura de tela</h1>
+            <p>
+                Mede, neste computador, quantos quadros por segundo o navegador consegue <b>capturar</b> da sua tela e
+                <b>codificar</b> para a sala, em cada tamanho de imagem, e se o codificador por hardware da sua placa de
+                vídeo está disponível. Tudo acontece aqui: a imagem da tela só é contada e descartada, nada é gravado nem
+                enviado a lugar nenhum.
+            </p>
+
+            <div class="panel">
+                <ol>
+                    <li>Clique em <b>Começar</b> e escolha <b>Tela inteira</b> na janela do navegador.</li>
+                    <li>
+                        Deixe esta aba visível (o quadrado abaixo se mexe para a tela estar sempre mudando) <b>ou</b>, para
+                        medir com o jogo rodando, marque a opção e volte para o jogo. O teste dura cerca de 1 minuto e meio.
+                    </li>
+                </ol>
+                <label><input type="checkbox" id="game" /> Vou abrir meu jogo durante o teste (ele começa 15 s depois)</label>
+                <button id="start">Começar</button>
+                <span id="note" style="margin-left: 12px; color: var(--muted)"></span>
+            </div>
+
+            <div id="stage" class="panel">
+                <div id="phase"><b>Preparando…</b></div>
+                <div id="bar"><div id="fill"></div></div>
+                <div id="dance"><div id="dot"></div></div>
+            </div>
+
+            <div id="out" style="display: none">
+                <h2>Resultado</h2>
+                <div class="panel verdict"><ul id="verdict"></ul></div>
+                <div class="panel" style="overflow-x: auto">
+                    <table id="table"></table>
+                </div>
+                <h2>Para enviar o resultado</h2>
+                <p>Copie o texto abaixo e cole na conversa.</p>
+                <textarea id="report" readonly></textarea>
+                <p><button id="copy" class="ghost">Copiar resultado</button> <span id="copied" class="good"></span></p>
+            </div>
+        </main>
+        <script src="/js/CaptureTest.js"></script>
+    </body>
+</html>

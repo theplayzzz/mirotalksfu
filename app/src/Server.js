@@ -536,6 +536,7 @@ const views = {
     permission: path.join(__dirname, '../../', 'public/views/permission.html'),
     privacy: path.join(__dirname, '../../', 'public/views/privacy.html'),
     replay: path.join(__dirname, '../../', 'public/views/Replay.html'),
+    captureTest: path.join(__dirname, '../../', 'public/views/CaptureTest.html'),
     room: path.join(__dirname, '../../', 'public/views/Room.html'),
     rtmpStreamer: path.join(__dirname, '../../', 'public/views/RtmpStreamer.html'),
     whoAreYou: path.join(__dirname, '../../', 'public/views/whoAreYou.html'),
@@ -902,6 +903,9 @@ function startServer() {
 
     // Favicon
     app.get('/favicon.ico', (req, res) => res.status(204).end());
+
+    // The capture test: what a computer does when it shares its screen, measured on its own screen, nothing leaves the page
+    app.get('/capture-test', (req, res) => res.set('Cache-Control', 'no-store').sendFile(views.captureTest));
 
     // UI buttons configuration
     app.get('/config', (req, res) => {

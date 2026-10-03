@@ -16,12 +16,25 @@
  *     CAPTURE is slow (a whole 1440p screen with a game using the GPU): a smaller picture will not fix it, so nothing
  *     is lowered, it is only reported (health meter, field gWhy = 'capture');
  *   - the encoder: milliseconds per frame x frames per second = how busy it is (1 = busy all the time). Saturated
- *     (85%+) for 6 s: the picture goes one rung down the ladder (the encoder has less to do and keeps 60 fps);
+ *     (85%+) for 6 s: the picture goes one rung down the ladder (the encoder has less to do and keeps 60 fps). A
+ *     hardware encoder is not measured this way (its "time per frame" is the delay of the pipeline, not a load): for
+ *     it only frames that never come out, or the browser saying the processor limits it, count;
  *   - the uplink: what the server reports back (loss, round trip), the share of what was sent that was a repeat,
- *     and whether the browser says it is limited by bandwidth. Bad for 4 s: one rung down, which also lowers the
- *     bitrate ceiling to what that rung needs, so a line that cannot carry 12 Mbps stops being offered them.
+ *     and whether the browser says it is limited by bandwidth. Bad for 4 s: down the ladder, which also lowers the
+ *     bitrate ceiling to what that rung needs, so a line that cannot carry 12 Mbps stops being offered them. It goes
+ *     straight to the rung that fits what the line is seen to carry (80% of what was sent minus what was lost), not
+ *     one rung at a time: a sender on a 5 Mbps line is at 4 Mbps in one step instead of three.
  * And it goes back up one rung after a long quiet stretch (45 s, doubling up to 5 min each time a rise had to be
  * taken back at once), only when the encoder would still have room at the bigger size.
+ *
+ * A slow CAPTURE (the screen gives few frames while the encoder is idle and the picture is moving) cannot be helped by
+ * the encoder's size: Chrome converts and scales every captured frame on the processor and may use at most half of the
+ * time for it, so a smaller capture can be the only thing that gives frames back. It is not known in advance whether it
+ * will on a given PC, so it is TRIED: after 8 s of a slow capture the capture itself is asked for a smaller size
+ * (track.applyConstraints), and if the capture does not give at least 20% more frames in the next 11 s it goes back and
+ * that size is left alone for 5 minutes (10, 20 ... if it fails again). A screen that hardly moves is not a slow capture
+ * (the capture gives frames only when the screen changes), and is never touched. Much later, after 3 minutes of calm, the
+ * bigger size is tried again the same way.
  *
  * Modes (the server's SEND_GUARD): 'observe' decides and reports but changes nothing; 'apply' also does it.
  * The decision logic is pure (below) and loaded by the unit tests (tests/test-SendGuard.js).
@@ -43,6 +56,17 @@
     const POLL_MS = 2000;
     const BUSY_LIMIT = 0.85; // the encoder is the bottleneck above this share of the time
     const BUSY_ROOM = 0.6; // a bigger picture is only tried when the encoder would still be below this at that size
+    const UPLINK_FILL = 0.8; // the share of what the line carries that a rung may ask for
+
+    // The capture ladder: the size asked of the capture itself is the size it started at divided by these
+    const CAPTURE_SCALES = [1, 1.25, 1.5, 2];
+    const MOVING_KBPS = 1500; // a picture that sends less than this hardly moves: the low frame rate is the content's
+    const CAPTURE_TRIAL_AFTER_MS = 8000; // slow this long before a smaller capture is tried
+    const CAPTURE_SETTLE_MS = 3000; // the first seconds after a change are not counted
+    const CAPTURE_EVAL_MS = 11000; // how long a trial lasts
+    const CAPTURE_GAIN = 1.2; // a trial that does not give this much more (and 4 fps more) is taken back
+    const CAPTURE_BLOCK_MS = 300000; // a size that did not help is left alone this long, doubling each time, up to an hour
+    const CAPTURE_UP_AFTER_MS = 180000; // calm this long before the bigger capture is tried again
     const DOWN_BUSY_MS = 6000;
     const DOWN_UPLINK_MS = 4000;
     const COOLDOWN_MS = 10000;
@@ -60,33 +84,94 @@
     // How busy the encoder is, from a StreamStats.senderRow
     const busy = (row) => (row && row.encMs && row.fps ? (row.encMs * row.fps) / 1000 : 0);
 
-    // What the numbers of the last seconds say. Returns { busy, capture, encoder, uplink, bandwidth, calm }.
+    // Is this a hardware encoder? `hw` is the browser's own word (powerEfficientEncoder: only said to a page that has a capture
+    // open, which a sender has); the name is the fallback ("ExternalEncoder", "D3D11VideoEncoder"; "libvpx, fallback from ..." is software)
+    function isHardware(row) {
+        if (!row) return false;
+        if (row.hw === true) return true;
+        if (row.hw === false) return false;
+        const name = String(row.enc || '');
+        if (!name || /fallback|libvpx|openh264|libaom|dav1d|software/i.test(name)) return false;
+        return /external|d3d11|mediafoundation|nvenc|amf|qsv|videotoolbox|vaapi|v4l2/i.test(name);
+    }
+
+    // What the line is seen to carry, in kbps: what was sent minus what the server says was lost on the way
+    function capacityKbps(row) {
+        if (!row || !(row.kbps > 0)) return 0;
+        return row.kbps * (1 - Math.min(100, Math.max(0, row.lost || 0)) / 100);
+    }
+
+    // What the numbers of the last seconds say. Returns { busy, capture, encoder, uplink, bandwidth, calm, hardware }.
     function assess(row, targetFps = TARGET_FPS) {
-        if (!row) return { busy: 0, capture: false, encoder: false, uplink: false, bandwidth: false, calm: false };
-        const util = busy(row);
+        if (!row) return { busy: 0, capture: false, encoder: false, uplink: false, bandwidth: false, calm: false, hardware: false };
+        const hardware = isHardware(row);
+        // the time per frame of a hardware encoder is a delay, not a load: it says nothing about how busy it is
+        const util = hardware ? 0 : busy(row);
         const source = row.srcFps > 0 ? row.srcFps : null;
         // the uplink: the server says packets are lost on the way in, or repeats are a big share of what is sent, or the
         // round trip is long while the browser says its estimate is the limit
         const uplink = (row.lost || 0) >= 4 || (row.retx || 0) >= 15 || ((row.rtt || 0) >= 450 && row.lim === 'bandwidth');
         // the capture gives little (or, where it is not reported, the encoder produces little while idle)
         const given = source !== null ? source : row.fps;
-        const capture = given > 0 && given < targetFps * 0.8 && util < 0.7 && !uplink;
+        // a still screen gives frames only when it changes: few frames and few bits is the content, not a slow capture
+        const moving = row.kbps === undefined || row.kbps >= MOVING_KBPS;
+        const capture = given > 0 && given < targetFps * 0.8 && util < 0.7 && !uplink && moving;
+        // the browser itself says the processor is what limits the picture (for at least half of the last interval)
+        const cpuLimited = (row.limCpuMs || 0) >= POLL_MS / 2;
         // the encoder: busy nearly all the time, or the source gave frames that never came out of it
-        const encoder = (util >= BUSY_LIMIT || (source !== null && (row.fps || 0) < source * 0.75)) && !capture && !uplink;
+        const encoder = (util >= BUSY_LIMIT || cpuLimited || (source !== null && (row.fps || 0) < source * 0.75)) && !capture && !uplink;
         const bandwidth = row.lim === 'bandwidth' && (row.limBwMs || 0) >= 3000 && !uplink;
         const calm = !uplink && !encoder && !capture && (row.lost || 0) < 1.5 && (row.retx || 0) < 5 && util < BUSY_ROOM + 0.1 && (row.fps || 0) >= targetFps * 0.92;
-        return { busy: util, capture, encoder, uplink, bandwidth, calm };
+        return { busy: util, capture, encoder, uplink, bandwidth, calm, hardware };
+    }
+
+    const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+    // The size to ask of the capture at a rung of the capture ladder, for a capture that started at `base`
+    function captureSize(base, rung) {
+        const scale = CAPTURE_SCALES[rung] || 1;
+        return { width: even(base.width / scale), height: even(base.height / scale) };
+    }
+
+    // The browser would not make the capture the size that was tried: forget the trial and leave that size alone for an hour
+    function captureFailed(state, now) {
+        const trial = state.capTrial;
+        if (!trial) return state;
+        state.capRung = trial.from;
+        state.capTrial = null;
+        state.capBlocked[trial.to] = now + 3600000;
+        return state;
     }
 
     function initialState(now = 0) {
-        return { rung: 0, changedAt: now, busySince: 0, uplinkSince: 0, calmSince: 0, upAfterMs: UP_AFTER_MS, lastUpAt: 0, why: 'start' };
+        return {
+            rung: 0,
+            changedAt: now,
+            busySince: 0,
+            uplinkSince: 0,
+            calmSince: 0,
+            upAfterMs: UP_AFTER_MS,
+            lastUpAt: 0,
+            why: 'start',
+            // the capture ladder: the size the capture started at, where it is now, the trial in progress, when it began
+            // to be slow, which sizes are left alone until when and how many trials did not help
+            base: null,
+            capRung: 0,
+            capTrial: null,
+            capSince: 0,
+            capBlocked: {},
+            capFails: 0,
+        };
     }
 
     // One step. `state` is changed and returned with `action` (what to apply, or null). `row`: StreamStats.senderRow.
     // `size`: the size of the picture being captured { width, height }.
-    function step(state, row, now, size = {}) {
+    function step(state, row, now, size = {}, options = {}) {
         const a = assess(row);
         const next = state;
+        const trials = options.trials !== false;
+        if (!next.base && size.width > 0 && size.height > 0) next.base = { width: size.width, height: size.height };
+        if (a.capture) next.capSince = next.capSince || now;
+        else next.capSince = 0;
         if (a.encoder) next.busySince = next.busySince || now;
         else next.busySince = 0;
         if (a.uplink) next.uplinkSince = next.uplinkSince || now;
@@ -94,9 +179,59 @@
         if (a.calm) next.calmSince = next.calmSince || now;
         else next.calmSince = 0;
 
+        // a trial of another capture size is running: its verdict comes first, and nothing else changes meanwhile
+        if (next.capTrial) {
+            const trial = next.capTrial;
+            if (now - trial.since >= CAPTURE_SETTLE_MS && row && row.srcFps > 0) trial.samples.push(row.srcFps);
+            if (now - trial.since < CAPTURE_EVAL_MS) {
+                next.why = 'capture-trial';
+                return { state: next, action: null };
+            }
+            const mean = trial.samples.length ? trial.samples.reduce((sum, v) => sum + v, 0) / trial.samples.length : 0;
+            const better = trial.up ? mean >= TARGET_FPS * 0.9 : mean >= trial.before * CAPTURE_GAIN && mean >= trial.before + 4;
+            next.capTrial = null;
+            next.capSince = 0;
+            if (better) {
+                next.changedAt = now;
+                next.why = trial.up ? 'capture-up' : 'capture-kept';
+                return { state: next, action: null };
+            }
+            // it did not help: back to the size that was, and that size is left alone for longer each time
+            next.capRung = trial.from;
+            next.capFails += 1;
+            next.capBlocked[trial.to] = now + Math.min(3600000, CAPTURE_BLOCK_MS * 2 ** (next.capFails - 1));
+            next.changedAt = now;
+            next.why = 'capture-undo';
+            const back = captureSize(next.base, next.capRung);
+            return { state: next, action: { kind: 'capture', capRung: next.capRung, width: back.width, height: back.height, kbps: rungKbps(next.rung, back.width, back.height), why: 'capture-undo' } };
+        }
+
         let action = null;
         const cooled = now - next.changedAt >= COOLDOWN_MS;
         const last = LADDER.length - 1;
+
+        // a slow capture: ask the capture itself for a smaller size, and see whether it gives more frames
+        if (trials && next.base && cooled && row && row.srcFps > 0) {
+            const blocked = (rung) => now < (next.capBlocked[rung] || 0);
+            let to = null;
+            let up = false;
+            if (a.capture && next.capSince && now - next.capSince >= CAPTURE_TRIAL_AFTER_MS && next.capRung < CAPTURE_SCALES.length - 1 && !blocked(next.capRung + 1)) {
+                to = next.capRung + 1;
+            } else if (next.capRung > 0 && next.calmSince && now - next.calmSince >= CAPTURE_UP_AFTER_MS && !blocked(next.capRung - 1)) {
+                to = next.capRung - 1;
+                up = true;
+            }
+            if (to !== null) {
+                const target = captureSize(next.base, to);
+                next.capTrial = { from: next.capRung, to, before: row.srcFps, since: now, samples: [], up };
+                next.capRung = to;
+                next.changedAt = now;
+                next.capSince = 0;
+                next.calmSince = 0;
+                next.why = 'capture-trial';
+                return { state: next, action: { kind: 'capture', capRung: to, width: target.width, height: target.height, kbps: rungKbps(next.rung, target.width, target.height), why: up ? 'capture-up-try' : 'capture' } };
+            }
+        }
         const why = a.capture ? 'capture' : a.uplink ? 'uplink' : a.encoder ? 'encoder' : a.bandwidth ? 'bandwidth' : a.calm ? 'ok' : next.why === 'start' ? 'start' : 'steady';
 
         if (cooled && next.rung < last && ((next.busySince && now - next.busySince >= DOWN_BUSY_MS) || (next.uplinkSince && now - next.uplinkSince >= DOWN_UPLINK_MS))) {
@@ -106,12 +241,18 @@
                 next.upAfterMs = Math.min(UP_AFTER_MAX_MS, next.upAfterMs * 2);
                 next.lastUpAt = 0; // counted once: the steps that follow are the same fall, not more rises taken back
             }
-            next.rung += 1;
+            let target = next.rung + 1;
+            // an uplink that cannot carry what is sent: the rung that fits what it carries, not the next one
+            const capacity = capacityKbps(row);
+            if (reason === 'uplink' && capacity > 0) {
+                while (target < last && rungKbps(target, size.width, size.height) > capacity * UPLINK_FILL) target += 1;
+            }
+            next.rung = target;
             next.changedAt = now;
             next.busySince = 0;
             next.uplinkSince = 0;
             next.calmSince = 0;
-            action = { rung: next.rung, scale: LADDER[next.rung].scale, kbps: rungKbps(next.rung, size.width, size.height), why: reason };
+            action = { kind: 'ladder', rung: next.rung, scale: LADDER[next.rung].scale, kbps: rungKbps(next.rung, size.width, size.height), why: reason };
             next.why = reason;
         } else if (cooled && next.rung > 0 && next.calmSince && now - next.calmSince >= next.upAfterMs) {
             // would the encoder still have room at the bigger size? (its work grows with the number of pixels)
@@ -121,7 +262,7 @@
                 next.changedAt = now;
                 next.lastUpAt = now;
                 next.calmSince = 0;
-                action = { rung: next.rung, scale: LADDER[next.rung].scale, kbps: rungKbps(next.rung, size.width, size.height), why: 'room' };
+                action = { kind: 'ladder', rung: next.rung, scale: LADDER[next.rung].scale, kbps: rungKbps(next.rung, size.width, size.height), why: 'room' };
                 next.why = 'room';
             }
         } else {
@@ -130,7 +271,7 @@
         return { state: next, action };
     }
 
-    const rules = { LADDER, rungKbps, busy, assess, initialState, step, TARGET_FPS, POLL_MS, COOLDOWN_MS, UP_AFTER_MS, DOWN_BUSY_MS, DOWN_UPLINK_MS };
+    const rules = { LADDER, CAPTURE_SCALES, captureSize, captureFailed, rungKbps, busy, isHardware, capacityKbps, assess, initialState, step, TARGET_FPS, POLL_MS, COOLDOWN_MS, UP_AFTER_MS, DOWN_BUSY_MS, DOWN_UPLINK_MS, MOVING_KBPS, CAPTURE_TRIAL_AFTER_MS, CAPTURE_EVAL_MS, CAPTURE_BLOCK_MS, CAPTURE_UP_AFTER_MS };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = rules;
         return;
@@ -181,19 +322,32 @@
         if (!row) return;
         const size = { width: (source && source.width) || (settings && settings.width) || 0, height: (source && source.height) || (settings && settings.height) || 0 };
         const rungBefore = entry.state.rung;
-        const { action } = step(entry.state, row, now, size);
-        entry.last = { rung: entry.state.rung, why: entry.state.why, mode };
+        // only 'apply' tries other sizes of the capture: a trial needs the capture to really change to mean anything
+        const { action } = step(entry.state, row, now, size, { trials: mode === 'apply' });
+        const state = entry.state;
+        entry.last = { rung: state.rung, cap: state.capRung, why: state.why, mode };
         if (!action) return;
-        entry.last = { rung: action.rung, why: action.why, mode };
+        entry.last = { rung: action.kind === 'capture' ? state.rung : action.rung, cap: state.capRung, why: action.why, mode };
         // 'observe' only says what it would do: the picture is left alone and the ladder goes on as if nothing changed
         if (mode !== 'apply') {
-            entry.state.rung = rungBefore;
+            state.rung = rungBefore;
             return;
         }
         try {
-            await producer.setRtpEncodingParameters({ scaleResolutionDownBy: action.scale, maxBitrate: action.kbps * 1000 });
+            if (action.kind === 'capture') {
+                // the capture itself is asked for another size, the encoder keeps its own (and gets the bitrate that fits)
+                await producer.track.applyConstraints({
+                    width: { ideal: action.width, max: action.width },
+                    height: { ideal: action.height, max: action.height },
+                    frameRate: { ideal: TARGET_FPS, max: TARGET_FPS },
+                });
+                await producer.setRtpEncodingParameters({ maxBitrate: action.kbps * 1000 });
+            } else {
+                await producer.setRtpEncodingParameters({ scaleResolutionDownBy: action.scale, maxBitrate: action.kbps * 1000 });
+            }
         } catch (error) {
-            entry.last = { rung: entry.state.rung, why: 'failed', mode };
+            if (action.kind === 'capture') captureFailed(state, now);
+            entry.last = { rung: state.rung, cap: state.capRung, why: 'failed', mode };
         }
     }
 

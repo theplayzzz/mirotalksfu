@@ -60,7 +60,9 @@ const probe = `(async () => {
     const kinds = [
         ['VP8', 'video/VP8'],
         ['VP9', 'video/VP9'],
-        ['H.264', 'video/H264;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e02a'],
+        // H.264 by profile: Chrome on Windows only gives the hardware encoder to some profiles (the "constrained baseline"
+        // 42e0xx that a room usually offers is the one it keeps for its software encoder)
+        ...['42e01f', '42001f', '4d001f', '4d0028', '64001f', '640028', '64002a'].map((id) => ['H.264 ' + id, 'video/H264;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=' + id]),
         ['AV1', 'video/AV1'],
     ];
     const sizes = [['1080p60', 1920, 1080, 60, 12e6], ['1440p60', 2560, 1440, 60, 16e6], ['2160p60', 3840, 2160, 60, 25e6]];
