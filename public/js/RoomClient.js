@@ -2382,7 +2382,8 @@ class RoomClient {
                     codecs: codec,
                 });
                 params.encodings = encodings;
-                params.codecs = codec;
+                // mediasoup-client reads `codec` (it ignored the plural this used to set, so a forced codec never applied)
+                if (codec) params.codec = codec;
                 params.codecOptions = {
                     videoGoogleStartBitrate: 1000,
                 };
@@ -2395,7 +2396,7 @@ class RoomClient {
                     codecs: codec,
                 });
                 params.encodings = encodings;
-                params.codecs = codec;
+                if (codec) params.codec = codec;
                 params.codecOptions = {
                     videoGoogleStartBitrate: 3000,
                 };
@@ -3059,6 +3060,13 @@ class RoomClient {
             if (!codec) throw new Error('Desired AV1 codec+configuration is not supported');
         }
 
+        // The server setting SCREEN_CODEC decides, for this browser, whether the screen is sent in H.264 (when it is
+        // encoded in hardware) or in VP8 (see ScreenQuality.js)
+        if (!codec && window.ScreenQuality?.screenCodec?.() === 'h264') {
+            codec = window.ScreenQuality.pickH264(this.device.rtpCapabilities.codecs) || undefined;
+        }
+        const isH264 = codec?.mimeType?.toLowerCase() === 'video/h264';
+
         if (this.enableSharingLayers) {
             console.log('SCREEN SIMULCAST/SVC ENABLED');
 
@@ -3082,12 +3090,17 @@ class RoomClient {
             } else {
                 console.log('SCREEN ENCODING: VP8 or H264 with simulcast.');
                 // How many sizes the screen is sent in (1-3) comes from the server (SCREEN_SIMULCAST_LAYERS)
-                const sharingLayers = window.ScreenQuality?.screenLayers?.() || this.numSimulcastStreamsSharing;
+                // H.264 has no temporal layers in mediasoup and hardware encoders run one session per layer: two at most
+                const sharingLayers = Math.min(
+                    window.ScreenQuality?.screenLayers?.() || this.numSimulcastStreamsSharing,
+                    isH264 ? 2 : 3
+                );
+                const layerMode = isH264 ? 'L1T1' : this.sharingScalabilityMode || 'L1T3';
                 encodings = [
                     {
                         scaleResolutionDownBy: 1,
                         maxBitrate: 12000000,
-                        scalabilityMode: this.sharingScalabilityMode || 'L1T3',
+                        scalabilityMode: layerMode,
                         dtx: true,
                     },
                 ];
@@ -3095,7 +3108,7 @@ class RoomClient {
                     encodings.unshift({
                         scaleResolutionDownBy: 2,
                         maxBitrate: 1500000,
-                        scalabilityMode: this.sharingScalabilityMode || 'L1T3',
+                        scalabilityMode: layerMode,
                         dtx: true,
                     });
                 }
@@ -3103,7 +3116,7 @@ class RoomClient {
                     encodings.unshift({
                         scaleResolutionDownBy: 4,
                         maxBitrate: 600000,
-                        scalabilityMode: this.sharingScalabilityMode || 'L1T3',
+                        scalabilityMode: layerMode,
                         dtx: true,
                     });
                 }

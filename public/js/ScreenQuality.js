@@ -79,7 +79,37 @@
         return wanted;
     }
 
-    const rules = { layerScales, pickLayer, decide, differs, follow, HOLD_UP_MS, HOLD_DOWN_MS };
+    // H.264 entry of the browser's codec list to send the screen with: the level has to cover 1920x1080 at 60 fps
+    // (4.2 or more; 3.1 is 720p30), and among those the simplest profile (Constrained Baseline, then Main, then High),
+    // which every hardware encoder handles.
+    function h264Level(codec) {
+        const id = String((codec.parameters && codec.parameters['profile-level-id']) || '');
+        return id.length === 6 ? parseInt(id.slice(4), 16) : 0;
+    }
+    function h264Profile(codec) {
+        const id = String((codec.parameters && codec.parameters['profile-level-id']) || '');
+        return id.length === 6 ? parseInt(id.slice(0, 2), 16) : 0;
+    }
+    function pickH264(codecs) {
+        const all = (codecs || []).filter(
+            (c) => /^video\/h264$/i.test(c.mimeType) && Number(c.parameters && c.parameters['packetization-mode']) === 1
+        );
+        if (!all.length) return null;
+        const fits = all.filter((c) => h264Level(c) >= 0x2a);
+        const rank = (c) => ({ 0x42: 0, 0x4d: 1, 0x64: 2 })[h264Profile(c)] ?? 3;
+        return (fits.length ? fits : all).slice().sort((a, b) => rank(a) - rank(b) || h264Level(a) - h264Level(b))[0];
+    }
+
+    // The codec for the screen of this browser: the server setting, and for 'auto' what the browser says it can do.
+    function chooseCodec(setting, capability) {
+        if (setting === 'h264') return 'h264';
+        if (setting === 'auto' && capability && capability.supported && capability.powerEfficient && capability.smooth) {
+            return 'h264';
+        }
+        return 'vp8';
+    }
+
+    const rules = { layerScales, pickLayer, decide, differs, follow, pickH264, chooseCodec, HOLD_UP_MS, HOLD_DOWN_MS };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = rules;
         return;
@@ -87,7 +117,15 @@
 
     // ---- in the browser --------------------------------------------------------------------------------------
 
-    const state = { layers: 1, selective: false, entries: new Map(), timer: null, listening: false, loaded: null };
+    const state = {
+        layers: 1,
+        selective: false,
+        codec: 'vp8',
+        entries: new Map(),
+        timer: null,
+        listening: false,
+        loaded: null,
+    };
 
     function loadConfig() {
         if (!state.loaded) {
@@ -97,15 +135,43 @@
                     const screen = (config && config.screen) || {};
                     state.layers = Math.min(3, Math.max(1, Number(screen.layers) || 1));
                     state.selective = screen.selectiveReception === true;
+                    return probeCodec(screen.codec);
                 })
                 .catch(() => {});
         }
         return state.loaded;
     }
 
+    // What the browser says about encoding 1080p60 H.264 at 12 Mbps (only asked when the server says 'auto')
+    async function probeCodec(setting) {
+        let capability = null;
+        if (setting === 'auto') {
+            try {
+                capability = await navigator.mediaCapabilities.encodingInfo({
+                    type: 'webrtc',
+                    video: {
+                        contentType: 'video/H264;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e02a',
+                        width: 1920,
+                        height: 1080,
+                        bitrate: 12000000,
+                        framerate: 60,
+                    },
+                });
+            } catch (error) {
+                capability = null;
+            }
+        }
+        state.codec = chooseCodec(setting, capability);
+    }
+
     // How many simulcast layers this browser sends its screen in (RoomClient.getScreenEncoding).
     function screenLayers() {
         return state.layers;
+    }
+
+    // 'h264' or 'vp8': the codec this browser sends its screen with (RoomClient.getScreenEncoding).
+    function screenCodec() {
+        return state.codec;
     }
 
     function pageState() {
@@ -240,6 +306,6 @@
         return !!entry && entry.applied.paused === true;
     }
 
-    root.ScreenQuality = { screenLayers, onConsumerCreated, isPaused, state, rules };
+    root.ScreenQuality = { screenLayers, screenCodec, pickH264, onConsumerCreated, isPaused, state, rules };
     loadConfig();
 })(typeof window !== 'undefined' ? window : globalThis);

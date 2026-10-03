@@ -117,6 +117,9 @@ const healthMeter = new HealthMeter();
 // size of its tile and pause the video of the ones nobody is looking at (public/js/ScreenQuality.js).
 const screenLayers = Math.min(3, Math.max(1, parseInt(process.env.SCREEN_SIMULCAST_LAYERS, 10) || 1));
 const selectiveReception = process.env.SELECTIVE_RECEPTION === 'true';
+// Codec of the screens: 'vp8' (default), 'h264', or 'auto' = H.264 for the people whose browser encodes it in
+// hardware (lighter on their PC, and the replay clip needs no conversion) and VP8 for everybody else.
+const screenCodec = ['vp8', 'h264', 'auto'].includes(process.env.SCREEN_CODEC) ? process.env.SCREEN_CODEC : 'vp8';
 const restrictAccessByIP = require('./middleware/IpWhitelist');
 const { applyEmbedHeaders, embedAllowedOrigins, embedCsp } = require('./middleware/EmbedHeaders');
 const packageJson = require('../../package.json');
@@ -879,7 +882,7 @@ function startServer() {
             message: config?.ui?.buttons || false,
             singleRoom: singleRoom.enabled ? { roomId: singleRoom.roomId } : false,
             healthMeter: healthMeter.enabled ? { enabled: true, intervalS: healthMeter.intervalS } : false,
-            screen: { layers: screenLayers, selectiveReception },
+            screen: { layers: screenLayers, selectiveReception, codec: screenCodec },
         });
     });
 
@@ -906,6 +909,21 @@ function startServer() {
         livePix.handleWebhook(req.body);
         res.sendStatus(200);
     });
+
+    // Development only: measures what the room costs the server with many virtual viewers (see DevLoad.js)
+    if (process.env.APP_ENV === 'dev' && process.env.DEV_LOAD_ENABLED === 'true' && singleRoom.testRoomId) {
+        app.post('/dev/load', async (req, res) => {
+            const token = String(req.headers.authorization || '').replace(/^Bearer /, '');
+            if (!singleRoom.matches(token, singleRoom.testRoomId)) return res.status(401).json({ error: 'Invalid token' });
+            const room = roomList.get(singleRoom.testRoomId);
+            if (!room) return res.status(404).json({ error: 'The test room is empty' });
+            try {
+                res.json(await require('./DevLoad').runLoad(room, req.body || {}));
+            } catch (error) {
+                res.status(500).json({ error: error.message });
+            }
+        });
+    }
 
     // main page
     app.get('/', OIDCAuth, (req, res) => {

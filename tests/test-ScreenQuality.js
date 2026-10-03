@@ -4,7 +4,7 @@ require('should');
 
 const Peer = require('../app/src/Peer');
 const rules = require('../public/js/ScreenQuality');
-const { pickLayer, decide, follow, layerScales } = rules;
+const { pickLayer, decide, follow, layerScales, pickH264, chooseCodec } = rules;
 
 describe('test-ScreenQuality', () => {
     describe('layers', () => {
@@ -107,6 +107,44 @@ describe('test-ScreenQuality', () => {
             follow(page, hidden('page-hidden'), 13_100).should.containEql({ paused: true });
 
             follow(page, layer(1), 13_200).should.containEql({ paused: false, spatialLayer: 1 });
+        });
+    });
+
+    describe('codec of the screen', () => {
+        const h264 = (id, mode = 1) => ({
+            mimeType: 'video/H264',
+            clockRate: 90000,
+            parameters: { 'packetization-mode': mode, 'profile-level-id': id, 'level-asymmetry-allowed': 1 },
+        });
+        const vp8 = { mimeType: 'video/VP8', clockRate: 90000 };
+
+        it('uses H.264 when the server says so, or when it says auto and the browser encodes it smoothly in hardware', () => {
+            chooseCodec('h264', null).should.equal('h264');
+            chooseCodec('vp8', { supported: true, powerEfficient: true, smooth: true }).should.equal('vp8');
+            chooseCodec('auto', { supported: true, powerEfficient: true, smooth: true }).should.equal('h264');
+            chooseCodec('auto', { supported: true, powerEfficient: false, smooth: true }).should.equal('vp8');
+            chooseCodec('auto', { supported: true, powerEfficient: true, smooth: false }).should.equal('vp8');
+            chooseCodec('auto', { supported: false }).should.equal('vp8');
+            chooseCodec('auto', null).should.equal('vp8');
+            chooseCodec(undefined, null).should.equal('vp8');
+        });
+
+        it('picks the H.264 entry that covers 1080p60 and has the simplest profile', () => {
+            const codecs = [vp8, h264('42e01f'), h264('42e02a'), h264('4d0032')];
+            pickH264(codecs).parameters['profile-level-id'].should.equal('42e02a');
+            // no 4.2 baseline: main 5.0
+            pickH264([vp8, h264('42e01f'), h264('4d0032')]).parameters['profile-level-id'].should.equal('4d0032');
+            // only a low level: better than nothing
+            pickH264([vp8, h264('42e01f')]).parameters['profile-level-id'].should.equal('42e01f');
+            // high profile only
+            pickH264([h264('640032')]).parameters['profile-level-id'].should.equal('640032');
+        });
+
+        it('ignores entries it cannot use and finds nothing without H.264', () => {
+            (pickH264([vp8]) === null).should.be.true();
+            (pickH264([]) === null).should.be.true();
+            (pickH264(undefined) === null).should.be.true();
+            (pickH264([h264('42e02a', 0)]) === null).should.be.true(); // packetization mode 0 is not what the SFU uses
         });
     });
 
