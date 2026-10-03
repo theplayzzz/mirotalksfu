@@ -131,6 +131,10 @@ already set, no conversion needed).
   rest (tests/replay/test-sfu-mediasoup.js checks it with the real mediasoup).
 - The only key frame request it makes is the automatic one when the consumer is created. `RECORDER_KEYFRAME_SAFETY_S`
   (default 0 = off) asks one every N seconds, for senders whose encoder rarely sends key frames (H.264 in hardware).
+- The recorder may restart (a crash, an out-of-memory kill): it keeps its ring on disk but forgets its registrations.
+  Every sample the bridge compares what it sends with `GET /v1/shares`; a share that was registered more than 8 s ago and
+  is not listed gets a new plain transport, new consumers and a new registration (`restartShare`), and the room's
+  screen is recorded again without the sharer or the viewers doing anything (`tests/e2e/replay-recorder-restart.mjs`).
 - Safety: it samples `worker.getResourceUsage()` of the room workers every 5 s; above 85% for 10 s, or less than
   `REPLAY_MIN_FREE_GB` free disk, it pauses the recorder consumers and tells the browsers `{ available: false }` until
   load is under 70% for 20 s. The live path always wins.

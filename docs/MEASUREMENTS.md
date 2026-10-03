@@ -2,6 +2,32 @@
 
 Numbers behind the decisions, with how they were taken, so they can be repeated. Newest first.
 
+## What the room's worker costs, and what selective reception saves, 2026-10-03
+
+`tests/e2e/worker-load.mjs` on the development instance (one vCPU of the VPS, a real sharer sending ~10 Mbps of VP8 in
+one size with three frame rates). The server makes 10 virtual viewers (`app/src/DevLoad.js`: plain transports with SRTP,
+one per viewer) that each consume the same screen four times, a layer chosen for each, and measures the CPU time of
+the room's mediasoup worker over 25 s. Every viewer receives 12.5 Mbps per screen, 48.9 Mbps for four, which is what a
+person sees today in the room.
+
+| what each viewer asks for | worker CPU | sent by the server | per viewer | against today |
+|---|---|---|---|---|
+| nothing (1 viewer, 1 screen, to know the floor) | 4.4% | 12.5 Mbps | 12.5 | |
+| **today: four screens in full** | **52.8%** | 489 Mbps | 48.9 | 100% |
+| one screen in full, three thumbnails (T0, 15 fps) | 32.4% | 264 Mbps | 26.4 | 61% of the CPU, 54% of the traffic |
+| four medium tiles (T1, 30 fps) | 34.8% | 287 Mbps | 28.7 | 66% |
+| one screen in full, the other three hidden (paused) | 16.6% | 121 Mbps | 12.1 | 31% |
+| every tab in the background (all paused) | 4.8% | 0 | 0 | 9% |
+
+- One worker is one core, and 10 people watching four screens already use half of it; the 70-97% seen on busy nights
+  of the real room is about 15-20 viewers of that kind. Selective reception takes a pinned layout to ~60% of today's
+  load and anything hidden to a third or less, so a night at 97% would be at ~60%.
+- **Spreading the room over several workers (step 1.3 of the plan) is not needed yet.** It is only worth building if,
+  with selective reception on in production, the health meter still shows the worker above ~60% on busy nights.
+- The first run of this tool printed zeros everywhere: its consumers had been made with the router's own capabilities,
+  and mediasoup then throttles a plain-transport consumer to 600 kbps that nothing can raise (nobody sends feedback), so
+  a screen of 10 Mbps is not forwarded at all. The same cause as the recorder's stuck counter (below).
+
 ## Replay on the development instance, 2026-10-03
 
 Two Chrome pages against `mirotalk-dev` (a PC in Brazil, round trip ~200 ms): `tests/e2e/replay-flow.mjs` (the whole
