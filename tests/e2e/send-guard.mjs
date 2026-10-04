@@ -50,7 +50,7 @@ try {
     await joinTestRoom(sharer, { origin, token, name: 'SG-Sharer' });
     const config = await sharer.ev("fetch('/config').then((r) => r.json())");
     check('the instance runs the guard in apply mode', config.screen.guard === 'apply', String(config.screen.guard));
-    await startScreenShare(sharer);
+    await startScreenShare(sharer); // VP8: the guard is about a software encoder that a busy PC starves
 
     let before = await sharer.ev(read);
     const series = [];

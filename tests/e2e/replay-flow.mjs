@@ -143,9 +143,15 @@ try {
     await waitFor('the first picture at the viewer', () => viewer.ev("(async () => { for (const c of rc.consumers.values()) { if (c.kind !== 'video' || c.closed) continue; for (const s of (await c.getStats()).values()) if (s.type === 'inbound-rtp' && s.framesDecoded > 0) return true; } return false; })()"), 40, 500);
     await sleep(8000);
     await viewer.ev('window.__sounds.length = 0; true'); // the room's own sounds of joining are behind us
+    // what the sender itself encodes in the same 10 s: a hardware encoder drops frames when the picture needs more bits than it has, and a
+    // viewer cannot show frames that were never sent; what the recorder must not do is take any of them
+    const sentNow = () => sharer.ev("(async () => { for (const p of rc.producers.values()) { if (p.kind !== 'video' || p.closed) continue; for (const s of (await p.getStats()).values()) if (s.type === 'outbound-rtp') return { frames: s.framesEncoded, ts: s.timestamp }; } return null; })()");
+    const sent0 = await sentNow();
     const live = await measure(viewer, 10);
-    note(`the viewer, with the recorder running: ${JSON.stringify(live)}`);
-    check('the viewer still gets a full frame rate while the recorder runs', live.fps >= 50, JSON.stringify(live));
+    const sent1 = await sentNow();
+    const sentFps = sent0 && sent1 ? (sent1.frames - sent0.frames) / ((sent1.ts - sent0.ts) / 1000) : 60;
+    note(`the viewer, with the recorder running: ${JSON.stringify(live)}; the sender encoded ${sentFps.toFixed(1)} fps in the same time`);
+    check('the viewer still gets a full frame rate while the recorder runs (what the sender sends, and 50+ fps when it sends that much)', live.fps >= Math.min(50, sentFps * 0.9), `${JSON.stringify(live)} against ${sentFps.toFixed(1)} fps sent`);
     check('and no freezes', live.freezes === 0, `${live.freezes}`);
     if (process.env.RESIZE === '1') {
         // the encoder starts a new size at a key frame: the picture goes from 1920x1080 to 1280x720 in the middle of the buffer

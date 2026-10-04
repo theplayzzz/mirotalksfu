@@ -469,9 +469,9 @@
         let stream;
         let counter;
         try {
-            const env = await environment();
             const gameMode = el('game').checked;
             try {
+                // the picker comes first: it needs the click that started this (the page measures its own environment afterwards)
                 stream = await navigator.mediaDevices.getDisplayMedia({
                     video: { width: { ideal: 1920, max: 1920 }, height: { ideal: 1080, max: 1080 }, frameRate: { ideal: 60, max: 60 } },
                     audio: false,
@@ -482,6 +482,7 @@
             }
             const track = stream.getVideoTracks()[0];
             track.contentHint = 'motion';
+            const env = await environment();
             env.surface = (track.getSettings() || {}).displaySurface;
             if (typeof MediaStreamTrackProcessor === 'undefined') {
                 el('note').textContent = 'Este navegador não deixa contar os quadros da captura (use o Chrome, o Brave ou o Opera GX).';

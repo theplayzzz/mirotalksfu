@@ -181,7 +181,11 @@ export async function joinTestRoom(page, { origin, token, name, room = 'teste' }
     return true;
 }
 
-export async function startScreenShare(page) {
+// vp8: send this screen in VP8 whatever the room's SCREEN_CODEC says (a room set to `auto` sends H.264 from any browser that has a
+// graphics card, headless ones too). The default is VP8, the codec the tests were written for (a software encoder that a busy PC
+// starves, temporal layers that a viewer can ask for); CODEC=h264 (the replay flow) or E2E_CODEC=auto leave it to the room.
+export async function startScreenShare(page, { vp8 = process.env.CODEC !== 'h264' && process.env.E2E_CODEC !== 'auto' } = {}) {
+    if (vp8) await page.ev('rc.forceVP8 = true');
     const position = await page.ev(`(() => { showButtons(); const r = document.getElementById('startScreenButton').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
     await page.click(position[0], position[1]);
     for (let i = 0; i < 60; i++) {
