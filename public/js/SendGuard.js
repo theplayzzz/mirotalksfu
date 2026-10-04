@@ -13,8 +13,8 @@
  *
  * What it looks at, every 2 seconds (StreamStats.senderRow, from the same statistics as the health meter):
  *   - the capture (media-source): frames per second the screen capture gives. Low while the encoder is idle = the
- *     CAPTURE is slow (a whole 1440p screen with a game using the GPU): a smaller picture will not fix it, so nothing
- *     is lowered, it is only reported (health meter, field gWhy = 'capture');
+ *     CAPTURE is slow (a whole 1440p screen with a game using the GPU): the encoder's size will not fix it, so the
+ *     ladder is left alone; a smaller capture is tried instead (below) and it is reported (health meter, field gWhy);
  *   - the encoder: milliseconds per frame x frames per second = how busy it is (1 = busy all the time). Saturated
  *     (85%+) for 6 s: the picture goes one rung down the ladder (the encoder has less to do and keeps 60 fps). A
  *     hardware encoder is not measured this way (its "time per frame" is the delay of the pipeline, not a load): for
@@ -218,7 +218,7 @@
             next.changedAt = now;
             next.why = 'capture-undo';
             const back = captureSize(next.base, next.capRung);
-            return { state: next, action: { kind: 'capture', capRung: next.capRung, width: back.width, height: back.height, why: 'capture-undo' } };
+            return { state: next, action: { kind: 'capture', capRung: next.capRung, from: trial.to, width: back.width, height: back.height, why: 'capture-undo' } };
         }
 
         let action = null;
@@ -385,7 +385,14 @@
                 await producer.setRtpEncodingParameters({ scaleResolutionDownBy: action.scale, maxBitrate: action.kbps * 1000 });
             }
         } catch (error) {
-            if (action.kind === 'capture') captureFailed(state, now);
+            if (action.kind === 'capture') {
+                if (state.capTrial) captureFailed(state, now);
+                else if (action.why === 'capture-undo') {
+                    // the way back was refused: the capture is still at the smaller size, and bigger ones are left alone
+                    state.capRung = action.from;
+                    state.capBlocked[action.from - 1] = now + 3600000;
+                }
+            }
             entry.last = { rung: state.rung, cap: state.capRung, why: 'failed', mode };
         }
     }
@@ -453,7 +460,14 @@
         guards.set(producer.id, entry);
         entry.timer = setInterval(() => {
             if (producer.closed || (producer.track && producer.track.readyState === 'ended')) return detach(producer.id);
-            sample(entry, Date.now()).catch(() => {});
+            // a change of the capture can take longer than a poll: one sample at a time
+            if (entry.busy) return;
+            entry.busy = true;
+            sample(entry, Date.now())
+                .catch(() => {})
+                .finally(() => {
+                    entry.busy = false;
+                });
         }, POLL_MS);
     }
 
