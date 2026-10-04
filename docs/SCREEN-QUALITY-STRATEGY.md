@@ -127,8 +127,10 @@ Num notebook fraco, 0,27 núcleo vira 0,6 a 0,8; com três telas ele satura. Aqu
 | Guarda do remetente: `motion` + `maintain-framerate`, escada 1080p -> 360p com bitrate coerente | `public/js/SendGuard.js` | `SEND_GUARD=apply` | testado; sob carga no e2e |
 | Guarda: encolhe **de uma vez** para o tamanho que a linha comporta (80% do medido) | idem | idem | unitário |
 | Guarda: não confunde o "tempo por quadro" do codificador por hardware com carga | idem | idem | unitário |
+| Guarda: lembra o que a linha de cada um aguentou e não sobe para um tamanho que ela não carrega (30 min) | idem | idem | unitário |
+| Guarda: avisa o remetente, uma vez, quando a captura continua lenta e não resta o que tentar (com dicas e o link do teste); não avisa para 24/25/30 fps (filme) nem tela parada | idem | idem | unitário + e2e |
 | Guarda: **tenta captura menor** quando a captura é lenta e a imagem se mexe; volta se não ganhar 20% | idem | `apply` | unitário + e2e (`capture-trial.mjs`) |
-| H.264 Main/High para quem tem codificador por hardware | `ScreenQuality.pickScreenCodec` | `SCREEN_CODEC=auto` | unitário; falta e2e com gravador |
+| H.264 Main/High para quem tem codificador por hardware | `ScreenQuality.pickScreenCodec` | `SCREEN_CODEC=auto` | unitário + e2e na sala real com o gravador (encoder da placa AMD, clipe MP4 correto, áudio sincronizado) |
 | Diagnóstico: build, chaves, captura x codificador x internet, pressão do processador, perfil H.264 | `HealthMeter`, `StreamMeter`, `StreamStats` | `HEALTH_METER_ENABLED` | em uso no dev |
 | `health-diagnose.py`: causa por remetente/espectador (captura, tela parada, codificador por hardware, internet) | `ops/tools/` | - | rodado nos dados de produção |
 | **Teste de captura** na máquina de quem compartilha | `/capture-test` | - | e2e com tela de mentira |
@@ -152,12 +154,26 @@ Num notebook fraco, 0,27 núcleo vira 0,6 a 0,8; com três telas ele satura. Aqu
 4. **Produção, com pedido explícito:** `ops/deploy.sh prod` com as chaves que a sessão aprovou, uma por vez
    (`SELECTIVE_MODE=adaptive`, `SEND_GUARD=apply`, `SCREEN_CODEC=auto`). Reversão: `ops/rollback.sh prod` e as chaves em `off`.
 
+### Roteiro da sessão de teste com a galera (dev)
+
+1. Combinar um horário; ninguém mexe no dev nessa hora. Dev: `https://mirotalk-dev.40-160-143-32.sslip.io` (sala `link`, mesma senha).
+2. Cada um abre a sala, **compartilha o jogo** (tela inteira) por uns 15 minutos. Quem tem monitor 2K/4K, ou internet fraca, é o
+   caso mais útil.
+3. Depois, `ssh ovh-mirotalk 'python3 - /home/debian/mirotalk-dev/data/health --from HH:MM --to HH:MM --window 5 --names' < ops/tools/health-diagnose.py`
+   (horário UTC). A linha `SEND` de cada um diz a causa (`capture`, `still`, `encoder`, `uplink`, `ok`), o que o guarda fez
+   (`guard rung`, `capture rung`, `gWhy`) e a pressão do processador; as linhas `VIEW` dizem o que cada um viu.
+4. Quem ficou em `capture`: rodar `/capture-test` no PC dele (parado e com o jogo) e comparar.
+
 ## 9. Riscos e o que falta saber
 
 - **Codificador por hardware**: pode falhar em alguns drivers (cores estranhas, limite de banda em placas Intel/AMD antigas, queda
   de quadros com a fila cheia); por isso é `auto` (só onde a placa diz que tem) e cada remetente reporta `enc`/`hw`.
-- **Gravador (replay) com H.264 de hardware**: o MP4 por software do Constrained Baseline foi testado; o de hardware (SPS/PPS e
-  quadros completos sob demanda) ainda precisa do e2e, e a troca de tamanho no meio de um clipe também.
+- **Gravador (replay) com H.264 de hardware**: testado no dev com um Chrome de verdade (encoder `MediaFoundationVideoEncodeAccelerator`
+  da placa AMD): clipe de 30 s pronto em 4,4 s, 34,5 s de arquivo (entrada de só 4,4 s: o encoder da placa emite quadros completos a
+  cada poucos segundos), MP4 sem erro, áudio e imagem a 15 ms. Com a animação de teste (pesada: precisa de mais de 12 Mbps em 1080p)
+  o encoder da placa entregou 46 a 52 fps em 720p, **abaixo do que o VP8 entrega com o mesmo conteúdo**: encoder de hardware
+  derruba quadros quando falta bitrate em vez de piorar a qualidade. Com conteúdo de jogo de verdade pode ser diferente; é a
+  principal coisa a olhar na sessão com a galera (`hw`, `fps`, `lim`).
 - **Captura menor**: `applyConstraints` em tela funciona (dev, Chrome 154: aceitou 1920 -> 1280 -> 960 e refletiu no `getSettings`),
   mas não se sabe o ganho de fps por PC: por isso a **tentativa** com volta automática.
 - **Flags do Chrome** (`WebRtcAllowWgcUsingTexture`, `ZeroCopyDesktopCapture`) relatadas por outro projeto como capazes de passar

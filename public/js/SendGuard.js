@@ -398,6 +398,9 @@
             const box = document.createElement('div');
             box.id = 'sendGuardTip';
             box.setAttribute('role', 'status');
+            // the text is already Portuguese: the room's machine translation (Google widget) would mangle it
+            box.setAttribute('translate', 'no');
+            box.className = 'notranslate';
             box.style.cssText =
                 'position:fixed;left:16px;bottom:16px;max-width:380px;z-index:2147483000;background:#22111a;color:#f3e8ec;border:1px solid #e0546f;border-radius:10px;padding:12px 36px 12px 14px;font:14px/1.45 system-ui,Segoe UI,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5)';
             const title = document.createElement('div');

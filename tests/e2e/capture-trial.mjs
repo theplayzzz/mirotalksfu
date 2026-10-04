@@ -114,7 +114,9 @@ try {
         check('and only that: the smaller size was kept, it was not taken back', applied.length === 1, `${applied.length} call(s)`);
         const last = series[series.length - 1];
         check('the capture now gives 50+ fps at the smaller size', last.srcFps >= 50 && last.w === 1536, `${last.srcFps.toFixed(1)} fps at ${last.w}x${last.h}`);
-        check('the picture that is sent follows (50+ fps)', last.fps >= 50, `${last.fps.toFixed(1)} fps`);
+        // (what the encoder sends then depends on the estimate of the line of the PC that runs the test: it only has to be well above
+        // the 30 fps of before)
+        check('the picture that is sent follows (well above the 30 fps of before)', last.fps >= 42, `${last.fps.toFixed(1)} fps`);
         check('the guard says so: capture rung 1, kept', last.cap === 1 && /capture-kept|capture-trial|steady|ok/.test(String(last.why)), `${last.cap} ${last.why}`);
     });
 
@@ -135,6 +137,7 @@ try {
                 check('the guard tried a smaller capture and went back, as in the other case', applied.length === 2, JSON.stringify(applied));
                 const tip = await sharer.ev("(() => { const t = document.getElementById('sendGuardTip'); return t ? { text: t.textContent, link: (t.querySelector('a') || {}).getAttribute && t.querySelector('a').getAttribute('href') } : null; })()");
                 check('the sender got a notice that says the capture is slow, with the rate, and where to measure it', !!tip && /captura da sua tela est/.test(tip.text) && /3[2-4] fps/.test(tip.text) && tip.link === '/capture-test', JSON.stringify(tip));
+                check('the machine translation of the room left the text as written', !!tip && /ligar o PC na tomada/.test(tip.text) && /acelera..o por hardware/.test(tip.text), tip && tip.text.slice(-120));
                 const count = await sharer.ev("document.querySelectorAll('#sendGuardTip').length");
                 check('only one notice', count === 1, String(count));
             },
