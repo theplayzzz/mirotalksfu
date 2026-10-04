@@ -27,11 +27,11 @@ fps: é o que a regra do Chrome (abaixo) diz que a captura gasta por quadro.
 
 | Quem | fps enviados | Codificador ocupado | Perda/RTT | Leitura |
 |---|---|---|---|---|
-| lirou (tela 1366) | 58,4 | 0,3 a 0,4 | 0 / 190 ms | sem problema |
-| theplayzzz (2K) | 32 e depois 15,8 | 0,3 a 0,5 | 0 / 200 ms | **captura** (≈15 e ≈31 ms por quadro) |
-| CoreanoRJ | 36 e depois 18 | 0,1 a 0,3 | 0 / 190 ms | **captura** (ou conteúdo parado) |
-| sem nome (1080p) | 32 a 52 | 0,2 a 0,8 | 0 / 170 a 230 ms | captura a 32 fps em 1080p; 52 fps quando a imagem encolhe para 720p |
-| Gustta | 42 a 46 | 0,25 | **12 a 20% / 1 s** | **internet de saída** (7 Mbps numa linha que carrega ~5) |
+| A (notebook, tela 1366) | 58,4 | 0,3 a 0,4 | 0 / 190 ms | sem problema |
+| B (monitor 2K, o dono da sala) | 32 e depois 15,8 | 0,3 a 0,5 | 0 / 200 ms | **captura** (≈15 e ≈31 ms por quadro) |
+| C | 36 e depois 18 | 0,1 a 0,3 | 0 / 190 ms | **captura** (ou conteúdo parado) |
+| D (1080p, 8 processadores lógicos) | 32 a 52 | 0,2 a 0,8 | 0 / 170 a 230 ms | captura a 32 fps em 1080p; 52 fps quando a imagem encolhe para 720p |
+| E | 42 a 46 | 0,25 | **12 a 20% / 1 s** | **internet de saída** (7 Mbps numa linha que carrega ~5) |
 
 Nenhum caso de "o VP8 não dá conta". Os fps de quem tem problema de captura caem em degraus (32, 16...), e isso tem explicação.
 
@@ -98,7 +98,7 @@ Num notebook fraco, 0,27 núcleo vira 0,6 a 0,8; com três telas ele satura. Aqu
 - **Preferência humana** (pesquisa): em jogo, 60 fps em resolução menor é preferido a 30 em maior; o pior 5% dos fps pesa mais
   que a média.
 - **Chrome**: o estimador de banda reage devagar com RTT alto (um corte por RTT + 300 ms), a velocidade enviada passa da
-  estimada (a retransmissão não é descontada), e perdas viram mais retransmissões (o Gustta mandava 7 Mbps contra uma
+  estimada (a retransmissão não é descontada), e perdas viram mais retransmissões (o remetente E mandava 7 Mbps contra uma
   linha de ~5, com 12 a 20% de perda e quase 1 s de RTT).
 - **mediasoup 3.26**: a camada temporal preferida é um teto (não existe "mínimo"); VP8 L1T3 só tira quadros (T0 = 25% dos
   quadros e ~40% dos bits: pouca economia para muita perda de fluidez); H.264 não tem camadas.

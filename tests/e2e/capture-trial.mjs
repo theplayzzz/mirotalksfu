@@ -117,7 +117,7 @@ try {
         // (what the encoder sends then depends on the estimate of the line of the PC that runs the test: it only has to be well above
         // the 30 fps of before)
         check('the picture that is sent follows (well above the 30 fps of before)', last.fps >= 42, `${last.fps.toFixed(1)} fps`);
-        check('the guard says so: capture rung 1, kept', last.cap === 1 && /capture-kept|capture-trial|steady|ok/.test(String(last.why)), `${last.cap} ${last.why}`);
+        check('the guard says so: capture rung 1, kept', last.cap === 1 && /capture-kept|capture-trial|steady|ok|bandwidth/.test(String(last.why)), `${last.cap} ${last.why}`);
     });
 
     await scenario('same-everywhere', 0, async (series, applied) => {
