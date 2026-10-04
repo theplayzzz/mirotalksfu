@@ -167,10 +167,17 @@ export async function joinTestRoom(page, { origin, token, name, room = 'teste' }
     for (let i = 0; i < 120 && !(await dialog()) && !(await joined()); i++) await sleep(250);
     if (!(await joined())) {
         await sleep(1500); // let the dialog finish animating in
-        const position = await page.ev(
-            `(() => { document.getElementById('usernameInput').value = ${JSON.stringify(name)}; const r = document.querySelector('.swal2-confirm').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`
-        );
-        await page.click(position[0], position[1]);
+        // (the dialog can be replaced or can close by itself while it animates: look again for a few seconds before giving up)
+        let position = null;
+        for (let i = 0; i < 20 && !position && !(await joined()); i++) {
+            position = await page
+                .ev(
+                    `(() => { const input = document.getElementById('usernameInput'); const button = document.querySelector('.swal2-confirm'); if (!input || !button) return null; input.value = ${JSON.stringify(name)}; const r = button.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`
+                )
+                .catch(() => null);
+            if (!position) await sleep(250);
+        }
+        if (position) await page.click(position[0], position[1]);
         for (let i = 0; i < 60 && !(await joined()); i++) await sleep(250);
     }
     if (!(await joined())) throw new Error(`${name} could not join the test room`);

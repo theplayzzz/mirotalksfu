@@ -126,9 +126,17 @@
         const capture = given > 0 && given < targetFps * 0.8 && util < 0.7 && !uplink && moving;
         // the browser itself says the processor is what limits the picture (for at least half of the last interval)
         const cpuLimited = (row.limCpuMs || 0) >= POLL_MS / 2;
+        // frames the source gave that never came out of the encoder. When the browser says the BITRATE is what limits it and the
+        // target is still well below the ceiling the guard itself set, it is the estimate of the line growing (the first
+        // seconds of every share start small, and a weak line stays small): the encoder is not the problem and a smaller
+        // picture is not the cure, so it is not counted. A target AT the ceiling is a picture that needs more bits than it is
+        // allowed (a hardware encoder then drops frames): that one is.
+        const dropped = source !== null && (row.fps || 0) < source * 0.75;
+        const atCeiling = row.tgtKbps > 0 && row.maxKbps > 0 && row.tgtKbps >= row.maxKbps * 0.9;
+        const growing = row.lim === 'bandwidth' && !atCeiling;
         // the encoder: busy nearly all the time, or the source gave frames that never came out of it
-        const encoder = (util >= BUSY_LIMIT || cpuLimited || (source !== null && (row.fps || 0) < source * 0.75)) && !capture && !uplink;
-        const bandwidth = row.lim === 'bandwidth' && (row.limBwMs || 0) >= 3000 && !uplink;
+        const encoder = (util >= BUSY_LIMIT || cpuLimited || (dropped && !growing)) && !capture && !uplink;
+        const bandwidth = row.lim === 'bandwidth' && (row.limBwMs || 0) >= POLL_MS * 0.75 && !uplink;
         const calm = !uplink && !encoder && !capture && (row.lost || 0) < 1.5 && (row.retx || 0) < 5 && util < BUSY_ROOM + 0.1 && (row.fps || 0) >= targetFps * 0.92;
         return { busy: util, capture, encoder, uplink, bandwidth, calm, hardware };
     }

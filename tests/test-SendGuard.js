@@ -52,7 +52,25 @@ describe('test-SendGuard (what the sender does about its own screen)', () => {
 
         it('knows when the browser itself says the estimate is the limit, without loss', () => {
             assess({ ...healthy, lim: 'bandwidth', limBwMs: 6000 }).bandwidth.should.be.true();
+            assess({ ...healthy, lim: 'bandwidth', limBwMs: 1600 }).bandwidth.should.be.true(); // 80% of a 2 s sample
             assess({ ...healthy, lim: 'bandwidth', limBwMs: 500 }).bandwidth.should.be.false();
+        });
+
+        it('does not take the first seconds of a share (the bitrate estimate growing) for a saturated encoder', () => {
+            // 31 fps of the 60 the capture gives, a quarter of the encoder busy, the target at 4.9 Mbps of a 12 Mbps ceiling
+            const ramp = { fps: 31, srcFps: 60, encMs: 3.4, kbps: 2900, tgtKbps: 4900, maxKbps: 12000, lim: 'bandwidth', limBwMs: 2000, lost: 0, rtt: 200, retx: 0 };
+            const a = assess(ramp);
+            a.encoder.should.be.false();
+            a.capture.should.be.false(); // the source gives 60
+            a.bandwidth.should.be.true();
+            // the same frames lost with the browser saying nothing about the bitrate: the encoder
+            assess({ ...ramp, lim: 'none', limBwMs: 0 }).encoder.should.be.true();
+        });
+
+        it('does count frames lost at the ceiling the guard set: a picture that needs more bits than it may have', () => {
+            // a hardware encoder at 11.9 Mbps of a 12 Mbps ceiling, 43 of the 60 frames come out
+            const capped = { fps: 43, srcFps: 60, encMs: 9, hw: true, enc: 'MediaFoundationVideoEncodeAccelerator', kbps: 11800, tgtKbps: 11940, maxKbps: 12000, lim: 'bandwidth', limBwMs: 2000, lost: 0, rtt: 190, retx: 0 };
+            assess(capped).encoder.should.be.true();
         });
 
         it('says nothing about a stream it has no numbers for', () => {

@@ -232,6 +232,34 @@ was taken out: `ScreenQuality.js` only chooses the frame-rate layer from the siz
 out of sight keeps everything, and the server ignores a request to pause unless `SELECTIVE_PAUSE_HIDDEN=true` (which
 also covers a tab that still runs the old page). A change of frame-rate layer needs no full picture.
 
+## What it costs to capture, encode and decode a 60 fps screen, 2026-10-03/04 (night)
+
+Made on the test PC (i5-12400F, 12 logical processors, RX 9060 XT, 2560x1440@180 Hz, Windows 10, Chrome 154). The reading of these numbers
+and what was done about them is in `docs/SCREEN-QUALITY-STRATEGY.md`; the scripts are in `tests/e2e/`.
+
+* **Who sent what in production** (health meter, 21:15-23:30 UTC, `ops/tools/health-diagnose.py`): every sender below 54 fps was either
+  capture-limited (the encoder busy 0.1-0.5, no loss; 32 fps = 15.6 ms per captured frame, 15.8 fps = 31.6 ms: `fps = 500 / T`, Chrome keeps
+  the capture to half of the time) or uplink-limited (12-20% loss, 1 s round trip). None was encoder-limited.
+* **Which H.264 gets the graphics card** (`capabilities-probe.mjs`): Baseline 42001f, Main 4d001f/4d0028, High 64001f/640028/64002a are hardware
+  up to 2160p60; the Constrained Baseline 42e0xx, VP8, VP9 and AV1 are software. Decoding: H.264, VP9 and AV1 in hardware, VP8 in software.
+* **Encoding 1080p60 of a busy animation to itself** (`codec-benchmark.mjs`, renderer = where the software encoders run):
+
+  | codec | idle: fps / ms per frame / renderer | 8 processes competing: fps / ms / renderer |
+  |---|---|---|
+  | VP8 | 60 / 6.6 / 0.95 core | 57.5 / 12.4 / 1.39 |
+  | H.264 Constrained Baseline (software) | 59.9 / 6.1 / 0.60 | 53.4 / 17.9 / 1.02 |
+  | H.264 Main (graphics card) | 60.1 / 7.8 / 0.22 | 59.6 / 9.4 / 0.25 |
+
+* **Decoding a 1080p60 stream** (`decode-benchmark.mjs`): VP8 0.27-0.29 core per screen (three screens 0.82); VP9, H.264 and AV1 about 0 (graphics card).
+* **Hardware H.264 through the real room** (`replay-flow.mjs` with `CODEC=h264`): encoder `MediaFoundationVideoEncodeAccelerator (AMD)`, the
+  clip is an MP4 from the start (a 30 s request is a 34.5 s file, the encoder emits a full frame every few seconds), sound and picture 15 ms
+  apart, a resize inside the clip decodes (`RESIZE=1`). The busy animation (needs more than 12 Mbps at 1080p) came out at 46-52 fps in 720p: a hardware
+  encoder drops frames when the bits are not there, where libvpx raises the quantizer. Real game content has not been measured.
+* **The guard's trial of a smaller capture** (`capture-trial.mjs`, a stand-in screen that gives 30 fps at 1080p and 60 fps at 80% of it): after 8 s the capture
+  is asked for 1536x864, gives 60 fps, the trial is kept; when the capture is 30 fps whatever the size, the trial is taken back 12 s after it began and the
+  size is left alone. With the bitrate ceiling lowered along with the size (the first version) the encoder dropped frames (47-52 fps sent of 60 captured):
+  the ceiling is now left alone.
+
 ## Key frame request limit (`KEYFRAME_REQUEST_DELAY_MS`), 2026-10-03
 
 `tests/e2e/keyframe-delay.mjs` against the development instance (one core, one mediasoup worker), from a PC in
