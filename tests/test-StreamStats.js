@@ -42,6 +42,13 @@ describe('test-StreamStats', () => {
             row.setFps.should.equal(60);
         });
 
+        it('says what is captured: the whole screen, a window or a tab (they cost the browser very different amounts)', () => {
+            (row.surf === undefined).should.be.true(); // these settings do not say
+            senderRow({ s: after, before, settings: { ...settings, displaySurface: 'window' } }).surf.should.equal('window');
+            senderRow({ s: after, before, settings: { ...settings, displaySurface: 'monitor' } }).surf.should.equal('monitor');
+            (senderRow({ s: after, before, settings: { ...settings, displaySurface: 'something else' } }).surf === undefined).should.be.true();
+        });
+
         it('says what the encoder was told, by whom, and the content hint and the codec', () => {
             row.scale.should.equal(1.25);
             row.maxKbps.should.equal(9000);

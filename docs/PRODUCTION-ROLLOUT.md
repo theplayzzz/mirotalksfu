@@ -13,7 +13,7 @@ ligados de uma vez**, a pedido do dono ("pode executar tudo agora jogando para p
 | Tempo sem a sala | **11,3 s**: o contêiner antigo parou às 21:14:47,4 e o novo ficou saudável às 21:14:58,7. Havia 8 pessoas conectadas; elas voltaram sozinhas em um minuto |
 | Contêineres | `mirotalksfu` (imagem nova) e `mirotalk-replay` (o gravador, mesma imagem, núcleo 5, 2 GB), os dois `healthy` |
 | Ligado | `HEALTH_METER_ENABLED`, `KEYFRAME_REQUEST_DELAY_MS=1000`, `SELECTIVE_RECEPTION`, `REPLAY_ENABLED`, `REPLAY_UI_ENABLED` (em `/home/debian/.config/mirotalksfu-prod/features.env`) |
-| Fica desligado | `SCREEN_CODEC` (continua `vp8`; o medidor antigo só olhava o perfil Constrained Baseline, que o Chrome codifica em software, e por isso mostrava "só software": o H.264 Main/High usa a placa de vídeo, ver `docs/SCREEN-QUALITY-STRATEGY.md`) e `ROOM_DELIVERY_WORKERS` (a medição mostrou que não precisa) |
+| Fica desligado | `SCREEN_CODEC` (continua `vp8`; o medidor antigo só olhava o perfil Constrained Baseline, que o Chrome codifica em software, e por isso mostrava "só software": o H.264 Main/High usa a placa de vídeo, mas gasta ~12 Mbps até com a imagem parada; ver `docs/SCREEN-QUALITY-STRATEGY.md` 3.3) e `ROOM_DELIVERY_WORKERS` (a medição mostrou que não precisa) |
 | Máquina | `net.core.rmem_max` = 4 MB, gravado em `/etc/sysctl.d/99-replay.conf` (o gravador pede 8 MB de buffer UDP e o kernel concede o dobro do teto) |
 | Caddy | não foi tocado; `reverse_proxy 127.0.0.1:3012` continua servindo `/replay/` sem regra nova |
 | Primeiros minutos | ver "Produção, os primeiros minutos" em `docs/MEASUREMENTS.md`: primeiro replay salvo por um amigo (clipe pronto em 0,87 s, MP4 em 90 s), 0 pacotes perdidos no gravador, espectadores com 29-44 fps e perda ≤ 0,3% |

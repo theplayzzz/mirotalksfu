@@ -56,7 +56,7 @@ describe('test-HealthMeter', () => {
         it('accepts the diagnostic fields of a sender, a viewer and the page (the build, whether it is visible)', () => {
             const sender = {
                 pid: 'a1b2c3d4', type: 'screen', fps: 15.8, w: 1920, h: 1080, encMs: 32.4, lim: 'none', hw: false,
-                srcFps: 16.2, srcW: 2560, srcH: 1440, setW: 1920, setH: 1080, setFps: 60,
+                srcFps: 16.2, srcW: 2560, srcH: 1440, setW: 1920, setH: 1080, setFps: 60, surf: 'window',
                 scale: 1.25, maxKbps: 9000, maxFps: 60, degr: 'maintain-framerate', hint: 'motion', codec: 'VP8',
                 retx: 12.5, huge: 1, qlr: 2, sendMs: 4.5, gRung: 1, gCap: 2, gWhy: 'uplink', gMode: 'observe',
             };

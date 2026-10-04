@@ -78,7 +78,10 @@ export async function cdp(wsUrl) {
 // encoders and decoders are only there). `lowPriority`: the browser runs below the normal priority, so a test that has
 // to run on the PC of a person who is playing does not take the game's CPU (what a test measures is then less exact:
 // do not use it for a comparison of speeds).
-export async function launchChrome({ chrome, tabCaptureTitle = 'E2ESRC', extraFlags = [], width = 1920, height = 1080, headless = true, lowPriority = false }) {
+// fakeUi: false leaves the permission questions of the browser as they are. A request that the flags below do not answer then waits
+// for a person (the test fails by time) where the fake answer would take the first thing on offer, which for a screen capture is the
+// SCREEN of whoever runs the test: every test that captures something real says false.
+export async function launchChrome({ chrome, tabCaptureTitle = 'E2ESRC', extraFlags = [], width = 1920, height = 1080, headless = true, lowPriority = false, fakeUi = true }) {
     const port = 9300 + Math.floor(Math.random() * 90);
     const profile = mkdtempSync(path.join(tmpdir(), 'e2e-chrome-'));
     const proc = spawn(
@@ -88,7 +91,7 @@ export async function launchChrome({ chrome, tabCaptureTitle = 'E2ESRC', extraFl
             // clap board every 2 s) and a headless Chrome sends it to the speakers of whoever runs the test. Never again.
             ...(headless ? ['--headless=new'] : ['--window-position=-32000,-32000']),
             '--mute-audio', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--no-first-run',
-            '--no-default-browser-check', '--use-fake-ui-for-media-stream', `--auto-select-tab-capture-source-by-title=${tabCaptureTitle}`,
+            '--no-default-browser-check', ...(fakeUi ? ['--use-fake-ui-for-media-stream'] : []), `--auto-select-tab-capture-source-by-title=${tabCaptureTitle}`,
             '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
             '--disable-backgrounding-occluded-windows', `--window-size=${width},${height}`, ...extraFlags, 'about:blank',
         ],
@@ -112,8 +115,9 @@ export async function launchChrome({ chrome, tabCaptureTitle = 'E2ESRC', extraFl
     if (!version) throw new Error('Chrome did not start');
     const browser = await cdp(version.webSocketDebuggerUrl);
 
-    async function newPage(url = 'about:blank') {
-        const { targetId } = (await browser.send('Target.createTarget', { url, newWindow: true })).result;
+    // newWindow: false opens a tab in the window that was used last (the page that was in front goes behind it, and is hidden)
+    async function newPage(url = 'about:blank', { newWindow = true } = {}) {
+        const { targetId } = (await browser.send('Target.createTarget', { url, newWindow })).result;
         for (let i = 0; i < 60; i++) {
             const target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.id === targetId);
             if (target) {

@@ -104,6 +104,7 @@ function sanitizeTx(t) {
         setW: num(t.setW, 0, 16384),
         setH: num(t.setH, 0, 16384),
         setFps: num(t.setFps, 0, 1000),
+        surf: pick(t.surf, ['monitor', 'window', 'browser']),
         // what the encoder was told (and by whom): picture size divisor, bitrate and frame rate ceilings
         scale: num(t.scale, 0, 100),
         maxKbps: num(t.maxKbps, 0, 1000000),

@@ -84,6 +84,54 @@ Decodificar 1080p60 (quem assiste, arquivo de 8 Mbps tocado no Chrome):
 
 Num notebook fraco, 0,27 núcleo vira 0,6 a 0,8; com três telas ele satura. Aqui o H.264 também ajuda quem assiste.
 
+### 3.1 O teste de captura no PC do dono da sala (04/10, janela do jogo 2560x1440 com o jogo aberto)
+
+`/capture-test` (versão 1) no PC de teste, compartilhando a **janela do jogo**:
+
+| Passo | Captura | Codificador |
+|---|---|---|
+| 1080p pedido (VP8) | 35,6 fps | 35,4 fps, 7,8 ms por quadro |
+| 720p pedido (VP8) | 33,5 fps | 33,4 fps, 7,5 ms |
+| 1440p, tamanho original (VP8) | 33,2 fps | 32,9 fps (o Chrome reduziu para 1080p por banda), 10,8 ms |
+| 1080p em H.264 da placa | 26,1 fps | 26 fps, 14,4 ms (pressão de CPU "serious" nesse momento) |
+
+Leitura: **a captura entrega 33 a 36 fps qualquer que seja o tamanho pedido** (1080p, 720p ou o original), e os dois codificadores acompanham
+o que a captura dá. O limite é a leitura da imagem de origem pelo Chrome, não o tamanho que a sala pede e não o codificador. Por isso a
+tentativa de "pedir captura menor" do guarda não resolve neste PC (ela se desfaz sozinha, como foi desenhada).
+
+### 3.2 Quanto a captura de uma janela custa, por tamanho da janela (janela própria com animação, PC livre, 04/10)
+
+`tests/e2e/capture-source-size.mjs`: um segundo Chrome toca uma animação que preenche a janela (só 1 pixel dela fica na tela; só essa janela
+é capturada). A captura pede 1920x1080 em todos os casos:
+
+| Janela (pontos) | Captura | Por quadro (500/fps) |
+|---|---|---|
+| ~1264x625 (0,8 MP) | 53,3 fps | 9,4 ms |
+| ~1904x985 (1,9 MP) | 37,0 fps | 13,5 ms |
+| ~2544x1305 (3,3 MP) | 24,7 fps | 20,2 ms |
+
+O custo cresce com o tamanho da **origem** (cerca de 5,5 ms fixos + 4 ms por megaponto): para 60 fps o quadro teria de levar menos de 8,3 ms,
+e só o 720p chegou perto. **Reduzir a origem ajuda, mas não basta para 60 fps em 1080p ou mais** com o caminho padrão do Chrome. A segunda
+rodada (mesma coisa com e sem as opções de captura por placa de vídeo) saiu contaminada: o dono da sala começou a transmitir no meio e a CPU
+foi a 60-94%; ficou **sem conclusão** sobre as opções. Repetir com o PC livre.
+
+### 3.3 O codificador da placa gasta a banda toda, mesmo com a imagem parada (descoberta importante)
+
+`tests/e2e/static-bitrate.mjs`: uma imagem de área de trabalho (parada, só um relógio mudando) em 1920x1080, mandada pelo codificador a vários
+ritmos de quadros:
+
+| Quadros por segundo dados ao codificador | VP8 (software) | H.264 Main (placa de vídeo) |
+|---|---|---|
+| 1 (o que uma tela parada dá) | 86 kbps | **7.738 kbps** |
+| 5 | 355 kbps | **11.986 kbps** |
+| 15 | 1.114 kbps | **11.328 kbps** |
+| 30 | 2.194 kbps | **11.271 kbps** |
+
+O codificador da placa é de **taxa constante**: gasta tudo o que lhe dão, sem mudança nenhuma na imagem (130 vezes o VP8 com 1 quadro por
+segundo, 5 vezes com 30). Numa sala, uma tela parada com `SCREEN_CODEC=auto` mandaria uns 12 Mbps para cada espectador. O guarda agora baixa o teto de
+bitrate de uma tela parada (menos de 5 fps por 6 s: 1,5 Mbps; volta com 10+ fps por 4 s), mas **`auto` não é recomendado** antes de medir com conteúdo
+de jogo de verdade e de decidir o que fazer com telas de pouco movimento (5 a 30 fps).
+
 ## 4. Pesquisa: como outros resolvem (resumo)
 
 - **LiveKit e Jitsi** são afinados para slides: 5 a 15 fps (LiveKit padrão 1080p15; nenhum preset passa de 30 fps; Jitsi
@@ -130,7 +178,9 @@ Num notebook fraco, 0,27 núcleo vira 0,6 a 0,8; com três telas ele satura. Aqu
 | Guarda: lembra o que a linha de cada um aguentou e não sobe para um tamanho que ela não carrega (30 min) | idem | idem | unitário |
 | Guarda: avisa o remetente, uma vez, quando a captura continua lenta e não resta o que tentar (com dicas e o link do teste); não avisa para 24/25/30 fps (filme) nem tela parada | idem | idem | unitário + e2e |
 | Guarda: **tenta captura menor** quando a captura é lenta e a imagem se mexe; volta se não ganhar 20% | idem | `apply` | unitário + e2e (`capture-trial.mjs`) |
-| H.264 Main/High para quem tem codificador por hardware | `ScreenQuality.pickScreenCodec` | `SCREEN_CODEC=auto` | unitário + e2e na sala real com o gravador (encoder da placa AMD, clipe MP4 correto, áudio sincronizado) |
+| H.264 Main/High para quem tem codificador por hardware | `ScreenQuality.pickScreenCodec` | `SCREEN_CODEC=auto` | funciona (e2e com o gravador), **mas gasta ~12 Mbps com tela parada: desligado no dev (volta a `vp8`) até decidir** |
+| Guarda: tela parada recebe teto de bitrate baixo (1,5 Mbps) | `SendGuard.js` | `SEND_GUARD=apply` | unitário |
+| Teste de captura v2: progresso visível, "Medir agora" (animação na tela inteira) e "Medir com o jogo", passos de imagem parada descartados, resultado para copiar/baixar | `/capture-test` | - | e2e com captura real de aba, página escondida atrás do "jogo" e imagem parada |
 | Diagnóstico: build, chaves, captura x codificador x internet, pressão do processador, perfil H.264 | `HealthMeter`, `StreamMeter`, `StreamStats` | `HEALTH_METER_ENABLED` | em uso no dev |
 | `health-diagnose.py`: causa por remetente/espectador (captura, tela parada, codificador por hardware, internet) | `ops/tools/` | - | rodado nos dados de produção |
 | **Teste de captura** na máquina de quem compartilha | `/capture-test` | - | e2e com tela de mentira |
@@ -143,16 +193,25 @@ Num notebook fraco, 0,27 núcleo vira 0,6 a 0,8; com três telas ele satura. Aqu
 - Registro de cada mudança: `gWhy` (por que o guarda mexeu), `gRung` (degrau do codificador), `gCap` (degrau da captura), `bld` e `cb`
   (versões do servidor e da página), `enc`/`hw` (codificador) e `press` (pressão do processador do PC).
 
-## 8. Plano
+## 8. Plano e próximos passos (do mais simples ao mais pesado)
 
-1. **Dev, sozinho:** testes e2e (feitos: unitários, página de teste, tentativas de captura); e2e do guarda e do H.264 por hardware
-   com o gravador de replay.
-2. **Teste de captura no PC de quem tem 2K (precisa de OK):** 3 minutos em `/capture-test`, parado e com o jogo. Mostra fps de captura por
-   tamanho, se pedir captura menor resolve, e se o H.264 da placa segura 60 fps. Decide a regra de captura.
-3. **Sessão com a galera no dev** (`SCREEN_CODEC=auto`, `SEND_GUARD=apply`, medidor ligado): cada um compartilha o jogo;
-   `health-diagnose.py` diz a causa de cada queda.
-4. **Produção, com pedido explícito:** `ops/deploy.sh prod` com as chaves que a sessão aprovou, uma por vez
-   (`SELECTIVE_MODE=adaptive`, `SEND_GUARD=apply`, `SCREEN_CODEC=auto`). Reversão: `ops/rollback.sh prod` e as chaves em `off`.
+**Onde está o gargalo.** Para quem tem monitor 2K, o limite hoje é a **captura** (o Chrome lê e converte cada quadro da origem na CPU,
+no máximo metade do tempo): 33-36 fps com a janela do jogo, 15-32 fps nas transmissões da produção (tela inteira). Codificador e servidor não
+limitam. A internet limita só quem tem linha fraca (o guarda do remetente trata).
+
+| # | Solução | Quanto pode ajudar | Esforço | Como validar |
+|---|---|---|---|---|
+| 1 | **Compartilhar a janela do jogo em vez da tela inteira** (a janela do jogo deu 33-36 fps; na produção o dono da sala fazia 15,8-32 fps, mas a produção ainda não registra se era tela ou janela: **a confirmar**) | possivelmente alto, de graça | nenhum | `/capture-test` "Medir com o jogo", uma vez com "Tela inteira" e outra com a janela |
+| 2 | Origem menor (jogo/janela em resolução menor, fps do jogo limitados a 60-90, jogo e navegador na mesma placa de vídeo) | médio: 53 → 37 → 25 fps de 720p a 1440p numa janela de teste | nenhum | idem, com o jogo em outra resolução |
+| 3 | **Opções de captura por placa de vídeo do Chrome** (`WebRtcAllowWgcUsingTexture`, `ZeroCopyDesktopCapture`): sem cópia para a CPU; outro projeto relatou 28-33 → 53-58 fps. No Windows 10 só atuam na captura de **janela** | potencialmente alto | baixo (um atalho do Chrome ou perfil de teste) | `capture-source-size.mjs FEATURES=...` com o PC livre e o teste de captura num Chrome aberto com as opções |
+| 4 | **Cliente desktop (Electron)**, que já existe na branch `feat/windows-process-audio` (áudio por aplicativo): o Chromium dentro do app permite ligar essas opções para todos sem pedir nada e, depois, uma captura nativa por GPU | alto para todos, qualquer tela | médio/alto | medir o app com o `/capture-test` dentro dele |
+| 5 | **OBS Virtual Camera** como fonte: o OBS captura o jogo pela placa de vídeo, entrega 1080p60 pronto como "câmera" (a sala já aceita câmera a 60 fps); para virar "tela" (replay, fixar) falta um botão "compartilhar câmera como tela" | alto para quem usa OBS | baixo (câmera hoje) / médio (como tela) | câmera virtual na sala do dev |
+| 6 | No app: o guarda (internet, CPU, aviso ao remetente), diagnóstico por causa, H.264 da placa só onde compensa | já pronto no dev | feito | sessão com a galera |
+| 7 | Captura menor automática (guarda): **não ajuda** quando o limite é o tamanho da origem; fica como rede de segurança | baixo | feito | - |
+
+**Ordem proposta:** 1 e 2 (testes de 2 minutos, dono da sala) → 3 (PC livre) → decidir entre 4 e 5 conforme os números → sessão com a galera no dev
+(`SCREEN_CODEC=vp8`, `SEND_GUARD=apply`) → produção, com pedido explícito, uma chave por vez (`SELECTIVE_MODE=adaptive`, `SEND_GUARD=apply`).
+Reversão: `ops/rollback.sh prod` e as chaves em `off`.
 
 ### Roteiro da sessão de teste com a galera (dev)
 
@@ -166,8 +225,9 @@ Num notebook fraco, 0,27 núcleo vira 0,6 a 0,8; com três telas ele satura. Aqu
 
 ## 9. Riscos e o que falta saber
 
-- **Codificador por hardware**: pode falhar em alguns drivers (cores estranhas, limite de banda em placas Intel/AMD antigas, queda
-  de quadros com a fila cheia); por isso é `auto` (só onde a placa diz que tem) e cada remetente reporta `enc`/`hw`.
+- **Codificador por hardware**: gasta a banda toda com a imagem parada (ver 3.3); pode falhar em alguns drivers (cores estranhas, limite de
+  banda em placas Intel/AMD antigas, queda de quadros com a fila cheia). Por isso o dev volta a `SCREEN_CODEC=vp8`; `auto` só depois de medir com jogo de
+  verdade e de decidir o que fazer com telas de pouco movimento.
 - **Gravador (replay) com H.264 de hardware**: testado no dev com um Chrome de verdade (encoder `MediaFoundationVideoEncodeAccelerator`
   da placa AMD): clipe de 30 s pronto em 4,4 s, 34,5 s de arquivo (entrada de só 4,4 s: o encoder da placa emite quadros completos a
   cada poucos segundos), MP4 sem erro, áudio e imagem a 15 ms. Com a animação de teste (pesada: precisa de mais de 12 Mbps em 1080p)
@@ -186,7 +246,8 @@ Num notebook fraco, 0,27 núcleo vira 0,6 a 0,8; com três telas ele satura. Aqu
 ## 10. Dicas para quem compartilha (para colocar na galera)
 
 - Limite os fps do jogo (60 a 90 em vez de ilimitado/180: a captura espera a placa de vídeo; no AMD, o *Frame Rate Target Control*).
-- Jogar e compartilhar em **1920x1080** (ou janela 1080p) captura bem mais rápido do que em 2560x1440 ou 4K.
+- **Compartilhar a janela do jogo** (modo janela sem bordas) em vez da tela inteira: pode ser mais leve para o Chrome (a confirmar com o teste de captura, uma vez de cada jeito).
+- Quanto menor a imagem de origem, mais rápida a captura (numa janela de teste: ~53 fps em 720p, ~37 em 1080p, ~25 em 1440p), mas não é garantia de 60 fps.
 - PC de mesa na tomada, notebook na tomada e em modo de desempenho; aceleração por hardware ligada no navegador; no Opera GX,
   limitador de CPU desligado.
 - Uma única placa de vídeo para jogo e navegador (nada de iGPU + placa dedicada trocando).

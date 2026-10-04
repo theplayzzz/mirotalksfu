@@ -41,6 +41,12 @@
  * tried or the smallest is reached), the sender is told once, in a small notice of its own, what usually fixes it (the size
  * of the game and of the screen, the game's own frame rate, the power cable) and where the capture test is.
  *
+ * A screen that STANDS STILL (the capture gives fewer than 5 frames a second: a keep-alive a second) is given a low bitrate ceiling
+ * (1.5 Mbps) after 6 s, and the ladder's ceiling back when it moves again (10+ frames a second for 4 s). Software encoders spend
+ * nothing on a picture that does not change (VP8: 90 kbps at 1 frame a second), but the encoder of a graphics card is
+ * constant-bitrate and spends all it is given (H.264 Main on an RX 9060 XT: 7.7 Mbps at 1 frame a second, 11-12 Mbps at any
+ * rate, for a desktop with a clock): every viewer of a still screen would receive a game's worth of data for nothing.
+ *
  * Modes (the server's SEND_GUARD): 'observe' decides and reports but changes nothing; 'apply' also does it.
  * The decision logic is pure (below) and loaded by the unit tests (tests/test-SendGuard.js).
  */
@@ -75,6 +81,11 @@
     const CAPTURE_BLOCK_MS = 300000; // a size that did not help is left alone this long, doubling each time, up to an hour
     const CAPTURE_UP_AFTER_MS = 180000; // calm this long before the bigger capture is tried again
     const CAPTURE_TIP_AFTER_MS = 90000; // slow this long, with nothing left to try, and the sender is told what usually helps
+    const STILL_FPS = 5; // a capture that gives fewer frames than this a second is a screen that hardly changes
+    const STILL_AFTER_MS = 6000; // still this long before the bitrate ceiling goes down
+    const STILL_KBPS = 1500; // the ceiling of a screen that stands still
+    const STILL_BACK_FPS = 10; // at least this many frames a second ...
+    const STILL_BACK_MS = 4000; // ... for this long, and the ladder's ceiling comes back
     const DOWN_BUSY_MS = 6000;
     const DOWN_UPLINK_MS = 4000;
     const COOLDOWN_MS = 10000;
@@ -111,7 +122,7 @@
 
     // What the numbers of the last seconds say. Returns { busy, capture, encoder, uplink, bandwidth, calm, hardware }.
     function assess(row, targetFps = TARGET_FPS) {
-        if (!row) return { busy: 0, capture: false, encoder: false, uplink: false, bandwidth: false, calm: false, hardware: false };
+        if (!row) return { busy: 0, capture: false, encoder: false, uplink: false, bandwidth: false, calm: false, hardware: false, still: false };
         const hardware = isHardware(row);
         // the time per frame of a hardware encoder is a delay, not a load: it says nothing about how busy it is
         const util = hardware ? 0 : busy(row);
@@ -121,8 +132,10 @@
         const uplink = (row.lost || 0) >= 4 || (row.retx || 0) >= 15 || ((row.rtt || 0) >= 450 && row.lim === 'bandwidth');
         // the capture gives little (or, where it is not reported, the encoder produces little while idle)
         const given = source !== null ? source : row.fps;
-        // a still screen gives frames only when it changes: few frames and few bits is the content, not a slow capture
-        const moving = row.kbps === undefined || row.kbps >= MOVING_KBPS;
+        // a still screen gives frames only when it changes: a keep-alive a second. Few frames is the content, not a slow capture, and
+        // for a software encoder so are few bits (the bits of a hardware encoder say nothing: it spends all it is given)
+        const still = row.srcFps !== undefined && row.srcFps < STILL_FPS;
+        const moving = !still && (row.kbps === undefined || hardware || row.kbps >= MOVING_KBPS);
         const capture = given > 0 && given < targetFps * 0.8 && util < 0.7 && !uplink && moving;
         // the browser itself says the processor is what limits the picture (for at least half of the last interval)
         const cpuLimited = (row.limCpuMs || 0) >= POLL_MS / 2;
@@ -138,7 +151,7 @@
         const encoder = (util >= BUSY_LIMIT || cpuLimited || (dropped && !growing)) && !capture && !uplink;
         const bandwidth = row.lim === 'bandwidth' && (row.limBwMs || 0) >= POLL_MS * 0.75 && !uplink;
         const calm = !uplink && !encoder && !capture && (row.lost || 0) < 1.5 && (row.retx || 0) < 5 && util < BUSY_ROOM + 0.1 && (row.fps || 0) >= targetFps * 0.92;
-        return { busy: util, capture, encoder, uplink, bandwidth, calm, hardware };
+        return { busy: util, capture, encoder, uplink, bandwidth, calm, hardware, still };
     }
 
     const even = (n) => Math.max(2, Math.round(n / 2) * 2);
@@ -181,8 +194,15 @@
             capFails: 0,
             slowSince: 0, // since when the capture is slow, whatever the trials do (the tip is about this)
             tipShown: false,
+            // a screen that stands still: since when, since when it moves again, and whether its ceiling is the low one
+            stillSince: 0,
+            movingSince: 0,
+            stillCapped: false,
         };
     }
+
+    // The bitrate ceiling to apply: the rung's, or the low one while the screen stands still
+    const ceiling = (state, kbps) => (state.stillCapped ? Math.min(kbps, STILL_KBPS) : kbps);
 
     // One step. `state` is changed and returned with `action` (what to apply, or null). `row`: StreamStats.senderRow.
     // `size`: the size of the picture being captured { width, height }.
@@ -201,6 +221,10 @@
         else next.uplinkSince = 0;
         if (a.calm) next.calmSince = next.calmSince || now;
         else next.calmSince = 0;
+        if (a.still) next.stillSince = next.stillSince || now;
+        else next.stillSince = 0;
+        if (row && row.srcFps >= STILL_BACK_FPS) next.movingSince = next.movingSince || now;
+        else next.movingSince = 0;
 
         // a trial of another capture size is running: its verdict comes first, and nothing else changes meanwhile
         if (next.capTrial) {
@@ -232,6 +256,18 @@
         let action = null;
         const cooled = now - next.changedAt >= COOLDOWN_MS;
         const last = LADDER.length - 1;
+
+        // a screen that stands still gets a low bitrate ceiling, and the ladder's comes back when it moves
+        if (trials && !next.stillCapped && next.stillSince && now - next.stillSince >= STILL_AFTER_MS) {
+            next.stillCapped = true;
+            next.why = 'still';
+            return { state: next, action: { kind: 'cap', kbps: STILL_KBPS, why: 'still' } };
+        }
+        if (trials && next.stillCapped && next.movingSince && now - next.movingSince >= STILL_BACK_MS) {
+            next.stillCapped = false;
+            next.why = 'moving';
+            return { state: next, action: { kind: 'cap', kbps: rungKbps(next.rung, size.width, size.height), why: 'moving' } };
+        }
 
         // the capture has been slow for a long time and nothing is left to try: the sender is told, once
         if (trials && !next.tipShown && next.slowSince && now - next.slowSince >= CAPTURE_TIP_AFTER_MS) {
@@ -293,7 +329,7 @@
             next.busySince = 0;
             next.uplinkSince = 0;
             next.calmSince = 0;
-            action = { kind: 'ladder', rung: next.rung, scale: LADDER[next.rung].scale, kbps: rungKbps(next.rung, size.width, size.height), why: reason };
+            action = { kind: 'ladder', rung: next.rung, scale: LADDER[next.rung].scale, kbps: ceiling(next, rungKbps(next.rung, size.width, size.height)), why: reason };
             next.why = reason;
         } else if (cooled && next.rung > 0 && next.calmSince && now - next.calmSince >= next.upAfterMs) {
             // would the encoder still have room at the bigger size? (its work grows with the number of pixels) and would the
@@ -306,7 +342,7 @@
                 next.changedAt = now;
                 next.lastUpAt = now;
                 next.calmSince = 0;
-                action = { kind: 'ladder', rung: next.rung, scale: LADDER[next.rung].scale, kbps: rungKbps(next.rung, size.width, size.height), why: 'room' };
+                action = { kind: 'ladder', rung: next.rung, scale: LADDER[next.rung].scale, kbps: ceiling(next, rungKbps(next.rung, size.width, size.height)), why: 'room' };
                 next.why = 'room';
             }
         } else {
@@ -315,7 +351,7 @@
         return { state: next, action };
     }
 
-    const rules = { LADDER, CAPTURE_SCALES, captureSize, captureFailed, rungKbps, busy, isHardware, capacityKbps, assess, initialState, step, TARGET_FPS, POLL_MS, COOLDOWN_MS, UP_AFTER_MS, DOWN_BUSY_MS, DOWN_UPLINK_MS, MOVING_KBPS, CAPTURE_TRIAL_AFTER_MS, CAPTURE_EVAL_MS, CAPTURE_BLOCK_MS, CAPTURE_UP_AFTER_MS };
+    const rules = { LADDER, CAPTURE_SCALES, STILL_FPS, STILL_AFTER_MS, STILL_KBPS, STILL_BACK_FPS, STILL_BACK_MS, captureSize, captureFailed, rungKbps, busy, isHardware, capacityKbps, assess, initialState, step, TARGET_FPS, POLL_MS, COOLDOWN_MS, UP_AFTER_MS, DOWN_BUSY_MS, DOWN_UPLINK_MS, MOVING_KBPS, CAPTURE_TRIAL_AFTER_MS, CAPTURE_EVAL_MS, CAPTURE_BLOCK_MS, CAPTURE_UP_AFTER_MS };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = rules;
         return;
@@ -382,7 +418,10 @@
             return;
         }
         try {
-            if (action.kind === 'capture') {
+            if (action.kind === 'cap') {
+                // only the bitrate ceiling changes: the picture keeps its size
+                await producer.setRtpEncodingParameters({ maxBitrate: action.kbps * 1000 });
+            } else if (action.kind === 'capture') {
                 // the capture itself is asked for another size; the encoder keeps its own size and its bitrate ceiling
                 await producer.track.applyConstraints({
                     width: { ideal: action.width, max: action.width },
@@ -424,7 +463,7 @@
             title.textContent = `A captura da sua tela está lenta${fps}`;
             const text = document.createElement('div');
             text.textContent =
-                'O navegador gasta tempo demais para ler a tela e não consegue mandar 60 fps. Costuma ajudar: jogar/compartilhar em 1920x1080 (tela cheia em monitor 2K/4K é o mais pesado), limitar os fps do jogo a 60-90, ligar o PC na tomada e deixar a aceleração por hardware do navegador ligada.';
+                'O navegador gasta tempo demais para ler a tela e não consegue mandar 60 fps. Costuma ajudar: compartilhar a janela do jogo em vez da tela inteira, usar uma resolução menor no jogo (a tela cheia em monitor 2K/4K é o mais pesado), limitar os fps do jogo a 60-90, ligar o PC na tomada e deixar a aceleração por hardware do navegador ligada.';
             const link = document.createElement('a');
             link.href = '/capture-test';
             link.target = '_blank';

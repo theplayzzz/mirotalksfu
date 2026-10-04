@@ -65,6 +65,8 @@
             setW: settings && settings.width,
             setH: settings && settings.height,
             setFps: settings && round(settings.frameRate, 1),
+            // what is being captured: the whole screen, a window or a tab (they cost the browser very different amounts)
+            surf: settings && ['monitor', 'window', 'browser'].includes(settings.displaySurface) ? settings.displaySurface : undefined,
             // what the encoder was told
             scale: encoding.scaleResolutionDownBy !== undefined ? round(encoding.scaleResolutionDownBy, 2) : undefined,
             maxKbps: typeof encoding.maxBitrate === 'number' ? round(encoding.maxBitrate / 1000) : undefined,

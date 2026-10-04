@@ -182,7 +182,8 @@ def main():
             verdict[peer] = cause
             pressure = PRESSURE[cell["press"][peer]] if peer in cell["press"] else None
             guard = [r for r in rows if r.get("gWhy")]
-            extra = (f"  PC pressure {pressure}" if pressure else "") + (f"  guard rung {guard[-1].get('gRung', 0)} capture rung {guard[-1].get('gCap', 0)} ({guard[-1]['gWhy']})" if guard else "")
+            surfaces = sorted({r["surf"] for r in rows if r.get("surf")})
+            extra = (f"  captures: {'/'.join(surfaces)}" if surfaces else "") + (f"  PC pressure {pressure}" if pressure else "") + (f"  guard rung {guard[-1].get('gRung', 0)} capture rung {guard[-1].get('gCap', 0)} ({guard[-1]['gWhy']})" if guard else "")
             print(f"  SEND  {peer:<14} {cause:<9} {details}{extra}")
         workers = [w.get("cpu", 0) for rec in cell["srv"] for w in rec.get("workers", [])]
         worker_peak = max(workers) if workers else None

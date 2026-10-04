@@ -20,6 +20,9 @@
             * {
                 box-sizing: border-box;
             }
+            [hidden] {
+                display: none !important;
+            }
             body {
                 margin: 0;
                 background: var(--bg);
@@ -27,6 +30,8 @@
                 font: 15px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
             }
             main {
+                position: relative;
+                z-index: 1;
                 max-width: 860px;
                 margin: 0 auto;
                 padding: 24px 16px 64px;
@@ -62,6 +67,7 @@
                 padding: 10px 18px;
                 font-size: 15px;
                 cursor: pointer;
+                margin: 4px 8px 4px 0;
             }
             button:disabled {
                 opacity: 0.5;
@@ -72,10 +78,13 @@
                 border: 1px solid var(--line);
                 color: var(--text);
             }
-            label {
-                display: block;
-                margin: 10px 0;
+            a.button {
+                display: inline-block;
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                padding: 9px 16px;
                 color: var(--text);
+                text-decoration: none;
             }
             table {
                 width: 100%;
@@ -102,8 +111,26 @@
             .bad {
                 color: var(--bad);
             }
+            #note {
+                margin-top: 10px;
+                font-weight: 600;
+            }
+            #motion {
+                position: fixed;
+                inset: 0;
+                width: 100vw;
+                height: 100vh;
+                z-index: 0;
+            }
             #stage {
-                display: none;
+                background: #22111aee;
+            }
+            #phase {
+                font-size: 17px;
+            }
+            #live {
+                color: var(--muted);
+                margin-top: 4px;
             }
             #bar {
                 height: 8px;
@@ -118,21 +145,24 @@
                 background: var(--accent);
                 transition: width 0.4s;
             }
-            #dance {
-                position: relative;
-                height: 56px;
-                background: #000;
-                border-radius: 8px;
-                overflow: hidden;
+            #steps {
+                list-style: none;
+                padding: 0;
+                margin: 10px 0 0;
             }
-            #dot {
-                position: absolute;
-                top: 8px;
-                left: 0;
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
-                background: var(--accent);
+            #steps li {
+                padding: 3px 0;
+                color: var(--muted);
+            }
+            #steps li.now {
+                color: var(--text);
+                font-weight: 600;
+            }
+            #steps li.done {
+                color: var(--good);
+            }
+            #steps li.fail {
+                color: var(--bad);
             }
             textarea {
                 width: 100%;
@@ -154,35 +184,41 @@
         </style>
     </head>
     <body>
+        <canvas id="motion" hidden></canvas>
         <main>
             <h1>Teste de captura de tela</h1>
             <p>
-                Mede, neste computador, quantos quadros por segundo o navegador consegue <b>capturar</b> da sua tela e
-                <b>codificar</b> para a sala, em cada tamanho de imagem, e se o codificador por hardware da sua placa de
-                vídeo está disponível. Tudo acontece aqui: a imagem da tela só é contada e descartada, nada é gravado nem
-                enviado a lugar nenhum.
+                Mede, neste computador, quantos quadros por segundo o navegador consegue <b>capturar</b> da sua tela (ou de uma janela) e
+                <b>codificar</b> para a sala, em cada tamanho de imagem, e se o codificador por hardware da sua placa de vídeo está
+                disponível. Tudo acontece aqui: a imagem só é contada e descartada, nada é gravado nem enviado a lugar nenhum.
             </p>
 
             <div class="panel">
-                <ol>
-                    <li>Clique em <b>Começar</b> e escolha <b>Tela inteira</b> na janela do navegador.</li>
+                <p style="margin: 0 0 6px"><b>Escolha como medir</b> (o navegador vai perguntar o que compartilhar):</p>
+                <ul>
                     <li>
-                        Deixe esta aba visível (o quadrado abaixo se mexe para a tela estar sempre mudando) <b>ou</b>, para
-                        medir com o jogo rodando, marque a opção e volte para o jogo. O teste dura cerca de 1 minuto e meio.
+                        <b>Medir agora</b>: sem jogo. Escolha <b>Tela inteira</b> e deixe esta aba na frente: ela passa a mostrar uma
+                        animação, para a tela estar sempre mudando.
                     </li>
-                </ol>
-                <label><input type="checkbox" id="game" /> Vou abrir meu jogo durante o teste (ele começa 15 s depois)</label>
-                <button id="start">Começar</button>
-                <span id="note" style="margin-left: 12px; color: var(--muted)"></span>
+                    <li>
+                        <b>Medir com o jogo</b>: escolha <b>Tela inteira</b> ou a <b>janela do jogo</b> e abra o jogo nos 15 segundos
+                        seguintes. Pode deixar o jogo na frente: o teste leva cerca de 1 minuto e meio, e o título desta aba muda para
+                        ✅ quando termina. Volte aqui para ver o resultado.
+                    </li>
+                </ul>
+                <button id="startNow">Medir agora</button>
+                <button id="startGame" class="ghost">Medir com o jogo (15 s para abrir)</button>
+                <div id="note" role="alert"></div>
             </div>
 
-            <div id="stage" class="panel">
+            <div id="stage" class="panel" hidden>
                 <div id="phase"><b>Preparando…</b></div>
+                <div id="live"></div>
                 <div id="bar"><div id="fill"></div></div>
-                <div id="dance"><div id="dot"></div></div>
+                <ul id="steps"></ul>
             </div>
 
-            <div id="out" style="display: none">
+            <div id="out" hidden>
                 <h2>Resultado</h2>
                 <div class="panel verdict"><ul id="verdict"></ul></div>
                 <div class="panel" style="overflow-x: auto">
@@ -191,7 +227,11 @@
                 <h2>Para enviar o resultado</h2>
                 <p>Copie o texto abaixo e cole na conversa.</p>
                 <textarea id="report" readonly></textarea>
-                <p><button id="copy" class="ghost">Copiar resultado</button> <span id="copied" class="good"></span></p>
+                <p>
+                    <button id="copy" class="ghost">Copiar resultado</button>
+                    <a id="download" class="button" download="teste-de-captura.txt" href="#">Baixar como arquivo</a>
+                    <span id="copied" class="good"></span>
+                </p>
             </div>
         </main>
         <script src="/js/CaptureTest.js"></script>

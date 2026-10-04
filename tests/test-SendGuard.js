@@ -324,11 +324,55 @@ describe('test-SendGuard (what the sender does about its own screen)', () => {
             CAPTURE_BLOCK_MS.should.equal(300000);
         });
 
-        it('never touches a screen that hardly moves: few frames and few bits is the content, not the capture', () => {
+        it('never touches the size of a screen that hardly moves (few frames is the content, not the capture): only its bitrate ceiling goes down, once', () => {
             const still = { fps: 3, srcFps: 3, encMs: 2, kbps: 300, lost: 0, rtt: 150, lim: 'none', limBwMs: 0, retx: 0 };
             assess(still).capture.should.be.false();
-            runWith(initialState(0), still, 2000, 600).should.deepEqual([]);
-            assess({ ...still, kbps: MOVING_KBPS }).capture.should.be.true();
+            assess(still).still.should.be.true();
+            const actions = runWith(initialState(0), still, 2000, 600);
+            actions.should.have.length(1);
+            actions[0].should.containEql({ kind: 'cap', kbps: 1500, why: 'still' });
+            actions[0].at.should.be.within(6000, 10000);
+            // between a still screen and a moving one: few bits are the content for a software encoder, many bits are a moving picture
+            assess({ ...still, srcFps: 12, fps: 12, kbps: 300 }).capture.should.be.false();
+            assess({ ...still, srcFps: 12, fps: 12, kbps: MOVING_KBPS }).capture.should.be.true();
+        });
+
+        it('knows a still screen sent by a hardware encoder, whatever bits it spends on it (7.7 Mbps for a frame a second)', () => {
+            const hardwareStill = { fps: 1, srcFps: 1, encMs: 9.7, kbps: 7700, hw: true, enc: 'MediaFoundationVideoEncodeAccelerator', lost: 0, rtt: 150, lim: 'none', limBwMs: 0, retx: 0 };
+            const a = assess(hardwareStill);
+            a.still.should.be.true();
+            a.capture.should.be.false(); // not "a slow capture": no capture trial, no notice
+            const state = initialState(0);
+            const actions = runWith(state, hardwareStill, 2000, 300);
+            actions.map((x) => x.kind + ':' + x.why).should.deepEqual(['cap:still']);
+            state.rung.should.equal(0);
+            state.capRung.should.equal(0);
+        });
+
+        it('gives the ceiling of the ladder back when the screen moves again (10+ frames a second for 4 s), not before', () => {
+            const still = { fps: 1, srcFps: 1, encMs: 2, kbps: 100, lost: 0, rtt: 150, lim: 'none', limBwMs: 0, retx: 0 };
+            const state = initialState(0);
+            runWith(state, still, 2000, 20).should.have.length(1);
+            state.stillCapped.should.be.true();
+            // 8 frames a second is not enough to be called moving
+            runWith(state, { ...calm, fps: 8, srcFps: 8, kbps: 800 }, 22000, 30).filter((x) => x.kind === 'cap').should.deepEqual([]);
+            state.stillCapped.should.be.true();
+            const back = runWith(state, calm, 52000, 20).filter((x) => x.kind === 'cap');
+            back.should.have.length(1);
+            back[0].should.containEql({ kind: 'cap', kbps: 12000, why: 'moving' });
+            back[0].at.should.be.within(56000, 60000);
+            state.stillCapped.should.be.false();
+        });
+
+        it('keeps the ceiling of a still screen when the ladder acts, and does nothing of it when only observing', () => {
+            const state = initialState(0);
+            state.stillCapped = true;
+            // 8 frames a second (neither still nor moving) out of an encoder that is busy all the time
+            const slowAndBusy = { fps: 8, encMs: 115, srcFps: 8, kbps: 3000, lost: 0, rtt: 200, lim: 'none', limBwMs: 0, retx: 0 };
+            const actions = runWith(state, slowAndBusy, 2000, 30).filter((x) => x.kind === 'ladder');
+            actions[0].kbps.should.equal(1500);
+            const stillRow = { fps: 1, srcFps: 1, encMs: 2, kbps: 100, lost: 0, rtt: 150, lim: 'none', limBwMs: 0, retx: 0 };
+            runWith(initialState(0), stillRow, 2000, 120, { trials: false }).should.deepEqual([]);
         });
 
         it('does not try anything in observe mode (the capture is not changed, so a trial would mean nothing)', () => {

@@ -2,7 +2,7 @@
 
 require('should');
 
-const { describe: describeSteps, report, percentile, h264Rank, isHardware } = require('../public/js/CaptureTest');
+const { describe: describeSteps, report, percentile, h264Rank, isHardware, isStill } = require('../public/js/CaptureTest');
 
 // What the capture test tells a person about their own computer, from the numbers it measured.
 describe('test-CaptureTest (the page that measures the capture of the screen)', () => {
@@ -26,7 +26,7 @@ describe('test-CaptureTest (the page that measures the capture of the screen)', 
             texts(lines).should.match(/menos de 8 ms/);
             // the 2K screen gets the tip about the size of the screen and the game's own frame rate
             texts(lines).should.match(/2560x1440/);
-            texts(lines).should.match(/1920x1080/);
+            texts(lines).should.match(/53 fps numa janela de 720p, 37 em 1080p e 25 em 1440p/);
         });
 
         it('says which size holds 60 fps when a smaller capture does', () => {
@@ -34,9 +34,11 @@ describe('test-CaptureTest (the page that measures the capture of the screen)', 
             texts(lines).should.match(/1280x720 ela chega a 58 fps/);
         });
 
-        it('says a smaller size does not help when the cost is reading the whole screen', () => {
-            const lines = describeSteps([step('room', { capFps: 30 }), step('small', { capFps: 31, capW: 1280, capH: 720 })], { surface: 'monitor' });
-            texts(lines).should.match(/quase não muda/);
+        it('says the limit is the reading of the original picture when every size gives about the same frame rate', () => {
+            const lines = describeSteps([step('room', { capFps: 30 }), step('small', { capFps: 31, capW: 1280, capH: 720 })], { surface: 'monitor', nativeW: 2560, nativeH: 1440 });
+            texts(lines).should.match(/quase o mesmo número de quadros \(30 a 31 fps\)/);
+            texts(lines).should.match(/imagem de ORIGEM/);
+            texts(lines).should.match(/Próximos testes/);
         });
 
         it('warns about uneven frames even when the average is high', () => {
@@ -52,6 +54,58 @@ describe('test-CaptureTest (the page that measures the capture of the screen)', 
         it('says it could not measure when the first step failed', () => {
             tones(describeSteps([{ id: 'room', error: 'x' }], {})).should.deepEqual(['bad']);
             tones(describeSteps([], {})).should.deepEqual(['bad']);
+        });
+    });
+
+    describe('what a person really got (the two reports of 04/10/2026, a 2560x1440 screen)', () => {
+        const env = { surface: 'window', nativeW: 2560, nativeH: 1440, caps: { h264e: 'hw' }, power: 'na tomada' };
+        // the page itself was shared and then hidden behind the game: after the first step the window stood still
+        const parked = [
+            step('room', { capFps: 30.8, gapP95: 80, capW: 1920, capH: 1050, kbps: 608 }),
+            step('small', { capFps: 8.3, gapP95: 1000.7, capW: 1280, capH: 700, kbps: 58 }),
+            step('native', { capFps: 1, gapP95: 1001.8, capW: 2560, capH: 1400, kbps: 151 }),
+            step('h264', { codec: 'H264', capFps: 0.9, gapP95: 1601.9, capW: 1920, capH: 1050, kbps: 6674, enc: 'MediaFoundationVideoEncodeAccelerator (A', hw: true }),
+        ];
+        // the window of the game, with the game running
+        const game = [
+            step('room', { capFps: 35.6, gapP95: 34.9, capW: 1920, capH: 1080, encFps: 35.4, encMs: 7.8, kbps: 8165 }),
+            step('small', { capFps: 33.5, gapP95: 37.6, capW: 1280, capH: 720, encFps: 33.4, encMs: 7.5, kbps: 7668, press: 'fair' }),
+            step('native', { capFps: 33.2, gapP95: 41.2, capW: 2560, capH: 1440, encFps: 32.9, encMs: 10.8, sentW: 1920, kbps: 8310, limit: 'bandwidth', press: 'fair' }),
+            step('h264', { codec: 'H264', capFps: 26.1, gapP95: 54.3, capW: 1920, capH: 1080, encFps: 26, encMs: 14.4, kbps: 10930, enc: 'MediaFoundationVideoEncodeAccelerator (A', hw: true, press: 'serious' }),
+        ];
+
+        it('knows a window that stood still: a keep-alive of a frame or two a second, even when a hardware encoder spent 6.7 Mbps on it', () => {
+            isStill(parked[1]).should.be.true(); // 8.3 fps, 58 kbps, gaps of 1 s
+            isStill(parked[2]).should.be.true();
+            isStill(parked[3]).should.be.true(); // 0.9 fps whatever the bitrate
+            isStill(parked[0]).should.be.false(); // 30.8 fps
+            isStill(game[3]).should.be.false();
+            isStill({ capFps: 5, kbps: 5000, gapP95: 300 }).should.be.false(); // a slow capture of a moving picture is not a still one
+            isStill(null).should.be.false();
+        });
+
+        it('does not draw conclusions from the steps of a window that stood still', () => {
+            const lines = describeSteps(parked, env);
+            texts(lines).should.match(/praticamente não mudou/);
+            // not "a smaller size changes nothing", not "the card encoder sent 1 fps", not "the processor"
+            texts(lines).should.not.match(/quase o mesmo número|quase não muda/);
+            texts(lines).should.not.match(/H\.264 da placa de vídeo está disponível/);
+            // but what the card's encoder did with the still picture is worth saying: 6.7 Mbps for a frame a second, against 151 kbps of the VP8
+            texts(lines).should.match(/Com a imagem parada o codificador da placa de vídeo mandou 6674 kbps \(o VP8 mandou 58\)/);
+        });
+
+        it('says what the game window shows: the same frame rate at every size, so the limit is the reading of the original picture', () => {
+            const lines = describeSteps(game, env);
+            texts(lines).should.match(/só 36 fps/);
+            texts(lines).should.match(/quase o mesmo número de quadros \(33 a 36 fps\)/);
+            texts(lines).should.match(/imagem de origem \(2560x1440\)/);
+            texts(lines).should.match(/Pedir uma captura menor não ajuda/);
+            texts(lines).should.match(/uma janela/);
+            // the encoder follows what the capture gives
+            texts(lines).should.match(/O codificador acompanha a captura: 35 fps em 1920x1080/);
+            // the card's encoder step had a slower capture of its own: the comparison with VP8 is not fair
+            texts(lines).should.match(/captura desse passo também foi diferente \(26 fps\)/);
+            texts(lines).should.match(/sob pressão \("serious"\)/);
         });
     });
 
@@ -101,7 +155,7 @@ describe('test-CaptureTest (the page that measures the capture of the screen)', 
             text.should.match(/- H\.264: não testado \(sem perfil\)/);
             text.should.match(/Codificar: vp8e=sw h264e=hw/);
             const json = JSON.parse(text.split('\n').find((l) => l.startsWith('JSON: ')).slice(6));
-            json.v.should.equal(1);
+            json.v.should.equal(2);
             json.steps[0].capFps.should.equal(31.8);
             json.env.gpu.should.equal('AMD Radeon RX 9060 XT');
         });

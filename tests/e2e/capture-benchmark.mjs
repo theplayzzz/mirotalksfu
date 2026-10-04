@@ -15,6 +15,9 @@
 import { launchChrome, sleep } from './lib.mjs';
 
 if (!process.env.E2E_CHROME) throw new Error('set E2E_CHROME');
+// This one captures the SCREEN of whoever runs it (frames are only counted, never saved, shown or sent). It does nothing unless the person
+// has said so for this run.
+if (process.env.ALLOW_SCREEN !== '1') throw new Error('this test captures the real screen: run it with ALLOW_SCREEN=1 only when its owner has agreed and nothing private is on it');
 const SOURCE = process.env.SOURCE || 'Screen 1';
 const SECONDS = Number(process.env.SECONDS || 15);
 

@@ -57,6 +57,8 @@ const capturer = await launchChrome({
     chrome: process.env.E2E_CHROME,
     headless: false,
     lowPriority,
+    // no fake answer to the permission question: when the flag does not find the window the capture waits for a person, it does not take the screen
+    fakeUi: process.env.ALLOW_SCREEN === '1',
     extraFlags: [`--auto-select-desktop-capture-source=${TITLE}`, '--window-size=600,400', '--disable-features=CalculateNativeWinOcclusion', ...features],
 });
 
