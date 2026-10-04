@@ -363,6 +363,34 @@ describe('test-SendGuard (what the sender does about its own screen)', () => {
             undone.capRung.should.equal(1);
         });
 
+        it('tells the sender once, after 90 s, when the capture stays slow and there is nothing left to try', () => {
+            const state = initialState(0);
+            // every size is tried and does not help: the capture is 30 fps whatever the size (4 sizes, 3 trials, blocks growing)
+            let tips = [];
+            for (let t = 2000; t < 1500000; t += 2000) {
+                const { action } = step(state, slow(33), t, base);
+                if (action && action.kind === 'tip') tips.push({ at: t, ...action });
+            }
+            tips.length.should.equal(1);
+            tips[0].should.containEql({ kind: 'tip', cause: 'capture', fps: 33 });
+            // it did not come before the first try had its verdict: blocked sizes, 90 s of slowness
+            tips[0].at.should.be.aboveOrEqual(90000);
+        });
+
+        it('does not tell a sender whose capture is fine, whose screen hardly moves, or when only observing', () => {
+            const none = [];
+            const still = { fps: 3, srcFps: 3, encMs: 2, kbps: 300, lost: 0, rtt: 150, lim: 'none', limBwMs: 0, retx: 0 };
+            // (a capture of 24, 25 or 30 fps is most likely a film: no tip either)
+            for (const [rows, options] of [[calm, {}], [still, {}], [slow(33), { trials: false }], [slow(30), {}], [slow(24.5), {}]]) {
+                const state = initialState(0);
+                for (let t = 2000; t < 1500000; t += 2000) {
+                    const { action } = step(state, rows, t, base, options);
+                    if (action && action.kind === 'tip') none.push(action);
+                }
+            }
+            none.should.deepEqual([]);
+        });
+
         it('forgets a trial the browser could not carry out and leaves that size alone for an hour', () => {
             const state = initialState(0);
             runWith(state, slow(32), 2000, 12);
@@ -371,7 +399,7 @@ describe('test-SendGuard (what the sender does about its own screen)', () => {
             (state.capTrial === null).should.be.true();
             state.capRung.should.equal(0);
             state.capBlocked[1].should.equal(12000 + 3600000);
-            runWith(state, slow(32), 14000, 600).should.deepEqual([]);
+            runWith(state, slow(32), 14000, 600).filter((a) => a.kind !== 'tip').should.deepEqual([]);
         });
 
         it('lets nothing else change the picture while a trial is running', () => {

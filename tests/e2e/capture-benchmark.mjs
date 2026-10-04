@@ -25,7 +25,8 @@ const CONFIGS = (process.env.CONFIGS ? process.env.CONFIGS.split(',') : [
     'room today, no hint:1920x1080:VP8:none',
     'native capture, no size limit:0x0:VP8:motion',
     'smaller capture 1280x720:1280x720:VP8:motion',
-    'room today, H.264:1920x1080:H264:motion',
+    'room today, H.264 Main (graphics card):1920x1080:H264@4d001f:motion',
+    'native capture, H.264 Main:0x0:H264@4d001f:motion',
     'room today, VP9:1920x1080:VP9:motion',
 ]).map((entry) => {
     const [label, size, codec, hint] = entry.split(':');
@@ -70,26 +71,27 @@ try {
             pc2.ontrack = (e) => { sink.srcObject = e.streams[0] || new MediaStream([e.track]); sink.play().catch(() => {}); };
             const tx = pc1.addTransceiver(track, { direction: 'sendonly', sendEncodings: [{ maxBitrate: 12000000 }] });
             const codecs = RTCRtpSender.getCapabilities('video').codecs;
-            const preferred = codecs.filter((c) => c.mimeType === 'video/' + cfg.codec);
+            const [codecName, profile] = cfg.codec.split('@');
+            const preferred = codecs.filter((c) => c.mimeType === 'video/' + codecName && (!profile || (c.sdpFmtpLine || '').includes('profile-level-id=' + profile)));
             if (!preferred.length) { stream.getTracks().forEach((t) => t.stop()); return { error: 'the browser does not offer ' + cfg.codec }; }
-            tx.setCodecPreferences([...preferred, ...codecs.filter((c) => c.mimeType !== 'video/' + cfg.codec)]);
+            tx.setCodecPreferences([...preferred, ...codecs.filter((c) => !preferred.includes(c))]);
             await pc1.setLocalDescription(await pc1.createOffer());
             await pc2.setRemoteDescription(pc1.localDescription);
             const answer = await pc2.createAnswer();
             let sdp = answer.sdp;
-            const match = new RegExp('a=rtpmap:(\\\\d+) ' + cfg.codec + '/90000').exec(sdp);
+            const match = new RegExp('a=rtpmap:(\\\\d+) ' + codecName + '/90000').exec(sdp);
             if (match) {
                 const pt = match[1];
                 const extra = 'x-google-start-bitrate=3000';
                 const line = new RegExp('a=fmtp:' + pt + ' ([^\\\\r\\\\n]*)');
-                sdp = line.test(sdp) ? sdp.replace(line, 'a=fmtp:' + pt + ' $1;' + extra) : sdp.replace('a=rtpmap:' + pt + ' ' + cfg.codec + '/90000\\r\\n', 'a=rtpmap:' + pt + ' ' + cfg.codec + '/90000\\r\\na=fmtp:' + pt + ' ' + extra + '\\r\\n');
+                sdp = line.test(sdp) ? sdp.replace(line, 'a=fmtp:' + pt + ' $1;' + extra) : sdp.replace('a=rtpmap:' + pt + ' ' + codecName + '/90000\\r\\n', 'a=rtpmap:' + pt + ' ' + codecName + '/90000\\r\\na=fmtp:' + pt + ' ' + extra + '\\r\\n');
             }
             await pc2.setLocalDescription({ type: 'answer', sdp });
             await pc1.setRemoteDescription(pc2.localDescription);
             const sample = async () => {
                 let out = {};
                 for (const s of (await pc1.getStats()).values()) {
-                    if (s.type === 'outbound-rtp' && s.kind === 'video') out = { ...out, frames: s.framesEncoded, time: s.totalEncodeTime, ts: s.timestamp, limit: s.qualityLimitationReason, durations: s.qualityLimitationDurations, w: s.frameWidth, h: s.frameHeight, bytes: s.bytesSent };
+                    if (s.type === 'outbound-rtp' && s.kind === 'video') out = { ...out, frames: s.framesEncoded, time: s.totalEncodeTime, ts: s.timestamp, limit: s.qualityLimitationReason, durations: s.qualityLimitationDurations, w: s.frameWidth, h: s.frameHeight, bytes: s.bytesSent, impl: s.encoderImplementation, he: s.powerEfficientEncoder };
                     if (s.type === 'media-source' && s.kind === 'video') out = { ...out, srcFrames: s.frames, srcW: s.width, srcH: s.height };
                 }
                 return out;
@@ -105,7 +107,7 @@ try {
                 srcFps: (b.srcFrames - a.srcFrames) / dt, srcW: b.srcW, srcH: b.srcH,
                 fps: (b.frames - a.frames) / dt, w: b.w, h: b.h,
                 encMs: ((b.time - a.time) / Math.max(b.frames - a.frames, 1)) * 1000,
-                mbps: ((b.bytes - a.bytes) * 8) / dt / 1e6, limit: b.limit,
+                mbps: ((b.bytes - a.bytes) * 8) / dt / 1e6, limit: b.limit, impl: b.impl, hw: b.he,
             };
         })()`);
         const wall = (Date.now() - startedAt) / 1000;
@@ -113,7 +115,7 @@ try {
         rows.push(row);
         console.log(row.error
             ? `${row.label}: ${row.error}`
-            : `${row.label.padEnd(34)} capture ${row.srcFps.toFixed(1)} fps at ${row.srcW}x${row.srcH} (settings ${row.setW}x${row.setH}@${row.setFps}) | sent ${row.fps.toFixed(1)} fps at ${row.w}x${row.h} | ${row.encMs.toFixed(1)} ms/frame | ${row.mbps.toFixed(1)} Mbps | limit ${row.limit} | whole browser ${row.cores.toFixed(1)} cores`);
+            : `${row.label.padEnd(34)} capture ${row.srcFps.toFixed(1)} fps at ${row.srcW}x${row.srcH} (settings ${row.setW}x${row.setH}@${row.setFps}) | sent ${row.fps.toFixed(1)} fps at ${row.w}x${row.h} | ${row.encMs.toFixed(1)} ms/frame | ${row.mbps.toFixed(1)} Mbps | limit ${row.limit} | encoder ${row.impl || '?'}${row.hw === undefined ? '' : row.hw ? ' (hardware)' : ' (software)'} | whole browser ${row.cores.toFixed(1)} cores`);
         await sleep(2000);
     }
 } finally {

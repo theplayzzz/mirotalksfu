@@ -37,7 +37,9 @@
  * (track.applyConstraints), and if the capture does not give at least 20% more frames in the next 11 s it goes back and
  * that size is left alone for 5 minutes (10, 20 ... if it fails again). A screen that hardly moves is not a slow capture
  * (the capture gives frames only when the screen changes), and is never touched. Much later, after 3 minutes of calm, the
- * bigger size is tried again the same way.
+ * bigger size is tried again the same way. When the capture stays slow and there is nothing left to try (every smaller size was
+ * tried or the smallest is reached), the sender is told once, in a small notice of its own, what usually fixes it (the size
+ * of the game and of the screen, the game's own frame rate, the power cable) and where the capture test is.
  *
  * Modes (the server's SEND_GUARD): 'observe' decides and reports but changes nothing; 'apply' also does it.
  * The decision logic is pure (below) and loaded by the unit tests (tests/test-SendGuard.js).
@@ -72,6 +74,7 @@
     const CAPTURE_GAIN = 1.2; // a trial that does not give this much more (and 4 fps more) is taken back
     const CAPTURE_BLOCK_MS = 300000; // a size that did not help is left alone this long, doubling each time, up to an hour
     const CAPTURE_UP_AFTER_MS = 180000; // calm this long before the bigger capture is tried again
+    const CAPTURE_TIP_AFTER_MS = 90000; // slow this long, with nothing left to try, and the sender is told what usually helps
     const DOWN_BUSY_MS = 6000;
     const DOWN_UPLINK_MS = 4000;
     const COOLDOWN_MS = 10000;
@@ -168,6 +171,8 @@
             capSince: 0,
             capBlocked: {},
             capFails: 0,
+            slowSince: 0, // since when the capture is slow, whatever the trials do (the tip is about this)
+            tipShown: false,
         };
     }
 
@@ -180,6 +185,8 @@
         if (!next.base && size.width > 0 && size.height > 0) next.base = { width: size.width, height: size.height };
         if (a.capture) next.capSince = next.capSince || now;
         else next.capSince = 0;
+        if (a.capture) next.slowSince = next.slowSince || now;
+        else next.slowSince = 0;
         if (a.encoder) next.busySince = next.busySince || now;
         else next.busySince = 0;
         if (a.uplink) next.uplinkSince = next.uplinkSince || now;
@@ -217,6 +224,18 @@
         let action = null;
         const cooled = now - next.changedAt >= COOLDOWN_MS;
         const last = LADDER.length - 1;
+
+        // the capture has been slow for a long time and nothing is left to try: the sender is told, once
+        if (trials && !next.tipShown && next.slowSince && now - next.slowSince >= CAPTURE_TIP_AFTER_MS) {
+            const exhausted = next.capRung >= CAPTURE_SCALES.length - 1 || now < (next.capBlocked[next.capRung + 1] || 0);
+            // a screen that gives 24, 25 or 30 frames a second is most likely a film or a video, not a slow capture
+            const fps = row && row.srcFps > 0 ? row.srcFps : row && row.fps;
+            const content = [24, 25, 30].some((rate) => Math.abs(fps - rate) <= 1.2);
+            if (exhausted && !content) {
+                next.tipShown = true;
+                return { state: next, action: { kind: 'tip', cause: 'capture', fps: row && row.srcFps > 0 ? row.srcFps : row && row.fps, why: 'tip' } };
+            }
+        }
 
         // a slow capture: ask the capture itself for a smaller size, and see whether it gives more frames
         if (trials && next.base && cooled && row && row.srcFps > 0) {
@@ -350,6 +369,10 @@
             state.rung = rungBefore;
             return;
         }
+        if (action.kind === 'tip') {
+            showTip(action);
+            return;
+        }
         try {
             if (action.kind === 'capture') {
                 // the capture itself is asked for another size; the encoder keeps its own size and its bitrate ceiling
@@ -364,6 +387,43 @@
         } catch (error) {
             if (action.kind === 'capture') captureFailed(state, now);
             entry.last = { rung: state.rung, cap: state.capRung, why: 'failed', mode };
+        }
+    }
+
+    // A small notice of its own (not a pop-up of the room's library, which holds only one at a time): what usually fixes a capture
+    // that stays slow. Once per share, gone by itself after a while.
+    function showTip(action) {
+        try {
+            if (typeof document === 'undefined' || document.getElementById('sendGuardTip')) return;
+            const box = document.createElement('div');
+            box.id = 'sendGuardTip';
+            box.setAttribute('role', 'status');
+            box.style.cssText =
+                'position:fixed;left:16px;bottom:16px;max-width:380px;z-index:2147483000;background:#22111a;color:#f3e8ec;border:1px solid #e0546f;border-radius:10px;padding:12px 36px 12px 14px;font:14px/1.45 system-ui,Segoe UI,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5)';
+            const title = document.createElement('div');
+            title.style.cssText = 'font-weight:700;margin-bottom:4px';
+            const fps = action.fps > 0 ? ` (${Math.round(action.fps)} fps)` : '';
+            title.textContent = `A captura da sua tela está lenta${fps}`;
+            const text = document.createElement('div');
+            text.textContent =
+                'O navegador gasta tempo demais para ler a tela e não consegue mandar 60 fps. Costuma ajudar: jogar/compartilhar em 1920x1080 (tela cheia em monitor 2K/4K é o mais pesado), limitar os fps do jogo a 60-90, ligar o PC na tomada e deixar a aceleração por hardware do navegador ligada.';
+            const link = document.createElement('a');
+            link.href = '/capture-test';
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = 'Medir a captura deste PC';
+            link.style.cssText = 'display:inline-block;margin-top:6px;color:#e0546f';
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.textContent = '\u00d7';
+            close.setAttribute('aria-label', 'Fechar');
+            close.style.cssText = 'position:absolute;top:6px;right:10px;background:none;border:0;color:#f3e8ec;font-size:20px;line-height:1;cursor:pointer';
+            close.addEventListener('click', () => box.remove());
+            box.append(title, text, link, close);
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 45000);
+        } catch (error) {
+            // a notice must never get in the way
         }
     }
 

@@ -6,6 +6,8 @@
 //   fast-when-small   the capture is 30 fps at 1920x1080 and 60 fps at the 80% size: the smaller size has to be kept
 //   same-everywhere   the capture is 30 fps whatever the size (a video that really is 30 fps): the guard has to try, see that
 //                     it did not help, and go back to the size it had, and not try again for minutes
+//   TIP=1 adds a third one, 33 fps whatever the size (not a film's rate): after 90 s with nothing left to try the sender is told,
+//                     once, in a notice of its own, what usually helps
 //
 // The page asks for the screen the way the room does; what is replaced is the capture itself (a canvas whose drawing rate
 // and size follow what the track is asked for, like the capture of a screen does).
@@ -25,7 +27,7 @@ const check = (name, ok, detail = '') => {
 };
 
 // A capture with a speed that depends on its size: `slowAbove` = the width above which it only gives every other frame
-const stub = (slowAbove) => `(() => {
+const stub = (slowAbove, slowFps = 30) => `(() => {
     window.__applied = [];
     navigator.mediaDevices.getDisplayMedia = async (options) => {
         const canvas = document.createElement('canvas');
@@ -42,12 +44,13 @@ const stub = (slowAbove) => `(() => {
             last = now;
             // a slow capture gives 30 frames a second, a fast one 60 (the animation frames come faster than that in a headless
             // Chrome, so the rate is kept by time): the canvas is only drawn, and so only captured, when a frame is due
-            const interval = canvas.width > ${slowAbove} ? 1000 / 30 : 1000 / 60;
+            const interval = canvas.width > ${slowAbove} ? 1000 / ${slowFps} : 1000 / 60;
             if (owed < interval) return requestAnimationFrame(draw);
             owed = Math.min(owed - interval, interval);
             tick++;
             const W = canvas.width, H = canvas.height;
-            ctx.fillStyle = 'hsl(' + (tick * 2 % 360) + ' 40% 20%)'; ctx.fillRect(0, 0, W, H);
+            // a still background and balls that move: like a game, it needs real bits but not the whole picture changing every frame
+            ctx.fillStyle = '#10141c'; ctx.fillRect(0, 0, W, H);
             for (const b of balls) { b.x += b.vx; b.y += b.vy; if (b.x < 0 || b.x > 1) b.vx *= -1; if (b.y < 0 || b.y > 1) b.vy *= -1; ctx.beginPath(); ctx.fillStyle = 'hsl(' + ((b.h + tick) % 360) + ' 80% 55%)'; ctx.arc(b.x * W, b.y * H, b.r * W, 0, 7); ctx.fill(); }
             // frames are captured when this says so (captureStream(0)): a canvas that is drawn less often is NOT repeated
             if (track && track.requestFrame) track.requestFrame();
@@ -77,10 +80,10 @@ const read = `(async () => {
         kbps: out && out.bytesSent, guard, applied: window.__applied };
 })()`;
 
-async function scenario(name, slowAbove, expectation) {
+async function scenario(name, slowAbove, expectation, { slowFps = 30, seconds = 75 } = {}) {
     console.log(`\n== ${name}`);
     const sharer = await chrome.newPage();
-    await sharer.send('Page.addScriptToEvaluateOnNewDocument', { source: stub(slowAbove) });
+    await sharer.send('Page.addScriptToEvaluateOnNewDocument', { source: stub(slowAbove, slowFps) });
     await joinTestRoom(sharer, { origin, token, name: `CT-${name}` });
     const config = await sharer.ev("fetch('/config').then((r) => r.json())");
     check('the instance runs the guard in apply mode', config.screen.guard === 'apply', String(config.screen.guard));
@@ -89,7 +92,7 @@ async function scenario(name, slowAbove, expectation) {
     let before = await sharer.ev(read);
     const series = [];
     // 75 s: the first 10 s of cooldown, 8 s of slow capture, the trial (11 s), and time for the verdict to show
-    for (let t = 2; t <= 75; t += 3) {
+    for (let t = 2; t <= seconds; t += 3) {
         await sleep(3000);
         const now = await sharer.ev(read);
         const dt = (now.ts - before.ts) / 1000;
@@ -99,7 +102,7 @@ async function scenario(name, slowAbove, expectation) {
         before = now;
     }
     const applied = (await sharer.ev(read)).applied;
-    await expectation(series, applied);
+    await expectation(series, applied, sharer);
     await sharer.close();
     await sleep(3000);
 }
@@ -123,6 +126,21 @@ try {
         const gap = applied.length === 2 ? (applied[1].at - applied[0].at) / 1000 : 0;
         check('the verdict came after the trial time (about 11 s), not at once', gap >= 9 && gap <= 20, `${gap.toFixed(1)} s`);
     });
+
+    if (process.env.TIP === '1') {
+        await scenario(
+            'tip-after-90-s',
+            0,
+            async (series, applied, sharer) => {
+                check('the guard tried a smaller capture and went back, as in the other case', applied.length === 2, JSON.stringify(applied));
+                const tip = await sharer.ev("(() => { const t = document.getElementById('sendGuardTip'); return t ? { text: t.textContent, link: (t.querySelector('a') || {}).getAttribute && t.querySelector('a').getAttribute('href') } : null; })()");
+                check('the sender got a notice that says the capture is slow, with the rate, and where to measure it', !!tip && /captura da sua tela est/.test(tip.text) && /3[2-4] fps/.test(tip.text) && tip.link === '/capture-test', JSON.stringify(tip));
+                const count = await sharer.ev("document.querySelectorAll('#sendGuardTip').length");
+                check('only one notice', count === 1, String(count));
+            },
+            { slowFps: 33, seconds: 111 }
+        );
+    }
 } finally {
     chrome.close();
 }

@@ -326,7 +326,11 @@ try {
         await sleep(2500);
         const progressed = await gallery.ev("(() => { const v = document.getElementById('rpVideo'); return { time: v.currentTime, paused: v.paused, started: v.currentTime > 0 }; })()");
         check('it plays', progressed.started && !progressed.paused, JSON.stringify(progressed));
-        check('the timeline starts where the clip was asked to start (the lead-in is hidden)', progressed.time >= clip.startOffsetS - 0.5, `at ${progressed.time.toFixed(1)} s, start offset ${clip.startOffsetS} s`);
+        // (since 03/10 the player starts from the first picture and MARKS where the request begins: skipping the lead-in made the
+        // browser decode up to a minute of video before the first picture)
+        check('the player starts from the first picture, not past the lead-in', progressed.time > 0 && progressed.time < 4.5, `at ${progressed.time.toFixed(1)} s, start offset ${clip.startOffsetS} s`);
+        const marker = await gallery.ev("(() => { const m = document.getElementById('rpAsked'); return m ? { hidden: m.hidden || getComputedStyle(m).display === 'none', left: m.style.left || getComputedStyle(m).getPropertyValue('--ask') } : null; })()");
+        check('the timeline marks where the request starts when there is a lead-in', clip.startOffsetS < 0.5 || (marker && !marker.hidden), JSON.stringify(marker));
         const shot = (await gallery.send('Page.captureScreenshot', { format: 'png' })).result.data;
         const { writeFileSync } = await import('node:fs');
         writeFileSync(path.join(OUT_DIR, 'gallery-player.png'), Buffer.from(shot, 'base64'));
