@@ -146,6 +146,8 @@ describe('test-HealthMeter', () => {
 
         it('writes one JSON line per report into the file of its day', async () => {
             const m = meter();
+            // the days of this test are in the past: the daily rotation (which would compress them) is not what is tested here
+            m.maintenance = async () => {};
             const noon = Date.UTC(2026, 9, 3, 12, 0, 0);
             const nextDay = Date.UTC(2026, 9, 4, 0, 0, 5);
             m.record({ socketId: 's1', roomId: 'link', peerName: 'Ana', report: { rx: [rx] }, now: noon });
