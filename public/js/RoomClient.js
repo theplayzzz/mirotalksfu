@@ -5078,7 +5078,8 @@ class RoomClient {
     setIsVideo(status) {
         if (!isBroadcastingEnabled || (isBroadcastingEnabled && isPresenter)) {
             this.peer_info.peer_video = status;
-            if (!this.peer_info.peer_video) {
+            // A screen being shared still shows this person: the "camera off" card only when neither is on
+            if (!this.peer_info.peer_video && !this.peer_info.peer_screen) {
                 console.log('Set local video enabled: ' + status);
                 this.setVideoOff(this.peer_info, false);
                 this.sendVideoOff();
