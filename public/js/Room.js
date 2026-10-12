@@ -1330,6 +1330,20 @@ async function whoAreYou() {
         elemDisplay('initVideoSelect', false);
         elemDisplay('tabVideoDevicesBtn', false);
         initVideoContainerShow(false);
+    } else if (isVideoAllowed) {
+        // LinkDoNotle: everybody joins with the camera off (people join while playing). The camera button of this
+        // dialog or of the room turns it on; the camera and its quality are chosen in the settings (Video devices).
+        isVideoAllowed = false;
+        isInitVideoLoaded = true;
+        initVideoButton.className = 'fas fa-video-slash';
+        setColor(initVideoButton, 'red');
+        setColor(startVideoButton, 'red');
+        elemDisplay('initVideo', false);
+        elemDisplay('initVideoLoader', false);
+        // the "audio and video" toggle would turn the camera and the microphone on together: the two buttons are enough
+        elemDisplay('initAudioVideoButton', false);
+        initVideoSelect.disabled = true;
+        initVideoContainerShow(false);
     }
     if (!BUTTONS.main.startAudioButton) {
         isAudioAllowed = false;
@@ -1626,6 +1640,7 @@ async function handleAudioVideo() {
 async function checkInitVideo(isVideoAllowed) {
     if (isVideoAllowed && BUTTONS.main.startVideoButton) {
         if (initVideoSelect.value) {
+            show(initVideoSelect); // hidden while the dialog opened with the camera off
             initVideoContainerShow();
             await changeCamera(initVideoSelect.value);
             isInitVideoLoaded = true;
@@ -3180,7 +3195,8 @@ async function setSelectsInit() {
         //
         console.log('04.4 ----> Get Local Storage Devices after', lS.getLocalStorageDevices());
     }
-    if (initVideoSelect.value) await changeCamera(initVideoSelect.value);
+    // The preview opens the camera: only when the camera is on (it used to open even with the camera disabled)
+    if (initVideoSelect.value && isVideoAllowed && BUTTONS.main.startVideoButton) await changeCamera(initVideoSelect.value);
 }
 
 function selectOptionByValueExist(selectElement, value) {
@@ -3555,7 +3571,8 @@ function handleSelects() {
         refreshLsDevices();
     };
     videoQuality.onchange = () => {
-        rc.closeThenProduce(RoomClient.mediaType.video, videoSelect.value);
+        // With the camera off the choice is kept for the next start (it used to turn the camera on)
+        if (video) rc.closeThenProduce(RoomClient.mediaType.video, videoSelect.value);
     };
     screenQuality.onchange = () => {
         rc.closeThenProduce(RoomClient.mediaType.screen);
@@ -3566,7 +3583,7 @@ function handleSelects() {
         lS.setSettings(localStorageSettings);
     };
     videoFps.onchange = () => {
-        rc.closeThenProduce(RoomClient.mediaType.video, videoSelect.value);
+        if (video) rc.closeThenProduce(RoomClient.mediaType.video, videoSelect.value);
         localStorageSettings.video_fps = videoFps.selectedIndex;
         lS.setSettings(localStorageSettings);
     };
