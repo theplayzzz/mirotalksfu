@@ -3,12 +3,17 @@
 //   E2E_CHROME="C:\Program Files\Google\Chrome\Application\chrome.exe" E2E_ORIGIN=https://mirotalk-dev... \
 //   E2E_TOKEN=<ops/dev-test-token.sh> node tests/e2e/camera-flow.mjs
 //
-// Two headless people, A and B. Chrome's fake camera stands in for a webcam and a canvas for the screen. Checks:
+// Two headless people, A and B. A looped video file stands in for a webcam (needs ffmpeg) and a canvas for the screen.
+// Checks:
 //   - A joins with the camera off even without video=0 in the link, and the join dialog never opens the camera;
 //   - camera and screen at the same time are two tiles for B;
 //   - turning the camera off while the screen is shared leaves no "camera off" card next to the screen;
 //   - changing the camera quality in the settings with the camera off keeps it off; with it on, it restarts it;
 //   - with nothing on, B sees A's "camera off" card again.
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { joinTestRoom, launchChrome, sleep, startScreenShare, stubScreenCapture } from './lib.mjs';
 
 const chrome = process.env.E2E_CHROME || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
@@ -41,7 +46,16 @@ function trackCameraTracks() {
 }
 const liveCameraTracks = "window.__cameraTracks.filter((t) => t.readyState === 'live').length";
 
-const browser = await launchChrome({ chrome, extraFlags: ['--use-fake-device-for-media-stream'], width: 1600, height: 900 });
+// Chrome's built-in fake camera ends by itself ~1.5 s after it opens (headless, Chrome 154), which looks exactly like a
+// camera the room lost. A video file as the fake camera stays on: ffmpeg writes 4 s of a test pattern (MJPEG), looped.
+const fakeCamera = path.join(mkdtempSync(path.join(tmpdir(), 'e2e-fakecam-')), 'camera.mjpeg');
+execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30', '-t', '4', '-q:v', '5', '-f', 'mjpeg', fakeCamera]);
+const browser = await launchChrome({
+    chrome,
+    extraFlags: ['--use-fake-device-for-media-stream', `--use-file-for-fake-video-capture=${fakeCamera}`],
+    width: 1600,
+    height: 900,
+});
 try {
     const a = await browser.newPage();
     const b = await browser.newPage();
@@ -67,6 +81,9 @@ try {
 
     await joinTestRoom(a, { origin, token, name: 'A' }); // the dialog is open: it types the name and joins
     await joinTestRoom(b, { origin, token, name: 'B' });
+    // the room keeps starting the local media for a moment after the join (microphone, then the camera when it is on)
+    for (const page of [a, b]) await waitUntil(page, "rc.producerLabel.has('audioType')", 15);
+    await sleep(2500);
     const peerA = await a.ev('rc.peer_id');
     const tilesOfA = `(() => {
         const tiles = [...document.querySelectorAll('.Camera[data-peer-id="${peerA}"]')];
@@ -81,6 +98,13 @@ try {
     check('room: A has no camera producer', !(await a.ev(hasCamera)));
     check('room: A camera is closed', (await a.ev(liveCameraTracks)) === 0);
     check('room: the start camera button is shown', await a.ev("!document.getElementById('startVideoButton').classList.contains('hidden')"));
+    const shown = (id) => `(() => { const e = document.getElementById('${id}'); return !!e && !e.classList.contains('hidden') && getComputedStyle(e).display !== 'none'; })()`;
+    check('room: the camera list next to the camera button', await a.ev(shown('startVideoDeviceDropdown')));
+    await a.ev("document.getElementById('settingsButton').click()");
+    await sleep(800);
+    check('settings: the Video devices tab (camera, quality, frame rate)', await a.ev(shown('tabVideoDevicesBtn')));
+    await a.ev("document.getElementById('settingsButton').click()");
+    await sleep(500);
     check('B sees the camera off card of A', await waitUntil(b, `${tilesOfA}.off === 1`), JSON.stringify(await b.ev(tilesOfA)));
 
     // ---- screen, then camera ----
