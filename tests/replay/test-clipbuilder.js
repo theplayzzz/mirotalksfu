@@ -195,7 +195,7 @@ describe('replay: clip builder (with FFmpeg)', function () {
         meta.seconds.should.equal(5);
         meta.startOffsetS.should.be.within(0, 1.001); // key frame every second
         meta.durationS.should.be.approximately(5 + meta.startOffsetS, 0.1);
-        meta.expiresAt.should.equal(meta.createdAt + 7 * 24 * 3600 * 1000);
+        (meta.expiresAt === null).should.be.true();
 
         const file = path.join(stagingDir, 'clip.webm');
         fs.statSync(file).size.should.equal(meta.files.original.bytes);

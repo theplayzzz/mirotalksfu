@@ -32,11 +32,19 @@ transports, `52000`-`52999`), `REPLAY_MAX_SECONDS` (`300`).
 Recorder container (same image, `command: node app/src/replay/Recorder.js`): `REPLAY_LISTEN_PORT` (`7000`),
 `REPLAY_DATA_DIR` (`/data/replays`, read/write), `REPLAY_SFU_EVENTS_URL` (`http://mirotalksfu-dev:3010/internal/replay/events`),
 `REPLAY_INTERNAL_SECRET`, `REPLAY_BUFFER_SECONDS` (`300`), `REPLAY_LEAD_IN_SECONDS` (`90`, extra kept so a clip can start
-at a key frame), `REPLAY_KEEP_AFTER_END_S` (`120`), `REPLAY_RETENTION_DAYS` (`7`), `REPLAY_QUOTA_GB` (`20`),
+at a key frame), `REPLAY_KEEP_AFTER_END_S` (`120`), `REPLAY_QUOTA_GB` (`20`),
 `REPLAY_MIN_FREE_GB` (`10`), `REPLAY_MP4_HEIGHT` (`720`), `REPLAY_FFMPEG_THREADS` (`2`).
 
 Both authenticate to each other with the header `X-Replay-Secret: <REPLAY_INTERNAL_SECRET>` (constant time compare).
 The recorder API is only reachable on the private Docker network.
+
+Saved clips do not expire by age. At **80% of `REPLAY_QUOTA_GB`** (16 GiB with the default 20 GiB quota), the recorder
+deletes the oldest clips until usage is below the watermark. Originals, thumbnails, metadata and completed MP4s count
+toward that usage. Checks run at startup, after saving a clip or completing an MP4, and during the periodic sweep.
+The newest clip and the clip just saved/converted are protected by quota cleanup, even if a single clip is oversized.
+The emergency `REPLAY_MIN_FREE_GB` disk guard still reclaims clips if the host disk runs low. Users can also delete
+their clips manually. `REPLAY_RETENTION_DAYS` from older environment files is ignored; existing clips lose their old
+expiry on load. The short rolling capture buffer keeps its existing time limit.
 
 ## 2. Vocabulary
 
@@ -98,7 +106,7 @@ frame: kind, key flag, media time, length, bytes); nothing outside the recorder 
 {
   "id": "20261003-141502-3f9a2c1b-x7k2",
   "shareId": "...", "roomId": "link",
-  "createdAt": 1791036902000, "expiresAt": 1791641702000,
+  "createdAt": 1791036902000, "expiresAt": null,
   "sharer": "Beltrano", "requestedBy": "Fulano",
   "seconds": 60, "durationS": 63.4, "startOffsetS": 3.4,
   "codec": "vp8", "hasAudio": true,
@@ -165,7 +173,7 @@ SameSite=Lax; Path=/replay/; Max-Age=30 days`). Created by:
 |---|---|
 | `GET /replay/` | the gallery page (`public/views/Replay.html`; it shows a password form when the API says 401). Query: `clip=<id>` opens that clip, `from=room` makes "back to the room" close the tab. |
 | `GET /replay/api/me` | `{ ok: true }` or 401 |
-| `GET /replay/api/clips` | `{ clips: [publicMeta + mine: bool], now, retentionDays }` newest first |
+| `GET /replay/api/clips` | `{ clips: [publicMeta + mine: bool], now, retentionDays: null, retention: { mode: "quota", quotaGb: 20, cleanupAtPercent: 80 } }` newest first |
 | `GET /replay/api/clips/:id` | public meta |
 | `GET /replay/media/:id/:file` | `clip.webm`, `clip.mp4`, `thumb.jpg` with Range support, `Cache-Control: private`; download with `?download=1` (adds `Content-Disposition`) |
 | `POST /replay/api/clips/:id/mp4` | `{ state: "ready" \| "queued" \| "running", progress, etaSeconds }` |
@@ -203,7 +211,7 @@ Off unless `/config` says `replay.enabled` (`{ enabled, maxSeconds, options: [60
 
 - Header "LinkDoNotle · Replays", **Voltar para a sala** (`window.close()` when `from=room`, otherwise a link to `/join/link`).
 - Filters `Todos` `Meus` and a person selector; newest first; cards with thumbnail, duration, whose screen, who saved,
-  how long ago, time left before expiry and a `MP4 pronto` badge; new clips appear live (SSE); delete for the owner.
+  how long ago, "Sem prazo de expiração" and a `MP4 pronto` badge; new clips appear live (SSE); delete for the owner.
 - A password form when the API answers 401 (people who did not come from the room).
 - **Player**: own controls in the room's theme: play/pause, timeline you can drag, time, volume, speed `1x` `1,5x`
   `2x`, full screen, picture in picture; keys Space, ←/→ (5 s), F, M. The video plays from its first frame (no seek past

@@ -82,7 +82,6 @@ function optionsFromEnv(env = process.env) {
         bufferSeconds: num(env.REPLAY_BUFFER_SECONDS, 300),
         leadInSeconds: num(env.REPLAY_LEAD_IN_SECONDS, 90),
         keepAfterEndS: num(env.REPLAY_KEEP_AFTER_END_S, 120),
-        retentionDays: num(env.REPLAY_RETENTION_DAYS, 7),
         quotaGb: num(env.REPLAY_QUOTA_GB, 20),
         minFreeGb: num(env.REPLAY_MIN_FREE_GB, 10),
         mp4Height: num(env.REPLAY_MP4_HEIGHT, 720),
@@ -103,7 +102,6 @@ function resolveOptions(o) {
         bufferSeconds: 300,
         leadInSeconds: 90,
         keepAfterEndS: 120,
-        retentionDays: 7,
         quotaGb: 20,
         minFreeGb: 10,
         mp4Height: 720,
@@ -313,6 +311,8 @@ class Recorder extends EventEmitter {
                 const meta = JSON.parse(await fsp.readFile(path.join(dir, 'meta.json'), 'utf8'));
                 if (meta.id !== entry.name || !CLIP_ID_RE.test(meta.id))
                     throw new Error('meta does not match the directory');
+                // Saved clips from older releases also stop expiring by age.
+                meta.expiresAt = null;
                 for (const file of await fsp.readdir(dir)) {
                     if (file.endsWith('.part') || file.endsWith('.tmp'))
                         await fsp.rm(path.join(dir, file), { force: true });
@@ -482,15 +482,8 @@ class Recorder extends EventEmitter {
         this.log.info(`replay: buffer of share ${share.id} deleted`);
     }
 
-    /** Expired clips and clips over the quota (oldest first). */
+    /** Saved clips have no time limit; reclaim space at 80% of their quota (oldest first). */
     async _sweepClips() {
-        const now = this.now();
-        for (const entry of [...this.clips.values()]) {
-            if (entry.meta.expiresAt <= now) {
-                this.log.info(`replay: clip ${entry.meta.id} expired`);
-                await this._removeClip(entry.meta.id);
-            }
-        }
         await this._enforceQuota(null);
     }
 
@@ -501,14 +494,15 @@ class Recorder extends EventEmitter {
     }
 
     async _enforceQuota(keepId) {
-        const limit = this.opts.quotaGb * GIB;
-        if (this._clipBytes() <= limit) return;
-        const oldest = [...this.clips.values()]
-            .filter((e) => e.meta.id !== keepId)
-            .sort((a, b) => a.meta.createdAt - b.meta.createdAt);
+        const limit = this.opts.quotaGb * GIB * 0.8;
+        if (this._clipBytes() < limit) return;
+        const oldest = [...this.clips.values()].sort((a, b) => a.meta.createdAt - b.meta.createdAt);
+        // Keep the newest clip even if it alone exceeds the watermark, also during periodic/startup sweeps.
+        const newestId = oldest.at(-1)?.meta.id;
         for (const entry of oldest) {
-            if (this._clipBytes() <= limit) return;
-            this.log.info(`replay: over the quota: deleting clip ${entry.meta.id}`);
+            if (this._clipBytes() < limit) return;
+            if (entry.meta.id === keepId || entry.meta.id === newestId) continue;
+            this.log.info(`replay: at 80% of the clip quota: deleting clip ${entry.meta.id}`);
             await this._removeClip(entry.meta.id);
         }
     }
@@ -849,7 +843,6 @@ class Recorder extends EventEmitter {
                 id,
                 stagingDir,
                 ffmpegPath: this.opts.ffmpegPath,
-                retentionDays: this.opts.retentionDays,
                 log: this.log,
                 now: this.now,
                 signal: this.abort.signal,

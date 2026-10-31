@@ -485,6 +485,7 @@ class RoomClient {
         this.audioProducerId = null;
         this.audioConsumers = new Map();
         this.locallyMutedPeerIds = new Set();
+        this.remoteAudioDefaults = new Map(); // peer id -> last screen producer id (null before its first screen)
 
         this.masterOutputVolume = 1; // 0..1 master speaker volume, multiplied with each per-peer volume
 
@@ -3728,6 +3729,9 @@ class RoomClient {
     // ####################################################
 
     async consume(producer_id, peer_name, peer_info, type) {
+        // Set the listener's default before creating/attaching any autoplay element. Audio and video consumers
+        // can finish in either order. Reconciliation of the same share must preserve a listener's choice.
+        this.initializeRemoteAudio(peer_info.peer_id, type, producer_id);
         let createdConsumer = null;
         const existingConsumerId = this.consumersProducer.get(producer_id);
         if (existingConsumerId && this.consumers.has(existingConsumerId)) {
@@ -4316,6 +4320,7 @@ class RoomClient {
                 elem.setAttribute('volumeBar', remotePeerId + '___pVolume');
                 elem.autoplay = true;
                 elem.volume = 1.0;
+                this.applyOutputVolume(elem);
 
                 if (!this.hasAudioTrack(stream)) {
                     elem.muted = true;
@@ -11931,6 +11936,20 @@ class RoomClient {
     // ####################################################
     // HANDLE AUDIO
     // ###################################################
+
+    initializeRemoteAudio(peerId, type, producerId) {
+        if (peerId === this.peer_id) return;
+        const firstMedia = !this.remoteAudioDefaults.has(peerId);
+        const newScreen = type === mediaType.screen && this.remoteAudioDefaults.get(peerId) !== producerId;
+        if (!firstMedia && !newScreen) return;
+
+        this.remoteAudioDefaults.set(peerId, type === mediaType.screen ? producerId : null);
+        this.locallyMutedPeerIds.add(peerId);
+        this.getOutputAudioElements().forEach((audio) => {
+            if (audio.dataset.peerId === peerId) this.applyOutputVolume(audio);
+        });
+        this.refreshLocalPeerAudioButton(peerId);
+    }
 
     handleAU(uid, peer_id) {
         const button = this.getId(uid);

@@ -16,7 +16,6 @@ window.ReplayGallery = (() => {
     // (v2: the speed is now per second of the part that is converted, not of the whole file with its lead-in)
     const MP4_RATIO_KEY = 'replay.mp4Ratio.v2';
     const VOLUME_KEY = 'replay.volume';
-    const EXPIRES_SOON_MS = 24 * 3600 * 1000;
     const dayFormat = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const hourFormat = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const reducedMotion = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -24,7 +23,7 @@ window.ReplayGallery = (() => {
     // Tests shorten these.
     const timings = {
         idleMs: 2800, // controls fade after this long without the pointer
-        tickMs: 30000, // "há 3 min" and "expira em" are refreshed
+        tickMs: 30000, // "há 3 min" is refreshed
         mp4PollMs: 2500, // fallback when the stream is silent while a conversion runs
         mp4QuietMs: 4000, // how long the stream may be silent before polling
         reconnectMs: 3000,
@@ -89,7 +88,6 @@ window.ReplayGallery = (() => {
         view: 'loading', // loading | login | browse | player
         clips: [],
         offset: 0, // the server clock minus this one, ms
-        retentionDays: 7,
         scope: 'all',
         person: '',
         loaded: false,
@@ -207,7 +205,6 @@ window.ReplayGallery = (() => {
     function applyList(data) {
         app.clips = L.sortNewestFirst(data.clips.filter((clip) => clip && L.isClipId(clip.id)));
         if (isNumber(data.now)) app.offset = data.now - Date.now();
-        if (isNumber(data.retentionDays)) app.retentionDays = data.retentionDays;
         app.listError = false;
         if (!app.loaded) {
             app.loaded = true;
@@ -295,7 +292,7 @@ window.ReplayGallery = (() => {
                 ? `${total} ${total === 1 ? 'replay' : 'replays'}`
                 : `${shown.length} de ${total} ${total === 1 ? 'replay' : 'replays'}`;
         $('rgFoot').textContent =
-            `Os replays ficam guardados por ${app.retentionDays} ${app.retentionDays === 1 ? 'dia' : 'dias'}. ` +
+            'Os replays não expiram por tempo. Ao atingir 80% do espaço reservado, os mais antigos são apagados automaticamente. ' +
             'Quem salvou o replay ou compartilhou a tela pode excluí-lo.';
     }
 
@@ -427,9 +424,7 @@ window.ReplayGallery = (() => {
         ]
             .filter(Boolean)
             .join(' · ');
-        const left = clip.expiresAt - now();
-        card.foot.textContent = L.formatLeft(left);
-        card.foot.classList.toggle('is-soon', left < EXPIRES_SOON_MS);
+        card.foot.textContent = 'Sem prazo de expiração';
         card.dur.textContent = L.formatClock(lengthOf(clip));
         card.pill.hidden = !(clip.files && clip.files.mp4);
         card.link.setAttribute(
@@ -876,7 +871,7 @@ window.ReplayGallery = (() => {
                 `duração ${L.formatClock(lengthOf(clip))}${asked >= 1 ? ` (o pedido começa em ${L.formatClock(asked)})` : ''}`
             )
         );
-        parts.push(document.createTextNode(L.formatLeft(clip.expiresAt - now())));
+        parts.push(document.createTextNode('Sem prazo de expiração'));
         const nodes = [];
         parts.forEach((part, index) => {
             if (index) nodes.push(document.createTextNode(' · '));

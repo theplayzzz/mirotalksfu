@@ -9,7 +9,7 @@
  *   ... in the room code:         replay.hub.attachSocket(socket, room, peer); replay.hub.onProduce({...});
  *
  * Settings (environment): REPLAY_ENABLED=true, REPLAY_UI_ENABLED (default true), REPLAY_RECORDER_URL,
- * REPLAY_INTERNAL_SECRET (24+ characters), REPLAY_DATA_DIR, REPLAY_MAX_SECONDS, REPLAY_RETENTION_DAYS,
+ * REPLAY_INTERNAL_SECRET (24+ characters), REPLAY_DATA_DIR, REPLAY_MAX_SECONDS, REPLAY_QUOTA_GB,
  * REPLAY_PORT_MIN/MAX, REPLAY_PIPE_PORT_MIN/MAX, REPLAY_BIND_IP, REPLAY_MIN_FREE_GB, RECORDER_KEYFRAME_SAFETY_S.
  * It stays off, with a line in the log, when the secrets are missing or are the defaults.
  */
@@ -31,14 +31,18 @@ function create({ io, singleRoom, jwtKey, getRoom, pageFile, log = console, env 
     // The gallery is open to the people of ONE room, who all know its password: with many rooms there would be no
     // single answer to "who may see these clips"
     if (!singleRoom.enabled) {
-        log.error('replay: it needs the single room setup (SINGLE_ROOM_ID and SINGLE_ROOM_PASSWORD). Replay stays off.');
+        log.error(
+            'replay: it needs the single room setup (SINGLE_ROOM_ID and SINGLE_ROOM_PASSWORD). Replay stays off.'
+        );
         return null;
     }
 
     const secret = env.REPLAY_INTERNAL_SECRET || '';
     const url = env.REPLAY_RECORDER_URL || '';
     if (secret.length < 24 || !url) {
-        log.error('replay: REPLAY_ENABLED needs REPLAY_RECORDER_URL and a REPLAY_INTERNAL_SECRET of at least 24 characters. Replay stays off.');
+        log.error(
+            'replay: REPLAY_ENABLED needs REPLAY_RECORDER_URL and a REPLAY_INTERNAL_SECRET of at least 24 characters. Replay stays off.'
+        );
         return null;
     }
 
@@ -67,7 +71,7 @@ function create({ io, singleRoom, jwtKey, getRoom, pageFile, log = console, env 
         singleRoom,
         pageFile,
         dataDir: env.REPLAY_DATA_DIR || '/data/replays',
-        retentionDays: number(env.REPLAY_RETENTION_DAYS, 7, 1, 365),
+        quotaGb: number(env.REPLAY_QUOTA_GB, 20, 0, Number.MAX_SAFE_INTEGER),
         log,
     });
     const internalEvents = createInternalEventsHandler({ hub, secret });

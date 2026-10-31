@@ -292,7 +292,8 @@ describe('replay: recorder control API', function () {
             options.secret.should.equal('s');
             options.leadInSeconds.should.equal(90); // the documented defaults
             options.keepAfterEndS.should.equal(120);
-            options.retentionDays.should.equal(7);
+            (options.retentionDays === undefined).should.be.true();
+            (optionsFromEnv({ REPLAY_RETENTION_DAYS: '7' }).retentionDays === undefined).should.be.true();
             options.minFreeGb.should.equal(10);
             options.ffmpegThreads.should.equal(2);
             options.dataDir.should.equal('/data/replays');

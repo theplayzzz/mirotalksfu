@@ -70,7 +70,7 @@ function secretMatches(provided, expected) {
     return a.length === b.length && a.length > 0 && crypto.timingSafeEqual(a, b);
 }
 
-function createReplayRouter({ hub, access, client, singleRoom, pageFile, dataDir, retentionDays = 7, log = console }) {
+function createReplayRouter({ hub, access, client, singleRoom, pageFile, dataDir, quotaGb = 20, log = console }) {
     const router = express.Router();
 
     // The app sets "trust proxy" because it only ever sits behind Caddy (it listens on the loopback), and Caddy puts the
@@ -84,8 +84,13 @@ function createReplayRouter({ hub, access, client, singleRoom, pageFile, dataDir
     });
     const sessionLimiter = rateLimit({ ...limiterOptions, windowMs: 60 * 1000, max: 60 });
 
-    const secure = (req) => req.secure || String(req.get('x-forwarded-proto') || '').split(',')[0].trim() === 'https';
-    const grant = (req, res) => res.set('Set-Cookie', access.cookieHeader(access.signAccess(), { secure: secure(req) }));
+    const secure = (req) =>
+        req.secure ||
+        String(req.get('x-forwarded-proto') || '')
+            .split(',')[0]
+            .trim() === 'https';
+    const grant = (req, res) =>
+        res.set('Set-Cookie', access.cookieHeader(access.signAccess(), { secure: secure(req) }));
 
     const requireAccess = (req, res, next) => {
         if (access.isAllowed(req)) return next();
@@ -144,7 +149,12 @@ function createReplayRouter({ hub, access, client, singleRoom, pageFile, dataDir
             const { clips = [] } = await client.listClips();
             const uuid = peerOf(req);
             noStore(res);
-            res.json({ clips: clips.map((clip) => access.publicClip(clip, uuid)), now: Date.now(), retentionDays });
+            res.json({
+                clips: clips.map((clip) => access.publicClip(clip, uuid)),
+                now: Date.now(),
+                retentionDays: null,
+                retention: { mode: 'quota', quotaGb, cleanupAtPercent: 80 },
+            });
         } catch (error) {
             recorderDown(res, error);
         }
@@ -176,7 +186,9 @@ function createReplayRouter({ hub, access, client, singleRoom, pageFile, dataDir
             noStore(res);
             const clip = await client.getClip(req.params.id);
             if (!access.owns(clip, peerOf(req))) {
-                return res.status(403).json({ error: 'Only who saved the clip or shared the screen can delete it', code: 'NOT_OWNER' });
+                return res
+                    .status(403)
+                    .json({ error: 'Only who saved the clip or shared the screen can delete it', code: 'NOT_OWNER' });
             }
             await client.deleteClip(req.params.id);
             res.json({ ok: true });
@@ -195,7 +207,11 @@ function createReplayRouter({ hub, access, client, singleRoom, pageFile, dataDir
             return res.status(404).json({ error: 'Not found' });
         }
         const directory = path.join(dataDir, 'clips', id);
-        const headers = { 'Content-Type': MEDIA[file], 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' };
+        const headers = {
+            'Content-Type': MEDIA[file],
+            'Cache-Control': 'private, max-age=3600',
+            'X-Content-Type-Options': 'nosniff',
+        };
 
         if (req.query.download === '1') {
             let meta = {};
@@ -205,17 +221,25 @@ function createReplayRouter({ hub, access, client, singleRoom, pageFile, dataDir
                 // the name just falls back to the id
             }
             const extension = path.extname(file).slice(1);
-            const name = meta.sharer ? `replay-${safeName(meta.sharer)}-${stamp(meta.createdAt)}.${extension}` : `replay-${id}.${extension}`;
+            const name = meta.sharer
+                ? `replay-${safeName(meta.sharer)}-${stamp(meta.createdAt)}.${extension}`
+                : `replay-${id}.${extension}`;
             headers['Content-Disposition'] = `attachment; filename="${name}"`;
         }
 
-        res.sendFile(file, { root: directory, dotfiles: 'deny', acceptRanges: true, cacheControl: false, headers }, (error) => {
-            if (!error || res.headersSent) return;
-            // a missing file is 404; a Range past the end is 416 (not a server error); anything else is ours
-            const missing = error.status === 404 || error.code === 'ENOENT';
-            const status = missing ? 404 : error.status >= 400 && error.status < 500 ? error.status : 500;
-            res.status(status).json({ error: missing ? 'Not found' : status === 416 ? 'Range not satisfiable' : 'Could not read the file' });
-        });
+        res.sendFile(
+            file,
+            { root: directory, dotfiles: 'deny', acceptRanges: true, cacheControl: false, headers },
+            (error) => {
+                if (!error || res.headersSent) return;
+                // a missing file is 404; a Range past the end is 416 (not a server error); anything else is ours
+                const missing = error.status === 404 || error.code === 'ENOENT';
+                const status = missing ? 404 : error.status >= 400 && error.status < 500 ? error.status : 500;
+                res.status(status).json({
+                    error: missing ? 'Not found' : status === 416 ? 'Range not satisfiable' : 'Could not read the file',
+                });
+            }
+        );
     });
 
     return router;
@@ -239,4 +263,11 @@ function createInternalEventsHandler({ hub, secret }) {
     };
 }
 
-module.exports = { createReplayRouter, createInternalEventsHandler, isInternalRequest, secretMatches, safeName, CLIP_ID };
+module.exports = {
+    createReplayRouter,
+    createInternalEventsHandler,
+    isInternalRequest,
+    secretMatches,
+    safeName,
+    CLIP_ID,
+};
