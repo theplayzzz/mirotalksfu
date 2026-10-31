@@ -140,6 +140,8 @@ describe('test-sfu-routes (Replay HTTP endpoints and permissions)', () => {
         const data = await res.json();
         data.clips.length.should.equal(1);
         data.clips[0].mine.should.be.true();
+        (data.retentionDays === null).should.be.true();
+        data.retention.should.deepEqual({ mode: 'quota', quotaGb: 20, cleanupAtPercent: 80 });
         (data.clips[0].requestedByHash === undefined).should.be.true(); // stripped
     });
 

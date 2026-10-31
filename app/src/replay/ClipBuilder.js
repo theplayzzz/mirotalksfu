@@ -224,7 +224,6 @@ function startThumbnail({ ffmpegPath, codec, record, output, log }) {
  * @param {string} o.id clip id
  * @param {string} o.stagingDir
  * @param {string} o.ffmpegPath
- * @param {number} o.retentionDays
  * @param {object} o.log
  * @param {function} [o.now]
  * @param {boolean} [o.withAudio] false to leave the audio out (used for the retry)
@@ -344,7 +343,7 @@ async function buildClip(o) {
             shareId: share.id,
             roomId: share.roomId,
             createdAt,
-            expiresAt: createdAt + o.retentionDays * 24 * 3600 * 1000,
+            expiresAt: null,
             sharer: share.peerName,
             requestedBy: request.requestedByName,
             seconds: request.seconds,

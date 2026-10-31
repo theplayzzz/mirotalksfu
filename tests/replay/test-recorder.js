@@ -96,7 +96,7 @@ describe('replay: recorder with real media (virtual time)', function () {
             meta.sharerHash.should.equal('hash-of-beltrano');
             meta.durationS.should.be.approximately(8 + meta.startOffsetS, 0.2);
             meta.startOffsetS.should.be.within(0, 1.05); // key frames every second
-            meta.expiresAt.should.equal(meta.createdAt + 7 * 24 * 3600 * 1000);
+            (meta.expiresAt === null).should.be.true();
             meta.files.original.should.containEql({ name: 'clip.webm', mime: 'video/webm' });
             (meta.files.mp4 === null).should.be.true();
             meta.thumb.should.equal('thumb.jpg');
@@ -463,6 +463,11 @@ describe('replay: recorder with real media (virtual time)', function () {
                 await share('s1', 'vp8');
                 const meta = (await svc.api.post('/v1/clips', clipRequest('s1', 5))).body;
                 await svc.stop();
+                // An older release would have written an expiry. Upgrading must preserve that clip too.
+                await fsp.writeFile(
+                    path.join(dataDir, 'clips', meta.id, 'meta.json'),
+                    JSON.stringify({ ...meta, expiresAt: Date.now() - 86400000 })
+                );
 
                 svc = await startRecorder({ dataDir });
                 (await svc.api.get('/v1/shares')).body.shares.should.have.length(0);
@@ -481,12 +486,12 @@ describe('replay: recorder with real media (virtual time)', function () {
             }
         });
 
-        it('deletes the oldest clips when the quota is exceeded, never the one just made', async () => {
+        it('deletes the oldest clips at 80% of quota, before the full quota is exceeded', async () => {
             svc = await startRecorder();
             await share('s1', 'vp8');
             const first = (await svc.api.post('/v1/clips', clipRequest('s1', 6))).body;
-            const size = first.files.original.bytes;
-            svc.recorder.opts.quotaGb = (size * 1.6) / 1024 ** 3; // room for one and a half clips
+            const size = svc.recorder._clipBytes(); // includes thumbnail and metadata
+            svc.recorder.opts.quotaGb = (size * 2.2) / 1024 ** 3; // two clips fit the full quota, but exceed 80%
             await sleep(30);
             const second = (await svc.api.post('/v1/clips', clipRequest('s1', 6))).body;
             const ids = (await svc.api.get('/v1/clips')).body.clips.map((c) => c.id);
@@ -498,22 +503,26 @@ describe('replay: recorder with real media (virtual time)', function () {
             await sleep(30);
             const third = (await svc.api.post('/v1/clips', clipRequest('s1', 6))).body;
             (await svc.api.get('/v1/clips')).body.clips.map((c) => c.id).should.deepEqual([third.id]);
+            await svc.recorder._sweepClips(); // an oversized new clip also survives a periodic sweep
+            (await svc.api.get('/v1/clips')).body.clips.map((c) => c.id).should.deepEqual([third.id]);
         });
 
-        it('deletes clips after REPLAY_RETENTION_DAYS (hourly sweep)', async () => {
+        it('keeps clips regardless of age or a legacy expiry date while below the quota watermark', async () => {
             let clock = Date.now();
             svc = await startRecorder({ retentionDays: 2, now: () => clock });
             await share('s1', 'vp8');
             const meta = (await svc.api.post('/v1/clips', clipRequest('s1', 5))).body;
-            meta.expiresAt.should.equal(meta.createdAt + 2 * 24 * 3600 * 1000);
-            clock += 47 * 3600 * 1000;
+            (meta.expiresAt === null).should.be.true();
+            svc.recorder.clips.get(meta.id).meta.expiresAt = clock + 2 * 86400000;
+            clock += 400 * 86400000;
             await svc.recorder._sweepClips();
             (await svc.api.get('/v1/clips')).body.clips.should.have.length(1);
-            clock += 2 * 3600 * 1000;
+            // Just below 80%, age alone still cannot trigger deletion.
+            svc.recorder.opts.quotaGb = svc.recorder._clipBytes() / (0.79 * 1024 ** 3);
             await svc.recorder._sweepClips();
-            (await svc.api.get('/v1/clips')).body.clips.should.have.length(0);
-            svc.events.find((e) => e.type === 'clip.deleted' && e.id === meta.id).should.be.ok();
-            fs.existsSync(svc.clipDir(meta.id)).should.be.false();
+            (await svc.api.get('/v1/clips')).body.clips.should.have.length(1);
+            svc.events.filter((e) => e.type === 'clip.deleted').should.have.length(0);
+            fs.existsSync(svc.clipDir(meta.id)).should.be.true();
         });
 
         it('guards the disk: deletes old clips first, then stops writing and refuses clips until there is room', async () => {
