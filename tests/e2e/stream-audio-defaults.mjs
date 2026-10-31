@@ -42,6 +42,11 @@ try {
         };`);
     await startScreenShare(sender);
     await waitFor(sender, "rc.producerLabel.has('audioTab')");
+    const screenOpus = await sender.ev(`rc.producers.get(rc.producerLabel.get('audioTab')).rtpParameters.codecs
+        .find(c => c.mimeType.toLowerCase() === 'audio/opus')`);
+    assert.equal(screenOpus.parameters['sprop-stereo'], 1);
+    assert.ok(screenOpus.rtcpFeedback.some((fb) => fb.type === 'nack'));
+    console.log('PASS screen audio negotiates stereo and retains NACK');
     const audioProducerId = await sender.ev("rc.producerLabel.get('audioTab')");
     await first.ev(`window.__testAudioProducerId = ${JSON.stringify(audioProducerId)}`);
     await waitFor(first, 'rc.getOutputAudioElements().length > 0 && rc.consumers.size >= 2');

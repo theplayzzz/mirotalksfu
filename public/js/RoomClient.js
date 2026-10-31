@@ -3642,6 +3642,9 @@ class RoomClient {
             const track = stream.getAudioTracks()[0];
             const params = {
                 track,
+                // Keep stereo game/window audio intact; downmixing can cancel spatial effects.
+                // Supplying codecOptions also requires opusNack to preserve the existing NACK feedback.
+                codecOptions: { opusStereo: true, opusNack: true },
                 appData: {
                     mediaType: mediaType.audio,
                     ...(screenProducerId ? { source: 'screen', shareOf: screenProducerId } : {}),
