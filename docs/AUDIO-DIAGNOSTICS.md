@@ -80,7 +80,7 @@ o SDP Opus negociado, as configurações efetivas da faixa, o bitrate de envio e
 exige negociação estéreo, NACK preservado, sinal nos dois canais e fases opostas preservadas. O controle mono precisa
 reproduzir o cancelamento, para demonstrar que o teste detecta a falha original.
 
-## Entrega e validação
+## Entrega e validação inicial
 
 - Dev atualizado para o commit de aplicação `a334a017`, imagem `sha256:c27980041fd87371374422cfeb586909fa2302dddf1b7ff6d037a7ea8f98b188`.
 - Produção mantida em `3e98bac9`, sem reiniciar seus dois contêineres.
@@ -90,3 +90,31 @@ reproduzir o cancelamento, para demonstrar que o teste detecta a falha original.
 - O teste da sala no dev passou: mudo antes do autoplay, entrada tardia, escolha individual preservada na reconciliação,
   nova transmissão sem áudio voltando ao mudo e API da galeria informando retenção por cota sem expiração por idade.
 - Os dois serviços de dev ficaram saudáveis. O rollback anterior foi guardado pelo `ops/deploy.sh`.
+
+## Correção de estéreo aplicada e testada no desenvolvimento
+
+Commit de aplicação `63816754`, imagem `sha256:ec0687f9f650032671a36983270bb11180c7d5ba14a5c71876caded6a2c52595`.
+O deploy atualizou somente `mirotalksfu-dev` e `mirotalk-replay-dev`. Os dois ficaram saudáveis, e o hash do
+`RoomClient.js` servido corresponde ao arquivo da revisão. O rollback anterior ficou em
+`compose.yaml.pre-deploy-20261031T021723Z` no diretório da instância de dev.
+
+O teste no Chrome usou o perfil real da aplicação, sem substituir suas opções de áudio. Ele confirmou `stereo=1`,
+`sprop-stereo=1`, NACK mantido e o sinal estéreo com fases opostas preservado na recepção:
+
+| Perfil | Bitrate efetivo | RMS esquerdo / direito | Correlação L/R | Pacotes perdidos |
+|---|---:|---:|---:|---:|
+| Aplicação corrigida | 64.296 bit/s | 0,10647 / 0,10647 | -0,99999999 | 0 |
+| Controle negativo forçado em mono | 15.106 bit/s | 0,0000144 / 0,0000144 | +1 | 0 |
+
+Na amostra do perfil corrigido houve zero amostras reconstruídas. O controle negativo reproduziu o cancelamento
+anterior; os testes agora falham se a aplicação perder o estéreo ou se a fase dos canais não for preservada.
+Esses resultados cobrem a falha reproduzida com sinal sintético; a avaliação subjetiva com o áudio real de jogos
+continua sendo uma comparação útil.
+
+Também passaram o teste conectado de mudo inicial antes do autoplay, entrada tardia, clique individual para ouvir,
+reconciliação e reinício sem áudio voltando ao mudo. A API da galeria continuou informando retenção por cota a 80%,
+sem expiração por idade. Os 10 testes locais de captura/mudo passaram. A CI passou com 542 testes executados;
+48 testes de mídia ficaram pendentes por ausência de FFmpeg/FFprobe nesse runner. A verificação de áudio acima
+rodou contra o SFU real de desenvolvimento.
+
+A comparação de imagem e horário de início dos contêineres de produção, antes/depois, não apresentou mudanças.
