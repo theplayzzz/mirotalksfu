@@ -278,11 +278,11 @@ async function gallerySuite(kind) {
         show(ids(cards))
     );
     check(
-        'a card says whose screen, who saved it, how long ago, the length and the time left',
+        'a card says whose screen, who saved it, how long ago, the length and that it does not expire',
         cards[0].title === 'Tela de Beltrano' &&
             cards[0].sub === 'Salvo por Fulano · há 2 min' &&
             cards[0].dur === '0:20' &&
-            cards[0].foot === 'expira em 6 d',
+            cards[0].foot === 'Sem prazo de expiração',
         show(cards[0])
     );
     check(
@@ -301,9 +301,14 @@ async function gallerySuite(kind) {
         show(cards.map((c) => c.del))
     );
     check(
-        'a clip about to expire says so',
-        cards[4].foot.startsWith('expira em') && cards[4].foot.includes('min'),
+        'an old clip has no time expiry either',
+        cards[4].foot === 'Sem prazo de expiração',
         cards[4].foot
+    );
+    check(
+        'the gallery explains storage cleanup at 80% instead of age expiry',
+        await page.ev(`document.getElementById('rgFoot').textContent.includes('80%') &&
+            document.getElementById('rgFoot').textContent.includes('não expiram por tempo')`)
     );
     const calls = (await mockState()).log.filter((entry) => entry.path === '/replay/api/clips');
     check(
@@ -446,7 +451,7 @@ async function gallerySuite(kind) {
     );
     check(
         'who saved it, when and for how long',
-        /Salvo por Fulano · \d\d\/\d\d\/\d{4} às \d\d:\d\d · duração 0:20 \(o pedido começa em 0:03\) · expira em 6 d/.test(
+        /Salvo por Fulano · \d\d\/\d\d\/\d{4} às \d\d:\d\d · duração 0:20 \(o pedido começa em 0:03\) · Sem prazo de expiração/.test(
             await page.ev(`document.getElementById('rpMeta').textContent`)
         ),
         await page.ev(`document.getElementById('rpMeta').textContent`)
