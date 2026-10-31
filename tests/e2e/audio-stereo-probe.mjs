@@ -1,8 +1,9 @@
-// Diagnostic on the DEVELOPMENT test room: a synthetic stereo tone has opposite phases in its two channels.
-// Compare the application's current profile with an in-memory override of opusStereo only. Nothing is saved to
+// Regression on the DEVELOPMENT test room: a synthetic stereo tone has opposite phases in its two channels.
+// Check the application's current profile against a forced-mono negative control. Nothing is saved to
 // app configuration. All camera/microphone devices are fake; the shared video is a small canvas.
 // E2E_CHROME=... E2E_ORIGIN=... E2E_TOKEN=... node tests/e2e/audio-stereo-probe.mjs
 import { joinTestRoom, launchChrome, sleep, startScreenShare, stubScreenCapture } from './lib.mjs';
+import assert from 'node:assert/strict';
 const { E2E_CHROME: chromePath, E2E_ORIGIN: origin, E2E_TOKEN: token } = process.env;
 if (!chromePath || !origin || !token) throw new Error('set E2E_CHROME, E2E_ORIGIN and E2E_TOKEN');
 if (!origin?.includes('mirotalk-dev.')) throw new Error('development only');
@@ -38,10 +39,11 @@ try {
     await viewer.ev(
         `for(const type of ['audioType','videoType']) if(rc.producerLabel.has(type))rc.closeProducer(type);`
     );
-    for (const profile of ['current', 'stereo-only']) {
-        if (profile === 'stereo-only')
+    const results = [];
+    for (const profile of ['current', 'mono-control']) {
+        if (profile === 'mono-control')
             await sender.ev(`const rawProduce=rc.producerTransport.produce.bind(rc.producerTransport);
-   rc.producerTransport.produce=params=>rawProduce(params.appData?.source==='screen'?{...params,codecOptions:{opusStereo:true}}:params);`);
+   rc.producerTransport.produce=params=>rawProduce(params.appData?.source==='screen'?{...params,codecOptions:{...params.codecOptions,opusStereo:false}}:params);`);
         await startScreenShare(sender);
         await waitFor(sender, `rc.producerLabel.has('audioTab')`);
         const audioProducerId = await sender.ev(`rc.producerLabel.get('audioTab')`);
@@ -63,14 +65,38 @@ try {
    silent.gain.value=0;source.connect(splitter);splitter.connect(left,0);splitter.connect(right,1);left.connect(silent);right.connect(silent);silent.connect(context.destination);
    await new Promise(r=>setTimeout(r,500));const l=new Float32Array(2048),r=new Float32Array(2048);left.getFloatTimeDomainData(l);right.getFloatTimeDomainData(r);
    const rms=v=>Math.sqrt(v.reduce((s,x)=>s+x*x,0)/v.length);
+   const correlation=l.reduce((sum,x,i)=>sum+x*r[i],0)/(l.length*rms(l)*rms(r));
    const allStats=[...(await c.getStats()).values()];const stats=allStats.find(s=>s.type==='inbound-rtp')||{};
-   const result={rmsLeft:rms(l),rmsRight:rms(r),packetsLost:stats.packetsLost,packetsReceived:stats.packetsReceived,
+   const result={rmsLeft:rms(l),rmsRight:rms(r),correlation,packetsLost:stats.packetsLost,packetsReceived:stats.packetsReceived,
     concealedSamples:stats.concealedSamples,totalSamplesReceived:stats.totalSamplesReceived,concealmentEvents:stats.concealmentEvents,statTypes:allStats.map(s=>s.type)};
    await context.close();return result;})()`);
         console.log(JSON.stringify({ profile, sent, received }));
+        results.push({ profile, sent, received });
         await sender.ev(`rc.closeProducer('screenType');window.__abContext.close()`);
         await waitFor(viewer, '!rc.consumersProducer.has(window.__abAudioProducerId)');
     }
+    const [current, mono] = results;
+    const opus = current.sent.codecs.find((codec) => codec.mimeType.toLowerCase() === 'audio/opus');
+    assert.equal(opus.parameters['sprop-stereo'], 1, 'the application must negotiate stereo without an override');
+    assert.ok(
+        opus.rtcpFeedback.some((fb) => fb.type === 'nack'),
+        'stereo must preserve existing NACK support'
+    );
+    assert.ok(
+        current.sent.opusAnswer.some((line) => /[ ;]stereo=1(?:;|$)/.test(line)),
+        'SDP must request stereo'
+    );
+    assert.ok(
+        current.received.packetsReceived > 0 && mono.received.packetsReceived > 0,
+        'both profiles must receive audio'
+    );
+    assert.ok(current.received.rmsLeft > 0.05 && current.received.rmsRight > 0.05, 'both stereo channels must survive');
+    assert.ok(current.received.correlation < -0.8, 'the channels must retain their opposite phases');
+    assert.ok(mono.received.rmsLeft < current.received.rmsLeft * 0.01, 'mono control must reproduce the cancellation');
+    assert.ok(mono.received.rmsRight < current.received.rmsRight * 0.01, 'mono control must cancel on both outputs');
+    console.log(
+        'PASS application stereo preserves both channels and their phase; mono control reproduces the old defect'
+    );
 } finally {
     chrome.close();
 }

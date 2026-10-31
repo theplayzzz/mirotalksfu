@@ -1,7 +1,10 @@
 # Áudio das transmissões — análise de 30/10/2026
 
-Escopo: início silencioso e retenção dos clipes implementados em `develop`. A qualidade do áudio foi investigada;
-nenhuma configuração de captura, codec ou velocidade de reprodução foi alterada por essa investigação.
+Escopo inicial: início silencioso e retenção dos clipes implementados em `develop`, seguidos da investigação de áudio
+descrita abaixo. Na revisão seguinte, autorizada pelo usuário, o áudio da tela passou a pedir estéreo explicitamente
+em `produceScreenAudio()`, com `codecOptions: { opusStereo: true, opusNack: true }`. O segundo parâmetro preserva o
+feedback NACK que o mediasoup-client removeria ao receber opções sem essa chave. O microfone, as opções de captura,
+o bitrate máximo e a velocidade de reprodução não foram alterados nessa revisão. A implantação é somente no dev.
 
 ## Início silencioso
 
@@ -19,7 +22,8 @@ os dois. Essa característica foi preservada.
 - A produção consultada usa o commit `3e98bac9`; o desenvolvimento, antes desta mudança, usava `0ab52ae4`.
 - `produceScreenAudio()` envia a faixa capturada diretamente. O processamento RNNoise de microfone não passa por
   esse caminho. O SFU encaminha Opus; não há FFmpeg ou outra recodificação no caminho da transmissão ao vivo.
-- O microfone configura `opusStereo`, FEC, DTX e NACK explicitamente; o áudio da tela não configura `codecOptions`.
+- Na investigação inicial, o microfone configurava `opusStereo`, FEC, DTX e NACK explicitamente; o áudio da tela não
+  configurava `codecOptions`.
   O router anunciar `audio/opus` com dois canais não garante áudio estéreo: a negociação de estéreo é separada.
   A [RFC 7587, seção 7](https://www.rfc-editor.org/rfc/rfc7587#section-7) define a preferência mono quando `stereo`
   está ausente. A API do [mediasoup-client](https://mediasoup.org/documentation/v3/mediasoup-client/api/#ProducerCodecOptions)
@@ -64,14 +68,17 @@ A negociação sem estéreo é o primeiro candidato para perda de detalhes espac
 jogos e música. O cancelamento foi reproduzido; a ligação com o som real descrito como "caixa de som molhada" ainda
 precisa de uma amostra durante a falha. Perda de pacotes e filtros na origem também podem produzir artefatos.
 
-O próximo ajuste recomendado é configurar estéreo explicitamente para o áudio da tela e comparar uma gravação real
-de jogo antes/depois no dev. Depois, avaliar um teto de bitrate apropriado para música e processamento de voz desligado
+O ajuste de estéreo explícito foi implementado na revisão seguinte, somente no dev. A comparação de uma gravação real
+de jogo antes/depois continua recomendada. Depois, avaliar um teto de bitrate apropriado para música e processamento de voz desligado
 apenas na captura da tela, medindo separação de canais e deltas de perda/concealment. O teto não força o bitrate efetivo.
 Se o relato ocorrer em celular, testar também o caminho de volume com `playbackRate` fixo em 1. Uma amostra da fonte
 e da recepção durante a falha permite distinguir degradação de captura, codificação, rede e reprodução.
 
 `tests/e2e/stream-audio-defaults.mjs` usa uma tela sintética pequena no dev, verifica o comportamento de mudo e registra
 o SDP Opus negociado, as configurações efetivas da faixa, o bitrate de envio e os contadores de recepção de áudio.
+`tests/e2e/audio-stereo-probe.mjs` agora verifica o perfil real da aplicação e um controle negativo forçado em mono:
+exige negociação estéreo, NACK preservado, sinal nos dois canais e fases opostas preservadas. O controle mono precisa
+reproduzir o cancelamento, para demonstrar que o teste detecta a falha original.
 
 ## Entrega e validação
 
