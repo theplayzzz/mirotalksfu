@@ -232,7 +232,7 @@ export async function startMock({ port = 0, host = '127.0.0.1', samplesDir, ffmp
         replayEnabled: true,
         maxSeconds: 300,
         options: [60, 120, 180, 300],
-        retentionDays: 7,
+        retentionDays: null,
         sseFormat: 'named', // 'named' (event: clip.created) or 'plain' (data only, type inside)
         sseMuted: false, // true: the stream stays open but says nothing (the page must ask for the MP4 progress)
         heartbeatMs: 25000,
@@ -291,8 +291,7 @@ export async function startMock({ port = 0, host = '127.0.0.1', samplesDir, ffmp
             shareId: `share-${randomBytes(3).toString('hex')}`,
             roomId: 'link',
             createdAt,
-            expiresAt:
-                options.expiresAt ?? createdAt + (options.retentionMs ?? state.config.retentionDays * 86_400_000),
+            expiresAt: options.expiresAt ?? null,
             sharer: options.sharer ?? 'Beltrano',
             requestedBy: options.requestedBy ?? 'Fulano',
             seconds: options.seconds ?? spec.askedS,
@@ -600,7 +599,12 @@ export async function startMock({ port = 0, host = '127.0.0.1', samplesDir, ffmp
             if (state.config.listStatus)
                 return json(res, state.config.listStatus, { error: 'falha simulada', code: 'MOCK' });
             const clips = newestFirst().map((rec) => withMine(rec, peer));
-            return json(res, 200, { clips, now: Date.now(), retentionDays: state.config.retentionDays });
+            return json(res, 200, {
+                clips,
+                now: Date.now(),
+                retentionDays: null,
+                retention: { mode: 'quota', quotaGb: 20, cleanupAtPercent: 80 },
+            });
         }
 
         if (req.method === 'GET' && route === '/stream') {
