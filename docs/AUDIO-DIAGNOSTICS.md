@@ -5,6 +5,7 @@ descrita abaixo. Na revisão seguinte, autorizada pelo usuário, o áudio da tel
 em `produceScreenAudio()`, com `codecOptions: { opusStereo: true, opusNack: true }`. O segundo parâmetro preserva o
 feedback NACK que o mediasoup-client removeria ao receber opções sem essa chave. O microfone, as opções de captura,
 o bitrate máximo e a velocidade de reprodução não foram alterados nessa revisão. A implantação é somente no dev.
+Em 01/11/2026, o usuário autorizou a promoção para produção; o registro dessa implantação está ao final deste arquivo.
 
 ## Início silencioso
 
@@ -118,3 +119,38 @@ sem expiração por idade. Os 10 testes locais de captura/mudo passaram. A CI pa
 rodou contra o SFU real de desenvolvimento.
 
 A comparação de imagem e horário de início dos contêineres de produção, antes/depois, não apresentou mudanças.
+
+## Pacote de produção — 01/11/2026
+
+Promoção autorizada pelo usuário nesta conversa. O pacote parte de `origin/main` em `9d1cf3df`, preservando a
+ativação de CAPTCHA que já estava em produção (`8c880cd3`). Foram transportadas somente as revisões desta conversa:
+início silencioso por espectador, retenção dos replays por espaço a 80%, estéreo explícito e respectivos testes.
+As outras mudanças exclusivas de `develop` não fazem parte deste pacote. O parâmetro antigo de retenção por dias
+foi removido do compose de produção versionado; eventuais valores antigos no ambiente já são ignorados pelo gravador.
+
+## Implantação em produção — 01/11/2026
+
+Aplicação `2e3ddb32`, imagem `sha256:ee858e9ee6f626f40ec7cdd065498b744e83819728809e850a9a6ff676382246`.
+A CI foi aprovada: 467 testes do servidor e 212 do CAPTCHA passaram; 48 testes de mídia ficaram pendentes no runner.
+Localmente, os 69 testes focados de áudio e replays passaram, incluindo testes com FFmpeg.
+
+A implantação foi executada com `ops/deploy.sh prod sha-2e3ddb3 --force`, após informar a interrupção nesta conversa,
+pois havia conexões ativas. Sala e gravador foram reiniciados e ficaram saudáveis. O desenvolvimento não foi reiniciado.
+Os arquivos servidos externamente (`RoomClient.js`, `ReplayGallery.js`, `RoomCaptcha.js`) foram comparados byte a byte
+com os da revisão e tiveram a sintaxe verificada. Sala, galeria, painel e player do CAPTCHA responderam normalmente;
+as APIs privadas de replays e CAPTCHA continuaram respondendo 401 sem sessão. O gravador confirmou cota de 20 GiB,
+retenção por idade desativada, estéreo configurado e áudio remoto inicialmente silenciado. Não havia clipes salvos
+no inventário anterior ao deploy; o inventário posterior continuou vazio.
+
+Rollback: imagem anterior `sha256:0c58fd680117d223306a1ba6cc484d7e4d045c06a940c6096a7ef0f537ece0bd`, aplicação
+`8c880cd3`, compose guardado em `/home/debian/mirotalksfu/compose.yaml.pre-deploy-20261101T040244Z`.
+Para reverter os **dois** serviços, restaurar esse compose e executar o projeto inteiro:
+
+```bash
+cp -a /home/debian/mirotalksfu/compose.yaml.pre-deploy-20261101T040244Z /home/debian/mirotalksfu/compose.yaml
+sudo docker compose -p mirotalksfu -f /home/debian/mirotalksfu/compose.yaml up -d --no-build --force-recreate
+```
+
+Participantes que já estavam com a sala aberta devem atualizar a página e reiniciar o compartilhamento para carregar
+o JavaScript novo e renegociar o áudio estéreo. Os testes sintéticos permanecem limitados à sala de desenvolvimento;
+a conferência de produção não criou participantes, transmissões ou clipes artificiais na sala em uso.
