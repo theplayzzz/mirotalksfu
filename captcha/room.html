@@ -14,16 +14,16 @@
                 </div>
                 <span id="score"></span>
                 <div id="resource" hidden><span></span><progress max="1" value="1"></progress></div>
-                <button id="pause" type="button" aria-label="Pausar jogo">Ⅱ</button>
+                <button id="pause" type="button" aria-label="Pausar jogo" disabled>Ⅱ</button>
                 <div id="progress"></div>
             </header>
             <section id="arena">
                 <canvas id="game" tabindex="0" aria-label="Área do jogo"></canvas>
                 <div id="ready" class="overlay">
                     <div class="card">
-                        <img data-emoji="escape" alt="" /><small>VERIFICAÇÃO DA RESENHA</small>
-                        <h1 id="readyTitle">Um desafio rápido.</h1>
-                        <p>Jogue com o mouse. Ganhar ou perder libera as telas.</p>
+                        <small>CAPTCHA DO BOIOLÔMETRO</small>
+                        <h1 id="readyTitle">Preparando verificação</h1>
+                        <p>Siga as instruções para concluir a análise.</p>
                         <button id="start" class="primary" disabled>Preparando…</button>
                     </div>
                 </div>
@@ -44,9 +44,9 @@
                             ><button id="release">Liberar acesso</button>
                         </div>
                         <fieldset class="rating">
-                            <legend>Como foi este jogo?</legend>
+                            <legend>Avalie esta verificação</legend>
                             <div id="stars" role="radiogroup" aria-label="Avaliação de uma a cinco estrelas"></div>
-                            <span id="ratingStatus" role="status">Sua nota ajuda a escolher os próximos jogos.</span>
+                            <span id="ratingStatus" role="status">Avaliação opcional.</span>
                         </fieldset>
                     </div>
                 </div>

@@ -15,7 +15,7 @@ const chrome = await launchChrome({
     width: 1440,
     height: 1000,
 });
-let adminToken, targetId, savedSettings;
+let adminToken, targetId;
 const pages = [],
     names = ['CAPTCHA-verificacao-fonte', 'CAPTCHA-verificacao-jogador'];
 async function api(route, body) {
@@ -49,8 +49,8 @@ try {
     adminToken = (await api('/login', { key })).token;
     let state = await api('/api/state');
     assert.ok(
-        !state.rooms.some((room) => room.users.some((user) => !names.includes(user.name))),
-        'Only run an isolated dev smoke test when real participants are absent.'
+        !state.rooms.some((room) => room.id === 'teste' && room.users.some((user) => !names.includes(user.name))),
+        'Only use the isolated test room when it has no other participants.'
     );
     const source = await chrome.newPage(),
         player = await chrome.newPage();
@@ -68,12 +68,9 @@ try {
     const room = state.rooms.find((r) => r.id === 'teste');
     targetId = room.users.find((u) => u.name === names[1]).id;
     assert.equal(room.users.find((u) => u.id === targetId).ready, true);
-    savedSettings = structuredClone(state.settings);
-    const settings = structuredClone(savedSettings);
-    settings.games.juggle.duration = 8;
-    await api('/api/settings', settings);
     await api('/api/trigger', { roomId: 'teste', peerId: targetId, gameId: 'juggle' });
-    await until(player, child('!document.getElementById("start").disabled'));
+    await until(player, '!!document.querySelector(".room-captcha-prompt:not([hidden])")');
+    assert.equal(await player.ev('!!document.getElementById("roomCaptchaWindow")'), false);
     assert.equal(await source.ev('!!document.getElementById("roomCaptchaWindow")'), false);
     const framesBefore = await player.ev(
         'document.querySelector("video[data-room-captcha-screen=true]").getVideoPlaybackQuality().totalVideoFrames'
@@ -100,11 +97,15 @@ try {
             '[...rc.producers.values()].some(p=>p.kind==="audio" && !p.closed && p.track.readyState==="live")'
         )
     );
-    await player.ev(child('document.getElementById("start").click()'));
+    await shot(player, 'real-room-prompt');
+    const button = await player.ev(
+        '(()=>{const r=document.querySelector(".room-captcha-prompt:not([hidden])").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()'
+    );
+    await player.click(button.x, button.y);
     await until(player, child('!document.getElementById("result").hidden'), 18000);
     assert.equal(await player.ev('document.body.classList.contains("room-captcha-blur")'), false);
     await player.ev(child('document.querySelectorAll("#stars button")[4].click()'));
-    await until(player, child('document.getElementById("ratingStatus").textContent.includes("salva")'));
+    await until(player, child('document.getElementById("ratingStatus").textContent.includes("registrada")'));
     await shot(player, 'real-room-result');
     const after = await api('/api/state');
     assert.ok(after.attempts.some((a) => a.name === names[1] && a.outcome));
@@ -114,7 +115,6 @@ try {
     );
 } finally {
     if (targetId) await api('/api/release', { peerId: targetId }).catch(() => {});
-    if (savedSettings) await api('/api/settings', savedSettings).catch(() => {});
     if (adminToken) await api('/api/logout', {}).catch(() => {});
     for (const page of pages) {
         await page.ev('rc?.exit()').catch(() => {});
