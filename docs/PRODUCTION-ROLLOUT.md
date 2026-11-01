@@ -100,3 +100,9 @@ ao compose anterior.
   **Nada é pausado** por janela escondida, aba em segundo plano ou tile fora de vista (era assim na primeira noite e foi tirado).
 - O player da galeria toca do primeiro quadro do arquivo (que pode começar até ~30 s antes do que foi pedido) e marca na
   linha do tempo onde o pedido começa; o MP4 só converte quando alguém clica em "Baixar MP4".
+
+## CAPTCHA e utilidades — 01/11/2026
+
+Produção atualizada com autorização explícita para reiniciar os serviços com participantes aguardando. Imagem `ghcr.io/theplayzzz/mirotalksfu@sha256:0c58fd680117d223306a1ba6cc484d7e4d045c06a940c6096a7ef0f537ece0bd` (commit `8c880cd3`). Apenas os jogos, o controle de CAPTCHA e as utilidades foram promovidos sobre o `main` anterior; as demais mudanças do `develop` continuam separadas.
+
+Painel privado em `/captcha/`, chave própria e histórico vazio, automação desligada. Implantação, testes e observação pós-reinício descritos em [CAPTCHA.md](CAPTCHA.md#produção--01112026). Compose anterior: `/home/debian/mirotalksfu/compose.yaml.pre-deploy-20261101T032646Z`.

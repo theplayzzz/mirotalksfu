@@ -70,3 +70,13 @@ Teste de sala real: use somente a sala de teste e o token emitido por `ops/dev-t
 - Os 212 testes das mecânicas passaram. A integração Chrome passou incluindo botão antes do carregamento do jogo, início com um clique, streams que entram e saem, ausência de botão sobre câmeras, grade/pin, minimizar/retomar, resultado/nota/repetição, votação, todos os 14 jogadores, erro de asset, desconexão e tela de 390px.
 - A regra de votação foi conferida com dez presentes: 30% exige três votos e 35% exige quatro. Aprovação deixa a verificação pendente para o clique do alvo.
 - O teste SFU real passou novamente na sala isolada `teste`: duas sessões próprias, stream sintética com áudio, recebimento contínuo sob blur, janela ausente antes do clique, resultado e avaliação persistidos. Não alterou configurações globais, não reiniciou a instância e encerrou apenas suas próprias sessões.
+
+### Produção — 01/11/2026
+
+- Publicada às 00:27 de São Paulo, com autorização explícita para reiniciar a aplicação enquanto os participantes aguardavam. Commit `8c880cd3`, digest `sha256:0c58fd680117d223306a1ba6cc484d7e4d045c06a940c6096a7ef0f537ece0bd`; CI aprovada: https://github.com/theplayzzz/mirotalksfu/actions/runs/41268315217.
+- A versão parte do `main` que já estava em produção (`3e98bac9`) e inclui os jogos, controle e utilidades aprovados, sem promover as demais mudanças de transmissão do `develop`.
+- Painel: https://livestream.grupogrowon.com.br/captcha/. Chave própria em `/home/debian/mirotalksfu/data/captcha/admin-key`, sem copiar notas, histórico ou configurações do desenvolvimento. Automação inicia desligada.
+- `ops/setup-captcha-prod.sh` preparou chave, pasta e interruptor com backup. `ops/deploy.sh prod sha-8c880cd --force` recriou aplicação e recorder e conferiu saúde e hashes dos arquivos servidos. Backup anterior: `/home/debian/mirotalksfu/compose.yaml.pre-deploy-20261101T032646Z`.
+- Validação local da versão de produção: 507 testes do servidor passaram (três dependentes do worker pendentes no Windows), 212 das mecânicas passaram, integrações Chrome de CAPTCHA e utilidades passaram. A CI também passou antes da publicação.
+- `CAPTCHA_KEY_FILE=<arquivo privado> node tests/e2e/captcha-production.mjs` validou no endereço público: login, API privada, 14 jogos, padrão de votação de 35%, jogador e scripts da sala. O teste não entra na chamada, não dispara jogos e não altera configurações.
+- Na observação após o reinício, três participantes haviam retornado com o cliente pronto para CAPTCHA, compartilhamentos de vídeo e áudio estavam registrados, aplicação e recorder estavam saudáveis e sem reinícios adicionais. Nenhum erro de armazenamento, nenhuma atribuição automática e nenhum histórico sintético foram criados na produção.
