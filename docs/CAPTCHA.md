@@ -21,7 +21,7 @@ Ao receber o disparo, o participante vê somente o blur e um botão **CAPTCHA do
 
 O clique abre a janela e inicia a verificação, sem um segundo botão de início. Quando há uma tela ampliada, a janela acompanha aquela tela; na grade, usa a stream escolhida quando houver espaço suficiente ou uma janela central. A mesma instância do iframe continua aberta ao mudar o layout. Minimizar pausa a verificação e mostra novamente os botões nas streams; clicar retoma aquela instância. Ela não cria backdrop nem prende o foco. Os vídeos da chamada não são movidos pelo CAPTCHA. A apresentação ao participante usa linguagem de verificação, sem referências a “resenha”.
 
-Ganhar **ou perder** retira o blur imediatamente. A tela de resultado oferece repetir, liberar e avaliar com cinco estrelas; a nota é opcional. “Liberar telas” também está sempre disponível na barra da janela. A atribuição expira após cinco minutos, inclusive se ficar pausada. Saída, perda de conexão ou erro de carregamento remove a janela e o blur. Ninguém é desconectado pelo CAPTCHA.
+Ganhar **ou perder** retira o blur imediatamente. A tela de resultado oferece repetir, liberar e avaliar com cinco estrelas; a nota é opcional. “Encerrar” também está sempre disponível na barra da janela. A atribuição expira após cinco minutos, inclusive se ficar pausada. Saída, perda de conexão ou erro de carregamento remove a janela e o blur. Ninguém é desconectado pelo CAPTCHA.
 
 O jogador isolado não recebe acesso a câmera, microfone ou captura de tela. A comunicação com a sala verifica origem, janela de origem, identificador da atribuição e nonce. O servidor usa o socket autenticado na sala para autorizar tentativas, avaliações e votos, sem confiar em um nome/peer enviado pelo cliente.
 
@@ -62,3 +62,11 @@ Teste de sala real: use somente a sala de teste e o token emitido por `ops/dev-t
 - Local: 609 testes do servidor passaram (3 de mediasoup pendentes no Windows), 212 das mecânicas passaram; os dois testes de integração Chrome passaram.
 - `tests/e2e/captcha-dev.mjs` passou na instância real com duas sessões próprias na sala `teste`, captura sintética de 640×360 a 15 fps com áudio, recebimento e decodificação contínuos sob o blur, resultado e avaliação persistidos. As sessões foram encerradas e a duração original restaurada. Seu registro aparece com o nome `CAPTCHA-verificacao-jogador`; essa avaliação é uma amostra de verificação, não feedback dos amigos.
 - A imagem de produção permaneceu `sha256:acf892f1e9f170b4098b9fd664782c3e1b2f047a736f7dd332db85b6cea10a60`.
+
+### Verificação do fluxo sob demanda e da votação — 01/11/2026
+
+- Interface publicada do commit `707a4cef`, imagem `sha256:16ac6955e22da102957a7e2b6843cb3b6e35154f46760a756567e8d7c3eb0201`, após aprovação da CI: https://github.com/theplayzzz/mirotalksfu/actions/runs/41267344233.
+- Publicação estática com backup e hashes conferidos, sem reinício: o container de desenvolvimento conservou o início em `2026-11-01T02:11:20.008575193Z`. Produção permaneceu na mesma imagem da primeira verificação.
+- Os 212 testes das mecânicas passaram. A integração Chrome passou incluindo botão antes do carregamento do jogo, início com um clique, streams que entram e saem, ausência de botão sobre câmeras, grade/pin, minimizar/retomar, resultado/nota/repetição, votação, todos os 14 jogadores, erro de asset, desconexão e tela de 390px.
+- A regra de votação foi conferida com dez presentes: 30% exige três votos e 35% exige quatro. Aprovação deixa a verificação pendente para o clique do alvo.
+- O teste SFU real passou novamente na sala isolada `teste`: duas sessões próprias, stream sintética com áudio, recebimento contínuo sob blur, janela ausente antes do clique, resultado e avaliação persistidos. Não alterou configurações globais, não reiniciou a instância e encerrou apenas suas próprias sessões.
