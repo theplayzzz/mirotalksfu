@@ -39,6 +39,7 @@ services:
       REPLAY_PORT_MAX: "52999"
       REPLAY_MAX_SECONDS: "300"
       HEALTH_DIR: /data/health
+      CAPTCHA_DATA_DIR: /data/captcha
     volumes:
       - ./.env:/src/.env:ro
       - /home/debian/mirotalksfu/data:/data

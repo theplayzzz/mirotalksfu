@@ -1,7 +1,7 @@
 (() => {
     'use strict';
     const $ = (id) => document.getElementById(id),
-        base = '/dev/captcha';
+        base = '/captcha';
     let token = sessionStorage.getItem('captcha-admin-token'),
         state,
         selectedRoom = '',

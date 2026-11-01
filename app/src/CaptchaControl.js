@@ -374,7 +374,7 @@ class CaptchaControl {
         return { released: true };
     }
 
-    openVote({ roomId, peerId, gameId = 'random', mode = 'percent', required = 50, seconds = 30 }) {
+    openVote({ roomId, peerId, gameId = 'random', mode = 'percent', required = 35, seconds = 30 }) {
         roomKey(roomId);
         if (!this.member(roomId, peerId) || !this.capable.has(peerId)) throw fault('Participante indisponível.');
         if (this.active.has(peerId)) throw fault('Esse participante já está em um jogo.');
