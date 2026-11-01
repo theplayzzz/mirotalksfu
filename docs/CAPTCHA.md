@@ -50,3 +50,11 @@ Vite é dependência só de build. O bundle de produção fica em `app/captcha-p
 `ops/compose.dev.yaml` habilita a funcionalidade e monta dados separados. Nenhuma configuração de produção foi alterada. `ops/deploy.sh` recusa implantação com conexões ativas também em desenvolvimento e verifica novamente após baixar a imagem. Não use `--force` para instalar este experimento com participantes conectados.
 
 Teste de sala real: use somente a sala de teste e o token emitido por `ops/dev-test-token.sh`, nomes de teste, áudio/vídeo desabilitados ou uma fonte sintética; encerre suas próprias sessões ao terminar. Os testes locais em Chrome verificam presença real via Socket.IO, API privada, entrega individual, blur seletivo, grade/pin, controles, resultado, nota, repetição, votação, carregamento dos 14 jogos, desconexão e responsividade.
+
+### Verificação da primeira implantação
+
+- Imagem de desenvolvimento: commit `7a17649d`, digest `sha256:7bf75b70d8e330d945c1b820bf3266248ab0603028b1fd835b868c88824c9c30`.
+- CI aprovada: https://github.com/theplayzzz/mirotalksfu/actions/runs/41263882773.
+- Local: 609 testes do servidor passaram (3 de mediasoup pendentes no Windows), 212 das mecânicas passaram; os dois testes de integração Chrome passaram.
+- `tests/e2e/captcha-dev.mjs` passou na instância real com duas sessões próprias na sala `teste`, captura sintética de 640×360 a 15 fps com áudio, recebimento e decodificação contínuos sob o blur, resultado e avaliação persistidos. As sessões foram encerradas e a duração original restaurada. Seu registro aparece com o nome `CAPTCHA-verificacao-jogador`; essa avaliação é uma amostra de verificação, não feedback dos amigos.
+- A imagem de produção permaneceu `sha256:acf892f1e9f170b4098b9fd664782c3e1b2f047a736f7dd332db85b6cea10a60`.
