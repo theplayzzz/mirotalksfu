@@ -80,3 +80,9 @@ ao compose anterior.
 - Cada tela mostra um botão de replay (relógio, ao lado do alfinete); a galeria está em `/replay/` (`/replays` redireciona).
   Nada do replay faz som.
 - Miniaturas recebem a tela a 15 fps e telas escondidas ficam pausadas; a tela fixada continua em qualidade cheia.
+# CAPTCHA e utilidades — 01/11/2026
+
+Produção atualizada com autorização explícita para reiniciar os serviços com participantes aguardando. Imagem `ghcr.io/theplayzzz/mirotalksfu@sha256:0c58fd680117d223306a1ba6cc484d7e4d045c06a940c6096a7ef0f537ece0bd` (commit `8c880cd3`). Apenas os jogos, o controle de CAPTCHA e as utilidades foram promovidos sobre o `main` anterior; as demais mudanças do `develop` continuam separadas.
+
+Painel privado em `/captcha/`, chave própria e histórico vazio, automação desligada. Implantação, testes e observação pós-reinício descritos em [CAPTCHA.md](CAPTCHA.md#produção--01112026). Compose anterior: `/home/debian/mirotalksfu/compose.yaml.pre-deploy-20261101T032646Z`.
+
