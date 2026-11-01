@@ -4688,6 +4688,8 @@ class RoomClient {
 
         const clean = () => {
             this._isConnected = false;
+            window.RoomUtilities?.disconnect();
+            window.RoomCaptcha?.disconnect();
             this.stopConsumerReconcile();
             if (this.consumerTransport) this.consumerTransport.close();
             if (this.producerTransport) this.producerTransport.close();
@@ -4778,6 +4780,7 @@ class RoomClient {
     // ####################################################
 
     async attachMediaStream(elem, stream, type, who) {
+        if (type === mediaType.screen) elem.dataset.roomCaptchaScreen = 'true';
         let track;
         switch (type) {
             case mediaType.audio:

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Verificação da sala</title>
+    </head>
+    <body>
+        <main id="player">
+            <header id="gameHud">
+                <div id="timeGroup"><small>TEMPO</small><b id="time">—</b></div>
+                <div class="guidance">
+                    <b id="title">Preparando o jogo…</b><span id="hint">A chamada continua funcionando.</span>
+                </div>
+                <span id="score"></span>
+                <div id="resource" hidden><span></span><progress max="1" value="1"></progress></div>
+                <button id="pause" type="button" aria-label="Pausar jogo">Ⅱ</button>
+                <div id="progress"></div>
+            </header>
+            <section id="arena">
+                <canvas id="game" tabindex="0" aria-label="Área do jogo"></canvas>
+                <div id="ready" class="overlay">
+                    <div class="card">
+                        <img data-emoji="escape" alt="" /><small>VERIFICAÇÃO DA RESENHA</small>
+                        <h1 id="readyTitle">Um desafio rápido.</h1>
+                        <p>Jogue com o mouse. Ganhar ou perder libera as telas.</p>
+                        <button id="start" class="primary" disabled>Preparando…</button>
+                    </div>
+                </div>
+                <div id="countdown" hidden></div>
+                <div id="paused" class="overlay" hidden>
+                    <div class="card">
+                        <h1>Uma pausa.</h1>
+                        <button id="resume" class="primary">Continuar</button>
+                    </div>
+                </div>
+                <div id="result" class="overlay" hidden>
+                    <div class="card result-card">
+                        <img id="resultEmoji" data-emoji="impact" alt="" /><small>RESULTADO DA ANÁLISE</small>
+                        <h1 id="resultTitle"></h1>
+                        <p id="resultCopy"></p>
+                        <div class="actions">
+                            <button id="retry" class="primary">Tentar novamente ↻</button
+                            ><button id="release">Liberar acesso</button>
+                        </div>
+                        <fieldset class="rating">
+                            <legend>Como foi este jogo?</legend>
+                            <div id="stars" role="radiogroup" aria-label="Avaliação de uma a cinco estrelas"></div>
+                            <span id="ratingStatus" role="status">Sua nota ajuda a escolher os próximos jogos.</span>
+                        </fieldset>
+                    </div>
+                </div>
+                <p id="error" role="alert" hidden></p>
+            </section>
+        </main>
+        <script type="module" src="/src/room-main.js"></script>
+    </body>
+</html>

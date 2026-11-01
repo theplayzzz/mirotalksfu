@@ -35,6 +35,8 @@
         <link rel="stylesheet" href="../css/Room.css" />
         <link rel="stylesheet" href="../css/LivePix.css" />
         <link rel="stylesheet" href="../css/Replay.css" />
+        <link rel="stylesheet" href="../css/RoomUtilities.css" />
+        <link rel="stylesheet" href="../css/RoomCaptcha.css" />
         <link rel="stylesheet" href="../css/VideoGrid.css" />
         <link rel="stylesheet" href="../css/GroupChat.css" />
         <link rel="stylesheet" href="../css/Polls.css" />
@@ -143,6 +145,8 @@
         <script defer src="../js/LivePix.js"></script>
         <script defer src="../js/HealthMeter.js"></script>
         <script defer src="../js/ScreenQuality.js"></script>
+        <script defer src="../js/RoomUtilities.js"></script>
+        <script defer src="../js/RoomCaptcha.js"></script>
         <script defer src="../js/Room.js"></script>
         <!-- After Room.js: Replay.js listens on the `socket` that Room.js creates -->
         <script defer src="../js/ReplayLogic.js"></script>
@@ -380,6 +384,17 @@
             <button id="replayGalleryButton" class="hidden" type="button" aria-label="Galeria de replays">
                 <i class="fas fa-film" aria-hidden="true"></i>
                 <span id="replayGalleryBadge" class="replay-gallery-badge hidden" aria-hidden="true"></span>
+            </button>
+            <button
+                id="roomUtilitiesButton"
+                class="hidden"
+                type="button"
+                aria-label="Utilidades: dados e moeda"
+                title="Dados e moeda"
+                aria-controls="roomUtilitiesPanel"
+                aria-expanded="false"
+            >
+                <i class="fas fa-dice" aria-hidden="true"></i>
             </button>
             <div id="settingsSplit" class="split-btn">
                 <button id="settingsButton" class="hidden"><i class="fas fa-cogs"></i></button>

@@ -1,0 +1,490 @@
+/* Room toys inherit the room's plum/rose palette. Gold is reserved for the coin. */
+.room-utilities,
+.room-utilities * {
+    box-sizing: border-box;
+}
+.room-utilities {
+    --u-bg: var(--select-bg, #161622);
+    --u-ink: #f2e3d1;
+    --u-muted: #aaa1b4;
+    --u-accent: var(--color-accent, #b85869);
+    --u-line: rgba(255, 255, 255, 0.1);
+    position: fixed;
+    inset: 0;
+    z-index: 10002;
+    pointer-events: none;
+    font-family: Montserrat, 'Segoe UI', sans-serif;
+    color: var(--u-ink);
+}
+.room-utilities [hidden] {
+    display: none !important;
+}
+.room-utilities button {
+    font: inherit;
+    cursor: pointer;
+}
+.room-utilities button:focus-visible {
+    outline: 2px solid #e8b3bf;
+    outline-offset: 3px;
+}
+.room-utilities__panel {
+    position: absolute;
+    right: 18px;
+    bottom: calc(var(--bottom-btns-margin-bottom, 18px) + 66px);
+    width: min(360px, calc(100vw - 28px));
+    max-height: calc(100dvh - 130px);
+    background: var(--u-bg);
+    border: 1px solid var(--u-line);
+    border-radius: 16px;
+    box-shadow: 0 14px 45px #0006;
+    pointer-events: auto;
+    overflow: hidden;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+.room-utilities__header {
+    display: flex;
+    gap: 14px;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: 19px;
+}
+.room-utilities__eyebrow {
+    font-size: 9px;
+    color: var(--u-muted);
+    letter-spacing: 0.3px;
+}
+.room-utilities__header h2 {
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -0.5px;
+    color: var(--u-ink);
+    margin: 7px 0 0;
+}
+.room-utilities__close {
+    border: 0;
+    background: transparent;
+    color: var(--u-muted);
+    padding: 2px 5px;
+    line-height: 1;
+    font-size: 22px !important;
+    min-width: 28px;
+    min-height: 28px;
+    flex-shrink: 0;
+    border-radius: 5px;
+}
+.room-utilities__close:hover {
+    color: var(--u-ink);
+    background: #ffffff0b;
+}
+.room-utilities__actions {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+.room-utilities__actions button {
+    border: 1px solid var(--u-line);
+    border-radius: 11px;
+    background: #ffffff04;
+    color: var(--u-ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 83px;
+    padding: 8px;
+    transition:
+        border-color 0.15s,
+        background 0.15s;
+}
+.room-utilities__actions button:hover:not(:disabled) {
+    border-color: #b85869;
+    background: #b8586921;
+}
+.room-utilities__actions button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.room-utilities__actions b {
+    font-size: 10px;
+    font-weight: 550;
+}
+.room-utilities__symbol {
+    height: 31px;
+    width: 31px;
+    display: grid;
+    place-content: center;
+    font-size: 31px;
+    line-height: 1;
+    color: #d6a1ad;
+}
+.room-utilities__shape--d10,
+.room-utilities__shape--d20 {
+    font:
+        bold 12px Consolas,
+        monospace;
+    background: #6b3d4b;
+    clip-path: polygon(50% 0, 96% 35%, 85% 78%, 50% 100%, 15% 78%, 4% 35%);
+}
+.room-utilities__shape--d20 {
+    clip-path: polygon(50% 0, 94% 25%, 94% 75%, 50% 100%, 6% 75%, 6% 25%);
+    background: #b8586955;
+}
+.room-utilities__shape--coin {
+    border: 1px solid #e9b86d;
+    border-radius: 50%;
+    font-size: 22px;
+    color: #e9b86d;
+    background: #e9b86d14;
+}
+.room-utilities__status {
+    font-size: 10px;
+    color: #d7a8b3;
+    line-height: 1.5;
+    min-height: 15px;
+    margin: 10px 0 13px;
+}
+.room-utilities__history-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-top: 1px solid var(--u-line);
+    padding-top: 15px;
+    margin-bottom: 7px;
+}
+.room-utilities__history-heading h3 {
+    font:
+        600 11px Montserrat,
+        'Segoe UI',
+        sans-serif;
+    margin: 0;
+    color: var(--u-ink);
+}
+.room-utilities__history-heading > span {
+    font-size: 8px;
+    color: #857c93;
+}
+.room-utilities__history {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    max-height: 245px;
+    scrollbar-width: thin;
+    scrollbar-color: #514357 transparent;
+}
+.room-utilities__history li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 0;
+    border-bottom: 1px solid #ffffff07;
+}
+.room-utilities__history-type {
+    height: 30px;
+    width: 30px;
+    display: grid;
+    place-content: center;
+    flex-shrink: 0;
+    background: #b8586918;
+    color: #d29aa8;
+    font:
+        bold 10px Consolas,
+        monospace;
+    border-radius: 8px;
+}
+.room-utilities__history-type.is-coin {
+    background: #e9b86d12;
+    color: #e9b86d;
+    font-size: 16px;
+}
+.room-utilities__history li > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+}
+.room-utilities__history li b {
+    color: #dbd2e0;
+    font-size: 10px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.room-utilities__history li > div > span {
+    color: #8e829c;
+    font-size: 9px;
+}
+.room-utilities__history li > strong {
+    font:
+        600 18px Consolas,
+        monospace;
+    color: var(--u-ink);
+    padding: 0 3px;
+}
+.room-utilities__history .room-utilities__empty {
+    font-size: 11px;
+    color: var(--u-muted);
+    line-height: 1.8;
+    padding: 21px 7px;
+    border: 0;
+}
+.room-utilities__note {
+    font-size: 8px;
+    color: #7c7289;
+    margin: 13px 0 0;
+}
+.room-utilities__viewer {
+    position: absolute;
+    right: 18px;
+    bottom: calc(var(--bottom-btns-margin-bottom, 18px) + 66px);
+    width: 235px;
+    padding: 12px 14px 16px;
+    background: var(--u-bg);
+    border: 1px solid var(--u-line);
+    border-radius: 14px;
+    box-shadow: 0 12px 34px #0005;
+    pointer-events: none;
+    overflow: hidden;
+    animation: utility-enter 0.22s ease-out;
+}
+.room-utilities__viewer-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 5px;
+    min-height: 24px;
+}
+.room-utilities__viewer-top > span {
+    font-size: 10px;
+    color: #b5a9c1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+.room-utilities__viewer .room-utilities__close {
+    pointer-events: auto;
+    font-size: 17px !important;
+    min-height: 24px;
+    min-width: 24px;
+}
+.room-utilities__arena {
+    height: 124px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    perspective: 500px;
+}
+.room-utilities__die {
+    width: 110px;
+    height: 110px;
+    position: relative;
+    transform-origin: 50% 75%;
+    filter: drop-shadow(0 3px 4px #0003);
+    will-change: auto;
+}
+.room-utilities__die svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.room-utilities__shadow {
+    position: absolute;
+    width: 65px;
+    height: 8px;
+    background: #0005;
+    border-radius: 50%;
+    bottom: 3px;
+    filter: blur(3px);
+}
+.room-utilities__outcome {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 56px;
+    margin-top: 5px;
+}
+.room-utilities__outcome > strong {
+    font:
+        700 34px Consolas,
+        monospace;
+    color: var(--u-ink);
+    line-height: 1.1;
+}
+.room-utilities__outcome > span {
+    font-size: 9px;
+    color: #94869f;
+}
+.room-utilities__announcement {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+.room-utilities__viewer.is-rolling .room-utilities__die {
+    animation: utility-tumble 1.45s both cubic-bezier(0.22, 0.65, 0.33, 1);
+}
+.room-utilities__viewer.is-rolling .room-utilities__die.is-coin {
+    animation: utility-coin 1.45s both ease-out;
+}
+.room-utilities__viewer.is-rolling .room-utilities__shadow {
+    animation: utility-shadow 1.45s ease-out;
+}
+.room-utilities__viewer.is-revealed .room-utilities__outcome > strong {
+    animation: utility-number 0.25s ease-out;
+}
+.room-utilities:has(.room-utilities__panel:not([hidden])) .room-utilities__viewer {
+    right: 392px;
+}
+#roomUtilitiesButton.is-active {
+    color: #dda5b2;
+    background: #b8586926;
+}
+@keyframes utility-enter {
+    from {
+        opacity: 0;
+        translate: 0 9px;
+    }
+    to {
+        opacity: 1;
+        translate: 0 0;
+    }
+}
+@keyframes utility-tumble {
+    0% {
+        transform: translate(-35px, -15px) rotate(-125deg) rotateY(180deg) scale(0.65);
+        opacity: 0;
+    }
+    12% {
+        opacity: 1;
+    }
+    32% {
+        transform: translate(15px, -19px) rotate(180deg) rotateY(250deg) scale(1.08);
+    }
+    56% {
+        transform: translate(-8px, 7px) rotate(320deg) rotateY(360deg);
+    }
+    72% {
+        transform: translate(3px, -12px) rotate(368deg);
+    }
+    86% {
+        transform: translate(-2px, 3px) rotate(355deg);
+    }
+    100% {
+        transform: translate(0, 0) rotate(360deg);
+    }
+}
+@keyframes utility-coin {
+    0% {
+        transform: translateY(-36px) rotateY(0deg) scale(0.7);
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    40% {
+        transform: translateY(-14px) rotateY(960deg) scale(1.05);
+    }
+    70% {
+        transform: translateY(7px) rotateY(1400deg);
+    }
+    85% {
+        transform: translateY(-5px) rotateY(1440deg);
+    }
+    100% {
+        transform: translateY(0) rotateY(1440deg);
+    }
+}
+@keyframes utility-shadow {
+    0%,
+    35% {
+        transform: scale(0.5);
+        opacity: 0.4;
+    }
+    65%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+@keyframes utility-number {
+    from {
+        opacity: 0.5;
+        transform: scale(0.85);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+@media (max-width: 690px) {
+    .room-utilities__panel {
+        right: 14px;
+        bottom: calc(var(--bottom-btns-margin-bottom, 18px) + 68px);
+        padding: 17px;
+        max-height: calc(100dvh - 125px);
+    }
+    .room-utilities__viewer {
+        right: 12px;
+        bottom: calc(var(--bottom-btns-margin-bottom, 18px) + 68px);
+        width: 185px;
+        padding: 9px 12px 12px;
+    }
+    .room-utilities__arena {
+        height: 95px;
+    }
+    .room-utilities__die {
+        width: 85px;
+        height: 85px;
+    }
+    .room-utilities__outcome {
+        min-height: 47px;
+        margin-top: 3px;
+    }
+    .room-utilities__outcome > strong {
+        font-size: 28px;
+    }
+    .room-utilities:has(.room-utilities__panel:not([hidden])) .room-utilities__viewer {
+        right: 14px;
+        bottom: auto;
+        top: 12px;
+        width: 180px;
+    }
+    .room-utilities:has(.room-utilities__panel:not([hidden])) .room-utilities__viewer .room-utilities__arena {
+        height: 62px;
+    }
+    .room-utilities:has(.room-utilities__panel:not([hidden])) .room-utilities__viewer .room-utilities__die {
+        height: 58px;
+        width: 58px;
+    }
+    .room-utilities:has(.room-utilities__panel:not([hidden])) .room-utilities__viewer .room-utilities__outcome {
+        min-height: 35px;
+        gap: 1px;
+    }
+    .room-utilities:has(.room-utilities__panel:not([hidden]))
+        .room-utilities__viewer
+        .room-utilities__outcome
+        > strong {
+        font-size: 22px;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .room-utilities * {
+        animation: none !important;
+        transition: none !important;
+    }
+}

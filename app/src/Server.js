@@ -93,6 +93,8 @@ const checkXSS = require('./XSS');
 const mime = require('mime-types');
 const Host = require('./Host');
 const Room = require('./Room');
+const { RoomUtilities } = require('./RoomUtilities');
+const roomUtilities = new RoomUtilities();
 const singleRoom = require('./SingleRoomPolicy');
 const Peer = require('./Peer');
 const { assignFallbackPresenter, isConfiguredPresenter } = require('./PresenterManager');
@@ -544,6 +546,25 @@ const authHost = new Host(); // Authenticated IP by Login
 
 const roomList = new Map(); // All Rooms
 
+// The experiment is deliberately unavailable outside the development instance.
+const { CaptchaControl } = require('./CaptchaControl');
+const { captchaRoutes } = require('./CaptchaRoutes');
+const captchaControl = new CaptchaControl({
+    enabled: process.env.APP_ENV === 'dev' && process.env.CAPTCHA_ENABLED === 'true',
+    rooms: roomList,
+    sockets: io.sockets.sockets,
+    catalog: require('./captcha-games.json'),
+    dataDir: process.env.CAPTCHA_DATA_DIR || '/data/captcha',
+});
+const captchaTimer = setInterval(() => {
+    try {
+        captchaControl.tick();
+    } catch {
+        log.warn('CAPTCHA tick failed; media is unaffected');
+    }
+}, 1000);
+captchaTimer.unref();
+
 const presenters = {}; // Collect presenters grp by roomId
 
 const streams = {}; // Collect all rtmp streams
@@ -685,6 +706,22 @@ function startServer() {
 
     // IP Whitelist check ...
     app.use(restrictAccessByIP);
+
+    try {
+        app.use(
+            '/dev/captcha',
+            captchaRoutes({
+                control: captchaControl,
+                adminDir: path.join(__dirname, '../captcha-admin'),
+                playerDir: path.join(__dirname, '../captcha-player'),
+                adminKey: process.env.CAPTCHA_ADMIN_KEY,
+            })
+        );
+    } catch {
+        captchaControl.enabled = false;
+        log.warn('CAPTCHA unavailable: check development key and writable storage');
+        app.use('/dev/captcha', (req, res) => res.sendStatus(404));
+    }
 
     // Logs requests
     /*
@@ -2432,6 +2469,8 @@ function startServer() {
     // ####################################################
 
     io.on('connection', (socket) => {
+        roomUtilities.bind(socket, getRoom);
+        captchaControl.bind(socket, getRoom);
         socket.on('clientError', (error) => {
             try {
                 log.error('Client error', error.message);

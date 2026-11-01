@@ -41,6 +41,9 @@ jobs:
 
       - run: cp app/src/config.template.js app/src/config.js
       - run: npm test
+      - run: npm ci --prefix captcha --ignore-scripts
+      - run: npm run build --prefix captcha
+      - run: npm run test --prefix captcha
 
   image:
     needs: test
@@ -52,6 +55,14 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: npm
+          cache-dependency-path: captcha/package-lock.json
+      - run: npm ci --prefix captcha --ignore-scripts
+      - run: npm run build --prefix captcha
 
       - uses: docker/setup-buildx-action@v3
 

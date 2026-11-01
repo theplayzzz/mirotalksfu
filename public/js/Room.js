@@ -1879,6 +1879,8 @@ function joinRoom(peer_name, room_id) {
 
 function roomIsReady() {
     startRoomSession();
+    window.RoomUtilities?.connect(socket);
+    window.RoomCaptcha?.connect(socket, { getClient: () => rc });
 
     makeRoomPopupQR();
 

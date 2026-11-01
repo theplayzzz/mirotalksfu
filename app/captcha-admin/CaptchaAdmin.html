@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="pt-BR">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>CAPTCHA · Controle de desenvolvimento</title>
+        <link rel="stylesheet" href="/dev/captcha/ui/admin.css" />
+    </head>
+    <body>
+        <header class="masthead">
+            <a href="/dev/captcha/" class="brand"
+                >captcha<span>controle</span><small>AMBIENTE DE DESENVOLVIMENTO</small></a
+            >
+            <div class="connection">
+                <i id="liveDot"></i><span id="connection">Acesso restrito</span><button id="logout" hidden>Sair</button>
+            </div>
+        </header>
+        <main>
+            <section id="login" class="login panel">
+                <span class="eyebrow">SÓ PARA QUEM COMANDA A RESENHA</span>
+                <h1>Entre no controle.</h1>
+                <p>A chave deste painel é separada do acesso à chamada.</p>
+                <form id="loginForm">
+                    <label
+                        >Chave de administração<input
+                            id="key"
+                            type="password"
+                            autocomplete="current-password"
+                            required /></label
+                    ><button class="primary">Entrar no painel →</button>
+                </form>
+                <p class="muted">
+                    A chave fica no arquivo <code>/data/captcha/admin-key</code> da instância de desenvolvimento. Ela
+                    não é enviada aos participantes.
+                </p>
+            </section>
+            <section id="dashboard" hidden>
+                <div class="intro">
+                    <div>
+                        <span class="eyebrow">LABORATÓRIO EM SALA</span>
+                        <h1>Controle da resenha<span>.</span></h1>
+                        <p>Escolha quem joga, acompanhe as tentativas e descubra os favoritos.</p>
+                    </div>
+                    <a class="room-link" href="/" target="_blank" rel="noopener">Abrir plataforma ↗</a>
+                </div>
+                <div class="room-toolbar">
+                    <label
+                        >Sala<input
+                            id="room"
+                            list="rooms"
+                            placeholder="Selecione ou digite a sala"
+                            autocomplete="off" /><datalist id="rooms"></datalist></label
+                    ><span id="onlineSummary">Nenhum participante online</span
+                    ><button id="pauseRoom" class="danger">Pausar automação e liberar a sala</button>
+                </div>
+                <nav class="tabs" aria-label="Seções do painel">
+                    <button data-tab="live" aria-selected="true">Ao vivo</button
+                    ><button data-tab="games" aria-selected="false">Jogos e resultados</button
+                    ><button data-tab="logs" aria-selected="false">Registro</button>
+                </nav>
+                <section id="live" class="tab-panel">
+                    <div class="live-grid">
+                        <div>
+                            <section class="panel">
+                                <div class="section-heading">
+                                    <div>
+                                        <span class="eyebrow">QUEM ESTÁ NA SALA</span>
+                                        <h2>Participantes online</h2>
+                                    </div>
+                                    <button id="randomTrigger" class="primary">Sortear participante ↗</button>
+                                </div>
+                                <label class="game-choice"
+                                    >Jogo do próximo disparo<select id="triggerGame">
+                                        <option value="random">Surpreenda-me · jogo aleatório</option>
+                                    </select></label
+                                >
+                                <div id="users" class="users"></div>
+                                <p class="muted">
+                                    O disparo afeta só as telas compartilhadas de quem recebe. Câmera, áudio e controles
+                                    continuam disponíveis. Sem sobrepor jogos.
+                                </p>
+                            </section>
+                            <section class="panel">
+                                <div class="section-heading">
+                                    <h2>Votação da sala</h2>
+                                    <span id="voteStatus" class="tag">Nenhuma votação</span>
+                                </div>
+                                <div class="form-row">
+                                    <label
+                                        >Regra<select id="voteMode">
+                                            <option value="percent">Percentual dos presentes</option>
+                                            <option value="count">Número de votos</option>
+                                        </select></label
+                                    ><label
+                                        >Necessários<input
+                                            id="voteRequired"
+                                            type="number"
+                                            min="1"
+                                            max="100"
+                                            value="60" /></label
+                                    ><label
+                                        >Prazo em segundos<input
+                                            id="voteSeconds"
+                                            type="number"
+                                            min="10"
+                                            max="120"
+                                            value="30"
+                                    /></label>
+                                </div>
+                                <p class="muted">
+                                    Use “Votar” ao lado do participante. Os presentes no início votam uma vez, inclusive
+                                    o escolhido. O total necessário não diminui com saídas.
+                                </p>
+                                <div id="votes"></div>
+                            </section>
+                            <section class="panel">
+                                <div class="section-heading">
+                                    <h2>Jogos abertos</h2>
+                                    <span class="muted">Jogo e resultado</span>
+                                </div>
+                                <div id="active"></div>
+                            </section>
+                        </div>
+                        <aside>
+                            <section class="panel automation">
+                                <span class="eyebrow">NO RITMO DA SALA</span>
+                                <h2>Automação</h2>
+                                <label class="switch-line"
+                                    ><input id="randomEnabled" type="checkbox" /><span
+                                        >Disparos aleatórios ligados</span
+                                    ></label
+                                ><label
+                                    >Quem recebe<select id="randomMode">
+                                        <option value="one">Um participante sorteado</option>
+                                        <option value="all">Todos os disponíveis</option>
+                                    </select></label
+                                ><label
+                                    >Intervalo entre disparos · segundos<input
+                                        id="interval"
+                                        type="number"
+                                        min="30"
+                                        max="86400"
+                                        value="300" /></label
+                                ><label
+                                    >Pausa mínima por pessoa · segundos<input
+                                        id="cooldown"
+                                        type="number"
+                                        min="30"
+                                        max="86400"
+                                        value="300" /></label
+                                ><label
+                                    >Variação do intervalo · %<input
+                                        id="jitter"
+                                        type="number"
+                                        min="0"
+                                        max="50"
+                                        value="20" /></label
+                                ><button id="saveRoom" class="primary">Salvar automação</button>
+                                <p id="nextRandom" class="muted">
+                                    Começa desligada. Só participantes disponíveis recebem.
+                                </p>
+                            </section>
+                            <section class="note">
+                                <strong>Uma brincadeira, sem travar a chamada.</strong>
+                                <p>
+                                    Ganhar e perder liberam as streams. O jogador pode minimizar o jogo, tentar
+                                    novamente ou liberar as telas. Se a conexão ou o jogo falhar, o blur sai.
+                                </p>
+                                <p>Somente nesta instância de desenvolvimento.</p>
+                            </section>
+                        </aside>
+                    </div>
+                </section>
+                <section id="games" class="tab-panel" hidden>
+                    <section class="panel">
+                        <div class="section-heading">
+                            <div>
+                                <span class="eyebrow">AJUSTE E COMPARE</span>
+                                <h2>Jogos e resultados</h2>
+                            </div>
+                            <button id="saveGames" class="primary">Salvar jogos</button>
+                        </div>
+                        <p class="muted">
+                            Duração de 8 a 40 segundos; intensidade de 0,70 a 1,50. Alterações valem na próxima
+                            tentativa. A nota considera a última avaliação de cada pessoa por jogo.
+                        </p>
+                        <p id="totals" class="totals"></p>
+                        <div class="table-scroll">
+                            <table class="game-table">
+                                <thead>
+                                    <tr>
+                                        <th>Jogo / ativo</th>
+                                        <th>Duração</th>
+                                        <th>Intensidade</th>
+                                        <th>Jogadas</th>
+                                        <th>Vitórias / derrotas</th>
+                                        <th>Vitórias</th>
+                                        <th>Repetições</th>
+                                        <th>Nota</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="gameRows"></tbody>
+                            </table>
+                        </div>
+                    </section>
+                </section>
+                <section id="logs" class="tab-panel" hidden>
+                    <section class="panel">
+                        <div class="section-heading">
+                            <div>
+                                <span class="eyebrow">HISTÓRICO PERSISTENTE</span>
+                                <h2>Últimas tentativas</h2>
+                            </div>
+                            <span class="muted">Até 150 · sala selecionada</span>
+                        </div>
+                        <div class="table-scroll">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Quando</th>
+                                        <th>Participante</th>
+                                        <th>Jogo</th>
+                                        <th>Resultado</th>
+                                        <th>Tempo</th>
+                                        <th>Tentativa</th>
+                                        <th>Origem</th>
+                                        <th>Intensidade</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="attempts"></tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="panel">
+                        <h2>Eventos da sala</h2>
+                        <div id="events" class="events"></div>
+                    </section>
+                </section>
+            </section>
+            <div id="notice" role="status" hidden></div>
+        </main>
+        <script src="/dev/captcha/ui/admin.js" defer></script>
+    </body>
+</html>

@@ -42,6 +42,9 @@ services:
       HEALTH_DIR: /data/health
       HEALTH_INTERVAL_S: "10"
       HEALTH_RETENTION_DAYS: "14"
+      # Private, development-only CAPTCHA orchestration (random starts disabled).
+      CAPTCHA_ENABLED: "true"
+      CAPTCHA_DATA_DIR: /data/captcha
       # replay
       REPLAY_ENABLED: "true"
       REPLAY_UI_ENABLED: "true"
