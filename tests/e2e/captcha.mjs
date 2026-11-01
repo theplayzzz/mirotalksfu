@@ -233,6 +233,20 @@ try {
         '!document.body.classList.contains("room-captcha-blur") && !document.getElementById("roomCaptchaWindow")'
     );
     const bobId = (await api('/api/state')).rooms.find((r) => r.id === 'friends').users[0].id;
+    await bob.ev(
+        'document.querySelectorAll("video[data-room-captcha-screen]").forEach(v=>delete v.dataset.roomCaptchaScreen)'
+    );
+    await api('/api/trigger', { roomId: 'friends', peerId: bobId, gameId: 'rain' });
+    await sleep(350);
+    assert.equal(
+        await bob.ev('document.querySelectorAll(".room-captcha-prompt").length'),
+        0,
+        'no prompt is placed on avatars or cameras when no stream exists'
+    );
+    assert.equal(await bob.ev('!!document.getElementById("roomCaptchaWindow")'), false);
+    await bob.ev('document.getElementById("stream").dataset.roomCaptchaScreen="true"');
+    await until(bob, 'document.querySelectorAll(".room-captcha-prompt:not([hidden])").length===1');
+    await api('/api/release', { peerId: bobId });
     await bob.send('Network.enable');
     await bob.send('Network.setBlockedURLs', { urls: ['*player-escape-transparent*.png'] });
     await api('/api/trigger', { roomId: 'friends', peerId: bobId, gameId: 'rain' });
@@ -241,6 +255,23 @@ try {
         bob,
         '!document.getElementById("roomCaptchaWindow") && !document.body.classList.contains("room-captcha-blur")'
     );
+    await bob.send('Network.setBlockedURLs', { urls: [] });
+    await bob.send('Emulation.setDeviceMetricsOverride', {
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 1,
+        mobile: true,
+    });
+    await api('/api/trigger', { roomId: 'friends', peerId: bobId, gameId: 'rain' });
+    await until(bob, '!!document.querySelector(".room-captcha-prompt:not([hidden])")');
+    assert.equal(
+        await bob.ev(
+            '(()=>{const b=document.querySelector(".room-captcha-prompt").getBoundingClientRect(),v=document.getElementById("stream").getBoundingClientRect();return b.left>=v.left&&b.right<=v.right&&b.top>=v.top&&b.bottom<=v.bottom})()'
+        ),
+        true
+    );
+    await shot(bob, 'mobile-prompt');
+    await api('/api/release', { peerId: bobId });
     await admin.ev('document.querySelector("[data-tab=games]").click()');
     await sleep(3200);
     await shot(admin, 'admin-games');
