@@ -17,7 +17,7 @@
         </header>
         <main>
             <section id="login" class="login panel">
-                <span class="eyebrow">SÓ PARA QUEM COMANDA A RESENHA</span>
+                <span class="eyebrow">ACESSO ADMINISTRATIVO</span>
                 <h1>Entre no controle.</h1>
                 <p>A chave deste painel é separada do acesso à chamada.</p>
                 <form id="loginForm">
@@ -38,8 +38,8 @@
                 <div class="intro">
                     <div>
                         <span class="eyebrow">LABORATÓRIO EM SALA</span>
-                        <h1>Controle da resenha<span>.</span></h1>
-                        <p>Escolha quem joga, acompanhe as tentativas e descubra os favoritos.</p>
+                        <h1>Controle do CAPTCHA<span>.</span></h1>
+                        <p>Gerencie verificações, participantes e resultados.</p>
                     </div>
                     <a class="room-link" href="/" target="_blank" rel="noopener">Abrir plataforma ↗</a>
                 </div>
@@ -77,7 +77,7 @@
                                 <div id="users" class="users"></div>
                                 <p class="muted">
                                     O disparo afeta só as telas compartilhadas de quem recebe. Câmera, áudio e controles
-                                    continuam disponíveis. Sem sobrepor jogos.
+                                    continuam disponíveis. O participante inicia a verificação pelo botão nas streams.
                                 </p>
                             </section>
                             <section class="panel">
@@ -97,7 +97,7 @@
                                             type="number"
                                             min="1"
                                             max="100"
-                                            value="60" /></label
+                                            value="35" /></label
                                     ><label
                                         >Prazo em segundos<input
                                             id="voteSeconds"
@@ -109,7 +109,8 @@
                                 </div>
                                 <p class="muted">
                                     Use “Votar” ao lado do participante. Os presentes no início votam uma vez, inclusive
-                                    o escolhido. O total necessário não diminui com saídas.
+                                    o escolhido. O padrão é 35%, com o total de votos arredondado para cima. O total
+                                    necessário não diminui com saídas.
                                 </p>
                                 <div id="votes"></div>
                             </section>
@@ -161,7 +162,7 @@
                                 </p>
                             </section>
                             <section class="note">
-                                <strong>Uma brincadeira, sem travar a chamada.</strong>
+                                <strong>Verificação na área das transmissões.</strong>
                                 <p>
                                     Ganhar e perder liberam as streams. O jogador pode minimizar o jogo, tentar
                                     novamente ou liberar as telas. Se a conexão ou o jogo falhar, o blur sai.

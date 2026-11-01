@@ -187,9 +187,11 @@
                     !user.ready
                         ? 'Atualize a página para receber jogos'
                         : user.active
-                          ? { assigned: 'Jogo enviado', playing: 'Jogando', result: 'Avaliando o resultado' }[
-                                user.phase
-                            ] || 'Jogo aberto'
+                          ? {
+                                assigned: 'Verificação pendente',
+                                playing: 'Verificação em andamento',
+                                result: 'Avaliando o resultado',
+                            }[user.phase] || 'Jogo aberto'
                           : 'Disponível'
                 )
             );

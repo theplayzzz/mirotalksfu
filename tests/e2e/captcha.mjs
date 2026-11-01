@@ -93,6 +93,14 @@ async function shot(p, name) {
     const r = await p.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     writeFileSync(path.join(shots, `${name}.png`), Buffer.from(r.result.data, 'base64'));
 }
+async function openPrompt(page, target = 'stream') {
+    const selector = `.room-captcha-prompt[data-captcha-target="${target}"]:not([hidden])`;
+    await until(page, `!!document.querySelector(${JSON.stringify(selector)})`);
+    const position = await page.ev(
+        `(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`
+    );
+    await page.click(position.x, position.y);
+}
 let token;
 async function api(route, body) {
     const r = await fetch(origin + '/dev/captcha' + route, {
@@ -119,6 +127,7 @@ try {
     await until(admin, '!document.getElementById("dashboard").hidden');
     token = await admin.ev('sessionStorage.getItem("captcha-admin-token")');
     await until(admin, 'document.querySelectorAll("#users .user").length===2');
+    assert.equal(await admin.ev('document.getElementById("voteRequired").value'), '35');
     await shot(admin, 'admin-live');
     const state = await api('/api/state'),
         aliceId = state.rooms.find((r) => r.id === 'friends').users.find((u) => u.name === 'Alice').id;
@@ -126,34 +135,58 @@ try {
     for (const g of Object.values(settings.games)) g.duration = 8;
     await api('/api/settings', settings);
     await api('/api/trigger', { roomId: 'friends', peerId: aliceId, gameId: 'juggle' });
-    await until(alice, iframe('!document.getElementById("start").disabled'));
+    await until(alice, 'document.querySelectorAll(".room-captcha-prompt:not([hidden])").length===2');
+    assert.equal(
+        await alice.ev('!!document.getElementById("roomCaptchaWindow")'),
+        false,
+        'no game window until the participant clicks'
+    );
+    assert.equal(
+        await alice.ev('performance.getEntriesByType("resource").filter(r=>r.name.includes("/captcha/play/")).length'),
+        0,
+        'no iframe or game assets fetched before the click'
+    );
+    assert.equal(control.attempts.size, 0, 'assignment is pending; no attempt has started');
     assert.equal(await bob.ev('!!document.getElementById("roomCaptchaWindow")'), false);
     assert.equal(await other.ev('!!document.getElementById("roomCaptchaWindow")'), false);
     assert.equal(await alice.ev('getComputedStyle(document.getElementById("stream")).filter'), 'blur(14px)');
     assert.equal(await alice.ev('getComputedStyle(document.getElementById("screen2")).filter'), 'blur(14px)');
     assert.equal(await alice.ev('getComputedStyle(document.getElementById("camera")).filter'), 'none');
+    await alice.ev(
+        '(()=>{const tile=document.createElement("div"),v=document.createElement("video");v.id="lateScreen";v.dataset.roomCaptchaScreen="true";tile.className="tile";tile.append(v);document.getElementById("grid").append(tile)})()'
+    );
+    await until(alice, 'document.querySelectorAll(".room-captcha-prompt:not([hidden])").length===3');
+    assert.equal(await alice.ev('getComputedStyle(document.getElementById("lateScreen")).filter'), 'blur(14px)');
+    await alice.ev('document.getElementById("lateScreen").parentElement.remove()');
+    await until(alice, 'document.querySelectorAll(".room-captcha-prompt:not([hidden])").length===2');
     await shot(alice, 'grid-ready');
     const mic = await alice.ev(
         '(() => {const r=document.getElementById("mic").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()'
     );
     await alice.click(mic.x, mic.y);
     assert.equal(await alice.ev('document.getElementById("mic").getAttribute("aria-pressed")'), 'true');
-    await alice.ev('document.querySelector("[data-minimize]").click()');
     await alice.ev('document.getElementById("pin").click()');
-    await alice.ev('document.querySelector("[data-minimize]").click()');
     await sleep(400);
+    await shot(alice, 'pinned-prompt');
+    await openPrompt(alice);
+    await until(alice, iframe('!document.getElementById("pause").disabled'));
+    assert.equal(control.attempts.size, 1, 'one click opens the window and starts the verification');
+    assert.equal(await alice.ev(iframe('document.body.innerText.toLowerCase().includes("resenha")')), false);
+    await alice.ev('document.querySelector("[data-minimize]").click()');
+    await until(alice, 'document.querySelectorAll(".room-captcha-prompt:not([hidden])").length===2');
+    await openPrompt(alice);
+    assert.equal(control.attempts.size, 1, 'opening a minimized verification reuses its attempt');
+    await sleep(100);
     const dims = await alice.ev(
         '(() => {const game=document.getElementById("roomCaptchaWindow").getBoundingClientRect(),video=document.getElementById("stream").getBoundingClientRect();return {left:game.left,expected:video.left,width:game.width,expectedWidth:video.width}})()'
     );
     assert.ok(Math.abs(dims.left - dims.expected) < 3);
     assert.ok(Math.abs(dims.width - dims.expectedWidth) < 3);
-    await alice.ev(iframe('document.getElementById("start").click()'));
-    await until(alice, iframe('!document.getElementById("countdown").hidden'));
     await shot(alice, 'pinned-countdown');
     await until(alice, iframe('!document.getElementById("result").hidden'), 16000);
     assert.equal(await alice.ev('document.body.classList.contains("room-captcha-blur")'), false);
     await alice.ev(iframe('document.querySelectorAll("#stars button")[3].click()'));
-    await until(alice, iframe('document.getElementById("ratingStatus").textContent.includes("salva")'));
+    await until(alice, iframe('document.getElementById("ratingStatus").textContent.includes("registrada")'));
     assert.equal((await api('/api/state')).stats.find((s) => s.gameId === 'juggle').averageRating, 4);
     await shot(alice, 'result-stars');
     await alice.ev(iframe('document.getElementById("retry").click()'));
@@ -171,24 +204,29 @@ try {
     });
     await until(alice, '!!document.getElementById("roomCaptchaVote")');
     await until(bob, '!!document.getElementById("roomCaptchaVote")');
+    assert.equal(
+        await bob.ev('document.querySelector("#roomCaptchaVote strong").textContent'),
+        'Alice deve passar pelo Boiolômetro?'
+    );
     assert.equal(await other.ev('!!document.getElementById("roomCaptchaVote")'), false);
     await alice.ev('document.querySelector("#roomCaptchaVote button").click()');
     await bob.ev('document.querySelector("#roomCaptchaVote button").click()');
-    await until(alice, iframe('!document.getElementById("start").disabled'));
+    await until(alice, 'document.querySelectorAll(".room-captcha-prompt:not([hidden])").length===2');
+    assert.equal(await alice.ev('!!document.getElementById("roomCaptchaWindow")'), false);
+    await until(bob, '!document.getElementById("roomCaptchaVote")');
     assert.equal(control.votes.get(vote.id).status, 'approved');
     await api('/api/release', { peerId: aliceId });
     // Each real game bundle mounts and starts, with no missing assets/runtime errors.
     for (const g of catalog) {
         await api('/api/trigger', { roomId: 'friends', peerId: aliceId, gameId: g.id });
-        await until(alice, iframe('!document.getElementById("start").disabled'));
-        await alice.ev(iframe('document.getElementById("start").click()'));
+        await openPrompt(alice);
         await until(alice, iframe('document.getElementById("pause").disabled===false'));
         await sleep(80);
         await api('/api/release', { peerId: aliceId });
         await until(alice, '!document.getElementById("roomCaptchaWindow")');
     }
     await api('/api/trigger', { roomId: 'friends', peerId: aliceId, gameId: 'rain' });
-    await until(alice, '!!document.getElementById("roomCaptchaWindow")');
+    await until(alice, '!!document.getElementById("roomCaptchaPrompts")');
     await alice.ev('socket.disconnect()');
     await until(
         alice,
@@ -198,6 +236,7 @@ try {
     await bob.send('Network.enable');
     await bob.send('Network.setBlockedURLs', { urls: ['*player-escape-transparent*.png'] });
     await api('/api/trigger', { roomId: 'friends', peerId: bobId, gameId: 'rain' });
+    await openPrompt(bob);
     await until(
         bob,
         '!document.getElementById("roomCaptchaWindow") && !document.body.classList.contains("room-captcha-blur")'

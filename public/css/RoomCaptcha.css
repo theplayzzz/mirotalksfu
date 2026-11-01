@@ -2,6 +2,88 @@
 body.room-captcha-blur video[data-room-captcha-screen='true'] {
     filter: blur(14px) !important;
 }
+.room-captcha-prompts {
+    position: fixed;
+    inset: 0;
+    z-index: 85;
+    pointer-events: none;
+    overflow: hidden;
+}
+.room-captcha-prompts[hidden],
+.room-captcha-prompt[hidden] {
+    display: none !important;
+}
+.room-captcha-prompt {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    pointer-events: auto;
+    padding: 10px 16px;
+    border: 1px solid #a995b87d;
+    border-radius: 7px;
+    background: #211c2cf5;
+    color: #f8f2ff;
+    box-shadow: 0 4px 22px #0006;
+    font:
+        13px 'Segoe UI',
+        sans-serif;
+    text-align: left;
+    cursor: pointer;
+}
+.room-captcha-prompt:hover {
+    background: #2d2639;
+    border-color: #d3c6df;
+}
+.room-captcha-prompt:focus-visible {
+    outline: 2px solid #ffa78b;
+    outline-offset: 4px;
+}
+.room-captcha-prompt-mark {
+    flex: none;
+    width: 25px;
+    height: 25px;
+    border: 2px solid #d6c9e0;
+    border-radius: 3px;
+    background: #ffffff07;
+}
+.room-captcha-prompt-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.room-captcha-prompt-copy strong {
+    font-size: 13px;
+    font-weight: 650;
+}
+.room-captcha-prompt-copy small {
+    font-size: 10px;
+    color: #bfaed0;
+}
+.room-captcha-prompt-short {
+    display: none;
+    font-size: 10px;
+    letter-spacing: 0.4px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.room-captcha-prompt.is-compact {
+    gap: 8px;
+    padding: 6px;
+}
+.room-captcha-prompt.is-compact .room-captcha-prompt-mark {
+    width: 18px;
+    height: 18px;
+}
+.room-captcha-prompt.is-compact .room-captcha-prompt-copy {
+    display: none;
+}
+.room-captcha-prompt.is-compact .room-captcha-prompt-short {
+    display: block;
+}
 .room-captcha-window {
     position: fixed;
     z-index: 90;

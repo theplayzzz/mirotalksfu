@@ -60,8 +60,8 @@ function tick(info = {}) {
 function createPlayer() {
     game?.destroy();
     config = assignment.config;
-    $('title').textContent = config.title;
-    $('readyTitle').textContent = config.title;
+    $('title').textContent = 'Verificação em andamento';
+    $('readyTitle').textContent = 'Preparando verificação';
     const callbacks = {
         onState: state,
         onTick: tick,
@@ -70,13 +70,11 @@ function createPlayer() {
         onFinish: (result) => {
             const won = result.reason === 'survived';
             $('resultEmoji').src = won ? playerUrls.escape : playerUrls.impact;
-            $('resultTitle').textContent = won ? 'Você conseguiu!' : 'Infelizmente, você é boiola.';
-            $('resultCopy').textContent = won
-                ? 'Verificação concluída. Essa foi por pouco.'
-                : 'Não precisa se sentir triste. A gente ainda te aceita mesmo assim.';
+            $('resultTitle').textContent = won ? 'Verificação concluída' : 'Infelizmente, você é boiola.';
+            $('resultCopy').textContent = 'Análise concluída. O acesso às transmissões foi restabelecido.';
             rating = 0;
             paintStars();
-            $('ratingStatus').textContent = 'Sua nota ajuda a escolher os próximos jogos.';
+            $('ratingStatus').textContent = 'Avaliação opcional.';
             post('captcha:finished', {
                 attemptId: attempt.id,
                 reason: ['survived', 'impact', 'timeout'].includes(result.reason) ? result.reason : 'impact',
@@ -89,7 +87,7 @@ function createPlayer() {
             ? new PeachGame($('game'), callbacks)
             : new ChallengeHost($('game'), config.id, callbacks);
     $('start').disabled = false;
-    $('start').textContent = 'Jogar';
+    $('start').textContent = 'Iniciar verificação';
     tick();
 }
 function start() {
@@ -119,7 +117,7 @@ for (let value = 1; value <= 5; value++) {
     button.addEventListener('click', () => {
         rating = value;
         paintStars();
-        $('ratingStatus').textContent = 'Salvando nota…';
+        $('ratingStatus').textContent = 'Registrando avaliação…';
         post('captcha:rating', { attemptId: attempt.id, value });
     });
     $('stars').append(button);
@@ -150,7 +148,8 @@ window.addEventListener('message', (event) => {
         return;
     }
     if (data.nonce !== nonce || data.assignmentId !== assignment?.id) return;
-    if (data.type === 'captcha:attempt') {
+    if (data.type === 'captcha:begin') start();
+    else if (data.type === 'captcha:attempt') {
         pending = false;
         $('start').disabled = $('retry').disabled = false;
         attempt = data.attempt;
@@ -162,9 +161,9 @@ window.addEventListener('message', (event) => {
         pending = false;
         $('start').disabled = $('retry').disabled = false;
         message(data.error || 'Não foi possível iniciar. Tente novamente.');
-    } else if (data.type === 'captcha:rated') $('ratingStatus').textContent = 'Nota salva. Valeu!';
+    } else if (data.type === 'captcha:rated') $('ratingStatus').textContent = 'Avaliação registrada.';
     else if (data.type === 'captcha:minimize') {
-        hiddenPause = ['playing', 'countdown'].includes(game?.state);
+        hiddenPause = ['playing', 'countdown', 'paused'].includes(game?.state);
         if (hiddenPause) game.pause();
     } else if (data.type === 'captcha:expand' && hiddenPause) {
         hiddenPause = false;

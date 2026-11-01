@@ -17,7 +17,9 @@ O laboratório foi integrado como experimento da instância de desenvolvimento. 
 
 O cliente identifica vídeos de compartilhamento na montagem da mídia; a classe de blur só afeta esses vídeos. Câmeras, avatares, áudio, barras de controle e chat não são alterados. Novas streams recebem a mesma marcação.
 
-Quando há uma tela ampliada, uma janela independente acompanha o retângulo dessa tela. Na grade, a janela flutua sobre a região central e pode ser minimizada. Ela não cria backdrop nem prende o foco. A mesma instância do iframe continua aberta ao mudar o layout, sem remontar a partida. Minimizar pausa o jogo; abrir retoma. Os vídeos da chamada não são movidos por este recurso.
+Ao receber o disparo, o participante vê somente o blur e um botão **CAPTCHA do Boiolômetro** no centro de cada stream. O jogo e seus assets não são carregados antes de clicar. Câmeras e avatares não recebem botão. Novas streams herdam o blur e o botão enquanto a verificação está pendente.
+
+O clique abre a janela e inicia a verificação, sem um segundo botão de início. Quando há uma tela ampliada, a janela acompanha aquela tela; na grade, usa a stream escolhida quando houver espaço suficiente ou uma janela central. A mesma instância do iframe continua aberta ao mudar o layout. Minimizar pausa a verificação e mostra novamente os botões nas streams; clicar retoma aquela instância. Ela não cria backdrop nem prende o foco. Os vídeos da chamada não são movidos pelo CAPTCHA. A apresentação ao participante usa linguagem de verificação, sem referências a “resenha”.
 
 Ganhar **ou perder** retira o blur imediatamente. A tela de resultado oferece repetir, liberar e avaliar com cinco estrelas; a nota é opcional. “Liberar telas” também está sempre disponível na barra da janela. A atribuição expira após cinco minutos, inclusive se ficar pausada. Saída, perda de conexão ou erro de carregamento remove a janela e o blur. Ninguém é desconectado pelo CAPTCHA.
 
@@ -25,7 +27,7 @@ O jogador isolado não recebe acesso a câmera, microfone ou captura de tela. A 
 
 ## Votação
 
-Uma votação aberta por sala. O eleitorado é a lista dos presentes no início, incluindo o alvo. Pode exigir um número absoluto ou percentual arredondado para cima. Cada pessoa registra um voto final, sim ou não. Quem entrar depois não aumenta o eleitorado. Saídas não diminuem o total necessário; se o quórum ficar inalcançável, a votação encerra. Saída do alvo cancela. Atingir o total a favor dispara uma única atribuição; alvo ocupado não recebe outra por cima.
+Uma votação aberta por sala. A pergunta é **“[nome] deve passar pelo Boiolômetro?”**, com respostas Sim e Não. O painel começa em **35%**, ajustável para 30% ou outro valor. O eleitorado é a lista dos presentes no início, incluindo o alvo. O percentual é arredondado para cima: com dez pessoas, 35% exige quatro votos e 30% exige três. Cada pessoa registra um voto final. Quem entrar depois não aumenta o eleitorado. Saídas não diminuem o total necessário; se o quórum ficar inalcançável, a votação encerra. Saída do alvo cancela. Atingir o total a favor envia o blur e o botão; não abre o jogo automaticamente. Alvo ocupado não recebe outra atribuição por cima.
 
 ## Registros e médias
 
@@ -48,6 +50,8 @@ node tests/e2e/captcha.mjs
 Vite é dependência só de build. O bundle de produção fica em `app/captcha-player` (ignorado pelo Git), com o catálogo gerado em `app/src/captcha-games.json`. CI testa e compila antes de montar a imagem. Docker já copia `app`, incluindo jogador e painel. Os assets com hash usam cache; o painel e suas APIs não.
 
 `ops/compose.dev.yaml` habilita a funcionalidade e monta dados separados. Nenhuma configuração de produção foi alterada. `ops/deploy.sh` recusa implantação com conexões ativas também em desenvolvimento e verifica novamente após baixar a imagem. Não use `--force` para instalar este experimento com participantes conectados.
+
+Para mudanças somente na interface do CAPTCHA, `ops/deploy-captcha-ui.sh sha-<commit>` publica uma lista fixa de arquivos de navegador a partir da imagem construída pela CI, sem recriar o container. Recusa diferenças nos módulos de protocolo do servidor, guarda backups, mantém assets antigos com hash para partidas em andamento, troca HTML/JS/CSS por renomeação atômica e verifica os hashes servidos. Só opera no container de desenvolvimento. Registra a imagem de origem em `frontend-history.log`; a imagem base continua a anterior até uma implantação normal quando a sala estiver vazia. Participantes carregam a interface nova ao atualizar suas próprias páginas.
 
 Teste de sala real: use somente a sala de teste e o token emitido por `ops/dev-test-token.sh`, nomes de teste, áudio/vídeo desabilitados ou uma fonte sintética; encerre suas próprias sessões ao terminar. Os testes locais em Chrome verificam presença real via Socket.IO, API privada, entrega individual, blur seletivo, grade/pin, controles, resultado, nota, repetição, votação, carregamento dos 14 jogos, desconexão e responsividade.
 

@@ -11,6 +11,11 @@
         layoutTimer,
         expiryTimer,
         loadTimer;
+    let promptsRoot,
+        preferredScreen,
+        autoStart = false,
+        obscured = false;
+    const prompts = new Map();
     let minimized = false,
         voteBox,
         voteTimer,
@@ -26,7 +31,87 @@
         socket.on(event, fn);
         listeners.push([event, fn]);
     };
-    const blur = (value) => document.body.classList.toggle('room-captcha-blur', !!value);
+    const blur = (value) => {
+        obscured = !!value;
+        document.body.classList.toggle('room-captcha-blur', obscured);
+        layoutPrompts();
+    };
+    function screenBox(video) {
+        if (!video?.isConnected) return null;
+        const box = video.getBoundingClientRect();
+        if (box.width < 40 || box.height < 40 || getComputedStyle(video).visibility === 'hidden') return null;
+        if (video.videoWidth && video.videoHeight && getComputedStyle(video).objectFit === 'contain') {
+            const ratio = video.videoWidth / video.videoHeight;
+            const width = Math.min(box.width, box.height * ratio),
+                height = width / ratio;
+            return {
+                left: box.left + (box.width - width) / 2,
+                top: box.top + (box.height - height) / 2,
+                width,
+                height,
+            };
+        }
+        return box;
+    }
+    function layoutPrompts() {
+        const visible = current && obscured && (!root || minimized);
+        if (!visible) {
+            if (promptsRoot) promptsRoot.hidden = true;
+            return;
+        }
+        if (!promptsRoot) {
+            promptsRoot = el('div', '', 'room-captcha-prompts');
+            promptsRoot.id = 'roomCaptchaPrompts';
+            document.body.append(promptsRoot);
+        }
+        promptsRoot.hidden = false;
+        const screens = new Set(document.querySelectorAll('video[data-room-captcha-screen="true"]'));
+        for (const [video, button] of prompts)
+            if (!screens.has(video)) {
+                button.remove();
+                prompts.delete(video);
+            }
+        for (const video of screens) {
+            const box = screenBox(video);
+            let button = prompts.get(video);
+            if (!button && box) {
+                button = el('button', '', 'room-captcha-prompt');
+                button.type = 'button';
+                button.dataset.captchaTarget = video.id;
+                button.setAttribute('aria-label', 'Abrir CAPTCHA do Boiolômetro');
+                const mark = el('span', '', 'room-captcha-prompt-mark');
+                mark.setAttribute('aria-hidden', 'true');
+                const copy = el('span', '', 'room-captcha-prompt-copy');
+                copy.append(el('strong', 'CAPTCHA do Boiolômetro'), el('small', 'Verificação necessária'));
+                button.append(mark, copy, el('span', 'CAPTCHA', 'room-captcha-prompt-short'));
+                button.onclick = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openChallenge(video);
+                };
+                prompts.set(video, button);
+                promptsRoot.append(button);
+            }
+            if (!button) continue;
+            const visibleBox =
+                box &&
+                box.top < innerHeight &&
+                box.left < innerWidth &&
+                box.left + box.width > 0 &&
+                box.top + box.height > 0;
+            button.hidden = !visibleBox;
+            if (!visibleBox) continue;
+            const width = Math.min(282, box.width - 16),
+                height = width < 230 ? 42 : 68;
+            button.classList.toggle('is-compact', width < 230);
+            Object.assign(button.style, {
+                width: `${width}px`,
+                height: `${height}px`,
+                left: `${box.left + (box.width - width) / 2}px`,
+                top: `${box.top + (box.height - height) / 2}px`,
+            });
+        }
+    }
     function rpc(event, data = {}) {
         return new Promise((resolve, reject) => {
             if (!socket?.connected) return reject(new Error('Conexão indisponível.'));
@@ -40,6 +125,7 @@
         frame?.contentWindow?.postMessage({ type, nonce, assignmentId: current?.id, ...data }, location.origin);
     }
     function layout() {
+        layoutPrompts();
         if (!root) return;
         let client;
         try {
@@ -49,7 +135,7 @@
         }
         const pin = client?.videoPinMediaContainer || document.getElementById('videoPinMediaContainer');
         const screen = pin?.querySelector('video[data-room-captcha-screen="true"]');
-        const rect = screen?.getBoundingClientRect();
+        const rect = screenBox(screen) || screenBox(preferredScreen);
         const pinned = rect && rect.width > 260 && rect.height > 160;
         const width = minimized
             ? Math.min(340, innerWidth - 24)
@@ -77,7 +163,7 @@
     function minimize() {
         minimized = !minimized;
         send(minimized ? 'captcha:minimize' : 'captcha:expand');
-        root.querySelector('[data-minimize]').textContent = minimized ? 'Abrir jogo' : 'Minimizar';
+        root.querySelector('[data-minimize]').textContent = minimized ? 'Continuar' : 'Minimizar';
         layout();
     }
     function clear() {
@@ -86,6 +172,11 @@
         clearTimeout(expiryTimer);
         clearTimeout(loadTimer);
         root?.remove();
+        promptsRoot?.remove();
+        promptsRoot = null;
+        prompts.clear();
+        preferredScreen = null;
+        autoStart = false;
         root = frame = current = null;
         nonce = null;
         minimized = false;
@@ -100,29 +191,40 @@
         clear();
         current = value;
         nonce = crypto.randomUUID();
+        blur(value.phase !== 'result');
+        layout();
+        layoutTimer = setInterval(layout, 250);
+        expiryTimer = setTimeout(release, Math.max(0, value.expiresAt - Date.now()));
+    }
+    function openChallenge(video) {
+        if (!current) return;
+        preferredScreen = video;
+        if (root) {
+            if (minimized) minimize();
+            frame?.focus({ preventScroll: true });
+            return;
+        }
+        autoStart = true;
         root = el('section', '', 'room-captcha-window');
         root.id = 'roomCaptchaWindow';
-        root.setAttribute('aria-label', 'Minigame de verificação');
+        root.setAttribute('aria-label', 'Verificação do Boiolômetro');
         const bar = el('div', '', 'room-captcha-windowbar');
-        bar.append(el('span', 'CAPTCHA · ' + value.config.title));
+        bar.append(el('span', 'CAPTCHA · Boiolômetro'));
         const small = el('button', 'Minimizar');
         small.dataset.minimize = '';
         small.onclick = minimize;
-        const exit = el('button', 'Liberar telas');
+        const exit = el('button', 'Encerrar');
         exit.onclick = release;
         bar.append(small, exit);
         frame = el('iframe');
-        frame.title = value.config.title;
+        frame.title = 'CAPTCHA do Boiolômetro';
         frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
         frame.setAttribute('allow', "camera 'none'; microphone 'none'; display-capture 'none'");
         frame.src = '/dev/captcha/play/room.html';
         frame.addEventListener('load', () => send('captcha:init', { assignment: current }));
         root.append(bar, frame);
         document.body.append(root);
-        blur(value.phase !== 'result');
         layout();
-        layoutTimer = setInterval(layout, 250);
-        expiryTimer = setTimeout(release, Math.max(0, value.expiresAt - Date.now()));
         loadTimer = setTimeout(release, 12000);
     }
     async function bridge(event) {
@@ -137,8 +239,13 @@
             return;
         const id = current.id;
         try {
-            if (data.type === 'captcha:ready') clearTimeout(loadTimer);
-            else if (data.type === 'captcha:start') {
+            if (data.type === 'captcha:ready') {
+                clearTimeout(loadTimer);
+                if (autoStart) {
+                    autoStart = false;
+                    send('captcha:begin');
+                }
+            } else if (data.type === 'captcha:start') {
                 const result = await rpc('captchaAttemptStart', { assignmentId: id });
                 if (current?.id !== id) return;
                 current.phase = 'playing';
@@ -146,6 +253,7 @@
                 send('captcha:attempt', result);
             } else if (data.type === 'captcha:finished') {
                 // Visual release does not wait for analytics or disk availability.
+                current.phase = 'result';
                 blur(false);
                 await rpc('captchaAttemptFinish', {
                     assignmentId: id,
@@ -168,14 +276,14 @@
         if (!value || value.status !== 'open') return;
         voteBox = el('aside', '', 'room-captcha-vote');
         voteBox.id = 'roomCaptchaVote';
-        voteBox.setAttribute('aria-label', 'Votação de minigame');
-        const title = el('strong', `Minigame para ${value.name}?`);
+        voteBox.setAttribute('aria-label', 'Votação do Boiolômetro');
+        const title = el('strong', `${value.name} deve passar pelo Boiolômetro?`);
         const detail = el('span');
         const buttons = el('div');
         const stored = value.choice || sessionStorage.getItem(`captcha-vote:${value.id}`);
         for (const [choice, label] of [
             ['yes', 'Sim'],
-            ['no', 'Agora não'],
+            ['no', 'Não'],
         ]) {
             const button = el('button', stored === choice ? 'Voto registrado' : label);
             button.disabled = !!stored || value.eligible === false;

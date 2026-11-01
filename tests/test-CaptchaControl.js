@@ -176,6 +176,22 @@ describe('Development CAPTCHA control', () => {
             assert.equal(f.control.active.size, 0);
         }
     });
+    it('accepts the panel 30–35 percent rule using the total room membership', () => {
+        for (const percent of [30, 35]) {
+            const f = fixture();
+            for (let i = 3; i < 10; i++) f.peers.set(`peer-${i}`, { id: `peer-${i}`, peer_name: `Peer ${i}` });
+            const vote = f.control.openVote({ roomId: 'friends', peerId: 'a', mode: 'percent', required: percent });
+            assert.equal(vote.eligibleCount, 10);
+            assert.equal(vote.threshold, percent === 30 ? 3 : 4);
+            const voters = ['a', 'b', 'c', 'peer-3'];
+            for (let i = 0; i < vote.threshold - 1; i++)
+                f.control.castVote(voters[i], { voteId: vote.id, choice: 'yes' });
+            assert.equal(f.control.active.size, 0);
+            f.control.castVote(voters[vote.threshold - 1], { voteId: vote.id, choice: 'yes' });
+            assert.equal(f.control.active.size, 1);
+            assert.equal(f.control.active.get('a').phase, 'assigned');
+        }
+    });
     it('applies configuration to the next attempt and rejects disabled games/invalid ranges', async () => {
         const f = fixture(),
             { a } = f.begin();
