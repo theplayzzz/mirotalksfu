@@ -71,8 +71,8 @@ echo "running container image: ${RUNNING_ID:-none}"
 echo "compose file names:      $COMPOSE_IMAGE (${COMPOSE_ID:-not present on this server})"
 PROBLEMS=0
 if [ "$CONNECTIONS" -gt 0 ]; then
-    if [ "$ENVIRONMENT" = prod ] && [ "$FORCE" -ne 1 ]; then
-        echo "!! people are connected to production; deploying would drop them (--force to deploy anyway)"
+    if [ "$FORCE" -ne 1 ]; then
+        echo "!! people are connected to $ENVIRONMENT; deploying would drop them (--force to deploy anyway)"
         PROBLEMS=1
     else
         echo "(warning: people are connected, they will be dropped)"
@@ -109,6 +109,11 @@ fi
 IMAGE_ID=$(docker image inspect -f '{{.Id}}' "$DIGEST")
 echo "digest: $DIGEST"
 echo "image id: $IMAGE_ID"
+
+# Pulls can take minutes. Check again immediately before changing any container.
+if [ "$FORCE" -ne 1 ] && [ "$(ss -Htn state established "( dport = :$PORT )" | wc -l)" -gt 0 ]; then
+    die "people joined $ENVIRONMENT during the image pull; nothing was restarted"
+fi
 
 # ---- 3. switch ------------------------------------------------------------------------------------------------
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)

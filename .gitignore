@@ -26,3 +26,4 @@ security
 custom
 # local agent worktrees and tooling
 .claude/
+app/captcha-player/

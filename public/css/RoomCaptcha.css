@@ -1,0 +1,103 @@
+/* Only shared-screen pixels are obscured. Tile controls, cameras and audio stay available. */
+body.room-captcha-blur video[data-room-captcha-screen='true'] {
+    filter: blur(14px) !important;
+}
+.room-captcha-window {
+    position: fixed;
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid #a995b84d;
+    border-radius: 12px;
+    background: #252031;
+    color: #f8f2ff;
+    box-shadow: 0 12px 60px #0008;
+}
+.room-captcha-windowbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 34px;
+    padding: 0 8px 0 12px;
+    background: #19151f;
+    font:
+        11px 'Segoe UI',
+        sans-serif;
+}
+.room-captcha-windowbar span {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: #d4c6e2;
+}
+.room-captcha-windowbar button,
+.room-captcha-vote button {
+    font: inherit;
+    border: 1px solid #a995b84d;
+    padding: 4px 9px;
+    border-radius: 6px;
+    background: #ffffff09;
+    color: #f8f2ff;
+    cursor: pointer;
+}
+.room-captcha-windowbar button:hover,
+.room-captcha-vote button:hover {
+    background: #ffffff1c;
+}
+.room-captcha-windowbar button:focus-visible,
+.room-captcha-vote button:focus-visible {
+    outline: 2px solid #ffa78b;
+    outline-offset: 1px;
+}
+.room-captcha-window iframe {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    border: 0;
+}
+.room-captcha-window.is-minimized iframe {
+    visibility: hidden;
+    height: 0;
+}
+.room-captcha-window.is-minimized .room-captcha-windowbar {
+    height: 38px;
+}
+.room-captcha-vote {
+    position: fixed;
+    z-index: 95;
+    top: 14px;
+    right: 14px;
+    width: min(330px, calc(100vw - 28px));
+    padding: 15px;
+    border: 1px solid #a995b84d;
+    border-radius: 10px;
+    background: #211c2cf5;
+    color: #f8f2ff;
+    box-shadow: 0 10px 40px #0005;
+    font:
+        12px 'Segoe UI',
+        sans-serif;
+}
+.room-captcha-vote strong,
+.room-captcha-vote span {
+    display: block;
+    margin-bottom: 9px;
+}
+.room-captcha-vote span {
+    color: #c7b7d4;
+    font-size: 11px;
+}
+.room-captcha-vote div {
+    display: flex;
+    gap: 8px;
+}
+.room-captcha-vote button {
+    padding: 7px 13px;
+}
+.room-captcha-vote button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}

@@ -1,0 +1,86 @@
+[
+  {
+    "id": "arena",
+    "title": "Emoji em perigo",
+    "revision": 1,
+    "seconds": 40
+  },
+  {
+    "id": "rain",
+    "title": "Chuva duvidosa",
+    "revision": 4,
+    "seconds": 25
+  },
+  {
+    "id": "orbit",
+    "title": "Órbita do desespero",
+    "revision": 5,
+    "seconds": 25
+  },
+  {
+    "id": "paddle",
+    "title": "Escudo em órbita",
+    "revision": 5,
+    "seconds": 25
+  },
+  {
+    "id": "rhythm",
+    "title": "Defesa no compasso",
+    "revision": 7,
+    "seconds": 25
+  },
+  {
+    "id": "gravity",
+    "title": "Teto ou chão",
+    "revision": 4,
+    "seconds": 25
+  },
+  {
+    "id": "shelter",
+    "title": "Desenha o abrigo",
+    "revision": 7,
+    "seconds": 25
+  },
+  {
+    "id": "stretch",
+    "title": "Estica e dispara",
+    "revision": 7,
+    "seconds": 25
+  },
+  {
+    "id": "slash",
+    "title": "Corta a fila",
+    "revision": 7,
+    "seconds": 25
+  },
+  {
+    "id": "jet",
+    "title": "Jato nervoso",
+    "revision": 5,
+    "seconds": 25
+  },
+  {
+    "id": "thunder",
+    "title": "Linhas de perigo",
+    "revision": 5,
+    "seconds": 25
+  },
+  {
+    "id": "juggle",
+    "title": "Afasta ou lamenta",
+    "revision": 6,
+    "seconds": 25
+  },
+  {
+    "id": "climb",
+    "title": "Sobe ou some",
+    "revision": 7,
+    "seconds": 25
+  },
+  {
+    "id": "web",
+    "title": "Spiderman Duvidoso",
+    "revision": 5,
+    "seconds": 25
+  }
+]
