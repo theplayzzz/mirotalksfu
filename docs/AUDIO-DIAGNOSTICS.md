@@ -118,3 +118,11 @@ sem expiração por idade. Os 10 testes locais de captura/mudo passaram. A CI pa
 rodou contra o SFU real de desenvolvimento.
 
 A comparação de imagem e horário de início dos contêineres de produção, antes/depois, não apresentou mudanças.
+
+## Pacote de produção — 01/11/2026
+
+Promoção autorizada pelo usuário nesta conversa. O pacote parte de `origin/main` em `9d1cf3df`, preservando a
+ativação de CAPTCHA que já estava em produção (`8c880cd3`). Foram transportadas somente as revisões desta conversa:
+início silencioso por espectador, retenção dos replays por espaço a 80%, estéreo explícito e respectivos testes.
+As outras mudanças exclusivas de `develop` não fazem parte deste pacote. O parâmetro antigo de retenção por dias
+foi removido do compose de produção versionado; eventuais valores antigos no ambiente já são ignorados pelo gravador.
