@@ -546,11 +546,11 @@ const authHost = new Host(); // Authenticated IP by Login
 
 const roomList = new Map(); // All Rooms
 
-// The experiment is deliberately unavailable outside the development instance.
+// Explicit opt-in per instance; never enables development room access in production.
 const { CaptchaControl } = require('./CaptchaControl');
 const { captchaRoutes } = require('./CaptchaRoutes');
 const captchaControl = new CaptchaControl({
-    enabled: process.env.APP_ENV === 'dev' && process.env.CAPTCHA_ENABLED === 'true',
+    enabled: process.env.CAPTCHA_ENABLED === 'true',
     rooms: roomList,
     sockets: io.sockets.sockets,
     catalog: require('./captcha-games.json'),
@@ -709,7 +709,7 @@ function startServer() {
 
     try {
         app.use(
-            '/dev/captcha',
+            ['/captcha', '/dev/captcha'],
             captchaRoutes({
                 control: captchaControl,
                 adminDir: path.join(__dirname, '../captcha-admin'),
@@ -719,8 +719,8 @@ function startServer() {
         );
     } catch {
         captchaControl.enabled = false;
-        log.warn('CAPTCHA unavailable: check development key and writable storage');
-        app.use('/dev/captcha', (req, res) => res.sendStatus(404));
+        log.warn('CAPTCHA unavailable: check private key and writable storage');
+        app.use(['/captcha', '/dev/captcha'], (req, res) => res.sendStatus(404));
     }
 
     // Logs requests

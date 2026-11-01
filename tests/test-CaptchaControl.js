@@ -289,7 +289,7 @@ describe('CAPTCHA private HTTP panel', () => {
         const app = express();
         app.use(express.json());
         app.use(
-            '/dev/captcha',
+            ['/captcha', '/dev/captcha'],
             captchaRoutes({
                 control: f.control,
                 adminDir: path.resolve('app/captcha-admin'),
@@ -335,12 +335,22 @@ describe('CAPTCHA private HTTP panel', () => {
         const player = await fetch(url + '/play/room.html');
         assert.equal(player.headers.get('x-frame-options'), 'SAMEORIGIN');
     });
-    it('uses an explicit development-only feature gate in the actual server', () => {
+    it('requires explicit CAPTCHA opt-in without enabling development room access', () => {
         const source = fs.readFileSync(path.resolve('app/src/Server.js'), 'utf8');
-        assert.match(source, /enabled: process.env.APP_ENV === 'dev' && process.env.CAPTCHA_ENABLED === 'true'/);
+        assert.match(source, /enabled: process.env.CAPTCHA_ENABLED === 'true'/);
+        assert.doesNotMatch(source, /process.env.APP_ENV\s*=(?!=)/);
         const app = express(),
             control = new CaptchaControl();
         app.use(captchaRoutes({ control }));
         assert.equal(control.enabled, false);
+    });
+    it('serves the production panel route with the same private session boundary', async () => {
+        const productionUrl = url.replace('/dev/captcha', '/captcha');
+        assert.equal((await fetch(productionUrl + '/api/state')).status, 401);
+        const token = await login();
+        const response = await fetch(productionUrl + '/api/state', { headers: { Authorization: `Bearer ${token}` } });
+        assert.equal(response.status, 200);
+        const html = await (await fetch(productionUrl + '/')).text();
+        assert.match(html, /src="\/captcha\/ui\/admin.js"/);
     });
 });

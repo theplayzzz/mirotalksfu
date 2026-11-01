@@ -41,6 +41,10 @@ if [ ! -f "$CONF/features.env" ]; then
 # and net.core.rmem_max raised on the host (docs/PRODUCTION-ROLLOUT.md).
 #REPLAY_ENABLED=true
 #REPLAY_UI_ENABLED=true
+
+# Optional CAPTCHA control panel (/captcha/). Private key is generated in /data/captcha/admin-key.
+# Random activation starts disabled; this does not enable development/test-room access.
+#CAPTCHA_ENABLED=true
 EOF
     echo "created $CONF/features.env (every switch off)"
 else

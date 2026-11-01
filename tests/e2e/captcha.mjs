@@ -25,7 +25,7 @@ const control = new CaptchaControl({ enabled: true, rooms, sockets: io.sockets.s
 const key = 'local-e2e-key-not-used-by-any-server';
 app.use(express.json());
 app.use(
-    '/dev/captcha',
+    ['/captcha', '/dev/captcha'],
     captchaRoutes({
         control,
         adminDir: path.join(base, 'app/captcha-admin'),
@@ -103,7 +103,7 @@ async function openPrompt(page, target = 'stream') {
 }
 let token;
 async function api(route, body) {
-    const r = await fetch(origin + '/dev/captcha' + route, {
+    const r = await fetch(origin + '/captcha' + route, {
         method: body ? 'POST' : 'GET',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -119,7 +119,7 @@ try {
     await until(alice, 'socket.connected');
     await until(bob, 'socket.connected');
     await sleep(250);
-    const admin = await open(origin + '/dev/captcha/');
+    const admin = await open(origin + '/captcha/');
     await until(admin, '!!document.getElementById("loginForm")');
     await admin.ev(
         `document.getElementById('key').value=${JSON.stringify(key)};document.getElementById('loginForm').requestSubmit()`

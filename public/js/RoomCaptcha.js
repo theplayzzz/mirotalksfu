@@ -1,4 +1,4 @@
-/* Development experiment. Owns UI only, never media or meeting membership. */
+/* Optional CAPTCHA. Owns UI only, never media or meeting membership. */
 (() => {
     'use strict';
     let socket,
@@ -220,7 +220,7 @@
         frame.title = 'CAPTCHA do Boiolômetro';
         frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
         frame.setAttribute('allow', "camera 'none'; microphone 'none'; display-capture 'none'");
-        frame.src = '/dev/captcha/play/room.html';
+        frame.src = '/captcha/play/room.html';
         frame.addEventListener('load', () => send('captcha:init', { assignment: current }));
         root.append(bar, frame);
         document.body.append(root);

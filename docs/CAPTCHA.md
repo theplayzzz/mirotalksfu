@@ -1,10 +1,10 @@
-# CAPTCHA de desenvolvimento
+# CAPTCHA
 
-O laboratório foi integrado como experimento da instância de desenvolvimento. O servidor só habilita o recurso com **`APP_ENV=dev` e `CAPTCHA_ENABLED=true`**. Não há vínculo com autenticação, moderação, desconexão, transports ou permissões de mídia. O laboratório local continua separado.
+O laboratório foi integrado à sala, com ativação explícita por instância: **`CAPTCHA_ENABLED=true`**. Não há vínculo com autenticação, moderação, desconexão, transports ou permissões de mídia. Esse interruptor não altera `APP_ENV` nem habilita a sala de teste em produção. O laboratório local continua separado.
 
 ## Acesso e operação
 
-- Painel: `https://mirotalk-dev.40-160-143-32.sslip.io/dev/captcha/`.
+- Painel de produção: `https://livestream.grupogrowon.com.br/captcha/`. Desenvolvimento: `https://mirotalk-dev.40-160-143-32.sslip.io/captcha/`. O caminho anterior `/dev/captcha/` é um alias do mesmo painel, com as mesmas sessões privadas.
 - A chave é gerada na primeira inicialização em `/data/captcha/admin-key`, permissão 0600. Alternativamente, configure `CAPTCHA_ADMIN_KEY` com pelo menos 24 caracteres. Não use a senha da sala.
 - Para obter a chave pelo canal administrativo existente: `ssh ovh-mirotalk "sudo cat /home/debian/mirotalk-dev/data/captcha/admin-key"`. Não coloque a chave no Git, em URLs ou em mensagens da sala.
 - Login cria um token de duas horas, armazenado somente no `sessionStorage` daquela aba. Sair invalida o token. O painel não participa da sala nem conta como voto.
@@ -31,7 +31,7 @@ Uma votação aberta por sala. A pergunta é **“[nome] deve passar pelo Boiol�
 
 ## Registros e médias
 
-`CAPTCHA_DATA_DIR` (padrão `/data/captcha`) fica no volume de dados **do desenvolvimento**. Configurações usam gravação atômica; tentativas, notas e eventos vão para `events.jsonl` com fila de escrita. No reinício, partidas inacabadas ficam interrompidas, sem restaurar blur nos participantes. Uma falha de histórico aparece no painel e não interrompe chamadas.
+`CAPTCHA_DATA_DIR` (padrão `/data/captcha`) fica no volume de dados **da própria instância**; produção e desenvolvimento têm chaves, configurações e históricos separados. Configurações usam gravação atômica; tentativas, notas e eventos vão para `events.jsonl` com fila de escrita. No reinício, partidas inacabadas ficam interrompidas, sem restaurar blur nos participantes. Uma falha de histórico aparece no painel e não interrompe chamadas.
 
 Por jogo: jogadas iniciadas, pessoas distintas, concluídas, vitórias, derrotas, taxa de vitória, interrompidas, repetições, duração média das concluídas, nota média e total de avaliações. Repetir cria outra tentativa ligada ao mesmo desafio; o resultado de cada uma é preservado. A nota usa **a última nota de cada pessoa por jogo**, identificada pelo hash de sala + `peer_uuid`, de modo que repetir não multiplica avaliações. Identidade é de navegador, não uma conta universal. Resultados de Canvas são reportados pelo cliente; estes números medem o teste entre amigos, não uma competição com proteção antitrapaça.
 
@@ -49,7 +49,7 @@ node tests/e2e/captcha.mjs
 
 Vite é dependência só de build. O bundle de produção fica em `app/captcha-player` (ignorado pelo Git), com o catálogo gerado em `app/src/captcha-games.json`. CI testa e compila antes de montar a imagem. Docker já copia `app`, incluindo jogador e painel. Os assets com hash usam cache; o painel e suas APIs não.
 
-`ops/compose.dev.yaml` habilita a funcionalidade e monta dados separados. Nenhuma configuração de produção foi alterada. `ops/deploy.sh` recusa implantação com conexões ativas também em desenvolvimento e verifica novamente após baixar a imagem. Não use `--force` para instalar este experimento com participantes conectados.
+`ops/compose.dev.yaml` habilita a funcionalidade e monta dados separados. Em produção, o interruptor fica em `features.env`; não copie chaves nem dados do desenvolvimento. A ativação aleatória começa desligada. `ops/deploy.sh` recusa implantação com conexões ativas e verifica novamente após baixar a imagem. Não use `--force` com participantes conectados sem autorização explícita para a interrupção.
 
 Para mudanças somente na interface do CAPTCHA, `ops/deploy-captcha-ui.sh sha-<commit>` publica uma lista fixa de arquivos de navegador a partir da imagem construída pela CI, sem recriar o container. Recusa diferenças nos módulos de protocolo do servidor, guarda backups, mantém assets antigos com hash para partidas em andamento, troca HTML/JS/CSS por renomeação atômica e verifica os hashes servidos. Só opera no container de desenvolvimento. Registra a imagem de origem em `frontend-history.log`; a imagem base continua a anterior até uma implantação normal quando a sala estiver vazia. Participantes carregam a interface nova ao atualizar suas próprias páginas.
 

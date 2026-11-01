@@ -3,14 +3,12 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>CAPTCHA · Controle de desenvolvimento</title>
-        <link rel="stylesheet" href="/dev/captcha/ui/admin.css" />
+        <title>CAPTCHA · Controle</title>
+        <link rel="stylesheet" href="/captcha/ui/admin.css" />
     </head>
     <body>
         <header class="masthead">
-            <a href="/dev/captcha/" class="brand"
-                >captcha<span>controle</span><small>AMBIENTE DE DESENVOLVIMENTO</small></a
-            >
+            <a href="/captcha/" class="brand">captcha<span>controle</span><small>CONTROLE DE VERIFICAÇÕES</small></a>
             <div class="connection">
                 <i id="liveDot"></i><span id="connection">Acesso restrito</span><button id="logout" hidden>Sair</button>
             </div>
@@ -30,8 +28,8 @@
                     ><button class="primary">Entrar no painel →</button>
                 </form>
                 <p class="muted">
-                    A chave fica no arquivo <code>/data/captcha/admin-key</code> da instância de desenvolvimento. Ela
-                    não é enviada aos participantes.
+                    A chave fica no arquivo <code>/data/captcha/admin-key</code> desta instância. Ela não é enviada aos
+                    participantes.
                 </p>
             </section>
             <section id="dashboard" hidden>
@@ -167,7 +165,7 @@
                                     Ganhar e perder liberam as streams. O jogador pode minimizar o jogo, tentar
                                     novamente ou liberar as telas. Se a conexão ou o jogo falhar, o blur sai.
                                 </p>
-                                <p>Somente nesta instância de desenvolvimento.</p>
+                                <p>Somente nesta instância.</p>
                             </section>
                         </aside>
                     </div>
@@ -240,6 +238,6 @@
             </section>
             <div id="notice" role="status" hidden></div>
         </main>
-        <script src="/dev/captcha/ui/admin.js" defer></script>
+        <script src="/captcha/ui/admin.js" defer></script>
     </body>
 </html>
