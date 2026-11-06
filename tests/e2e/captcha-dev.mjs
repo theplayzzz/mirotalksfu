@@ -40,7 +40,7 @@ async function until(page, expr, timeout = 18000) {
     throw new Error(`Timeout: ${expr}`);
 }
 const child = (expression) =>
-    `document.querySelector('#roomCaptchaWindow iframe').contentWindow.eval(${JSON.stringify(expression)})`;
+    `document.querySelector('#rpFrameHost iframe').contentWindow.eval(${JSON.stringify(expression)})`;
 async function shot(page, name) {
     const r = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     writeFileSync(path.join(shots, `${name}.png`), Buffer.from(r.result.data, 'base64'));
@@ -69,9 +69,9 @@ try {
     targetId = room.users.find((u) => u.name === names[1]).id;
     assert.equal(room.users.find((u) => u.id === targetId).ready, true);
     await api('/api/trigger', { roomId: 'teste', peerId: targetId, gameId: 'juggle' });
-    await until(player, '!!document.querySelector(".room-captcha-prompt:not([hidden])")');
-    assert.equal(await player.ev('!!document.getElementById("roomCaptchaWindow")'), false);
-    assert.equal(await source.ev('!!document.getElementById("roomCaptchaWindow")'), false);
+    await until(player, '!!document.querySelector(".rp-captcha-prompt:not([hidden])")');
+    assert.equal(await player.ev('!!document.querySelector("#rpFrameHost iframe")'), false);
+    assert.equal(await source.ev('!!document.querySelector("#rpFrameHost iframe")'), false);
     const framesBefore = await player.ev(
         'document.querySelector("video[data-room-captcha-screen=true]").getVideoPlaybackQuality().totalVideoFrames'
     );
@@ -99,7 +99,7 @@ try {
     );
     await shot(player, 'real-room-prompt');
     const button = await player.ev(
-        '(()=>{const r=document.querySelector(".room-captcha-prompt:not([hidden])").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()'
+        '(()=>{const r=document.querySelector(".rp-captcha-prompt:not([hidden])").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()'
     );
     await player.click(button.x, button.y);
     await until(player, child('!document.getElementById("result").hidden'), 18000);

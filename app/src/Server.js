@@ -561,9 +561,9 @@ const authHost = new Host(); // Authenticated IP by Login
 const roomList = new Map(); // All Rooms
 
 // Explicit opt-in per instance; never enables development room access in production.
-const { CaptchaControl } = require('./CaptchaControl');
+const { RoomPlayControl } = require('./RoomPlayControl');
 const { captchaRoutes } = require('./CaptchaRoutes');
-const captchaControl = new CaptchaControl({
+const captchaControl = new RoomPlayControl({
     enabled: process.env.CAPTCHA_ENABLED === 'true',
     rooms: roomList,
     sockets: io.sockets.sockets,

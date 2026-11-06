@@ -90,7 +90,7 @@
         roomDirty = false;
         renderRoom();
     });
-    for (const id of ['randomEnabled', 'randomMode', 'interval', 'cooldown', 'jitter'])
+    for (const id of ['randomEnabled', 'randomMode', 'interval', 'cooldown', 'jitter', 'participantVotes'])
         $(id).addEventListener('input', () => {
             roomDirty = true;
             $('saveRoom').textContent = 'Salvar alterações';
@@ -117,6 +117,7 @@
         if (!selectedRoom) return notice('Selecione ou digite uma sala.', true);
         try {
             const settings = settingsCopy();
+            settings.interactions = { participantVotes: $('participantVotes').checked };
             settings.rooms[selectedRoom] = {
                 enabled: $('randomEnabled').checked,
                 mode: $('randomMode').value,
@@ -172,7 +173,7 @@
         $('onlineSummary').textContent =
             `${users.length} online nesta sala · ${state.rooms.reduce((n, r) => n + r.users.length, 0)} na plataforma`;
         $('pauseRoom').disabled = !selectedRoom;
-        $('randomTrigger').disabled = !users.some((u) => u.ready && !u.active);
+        $('randomTrigger').disabled = !users.some((u) => u.canChallenge);
         $('users').replaceChildren();
         if (!users.length)
             $('users').append(node('p', 'Ninguém online nesta sala. A lista é atualizada automaticamente.', 'empty'));
@@ -188,8 +189,12 @@
                         ? 'Atualize a página para receber jogos'
                         : user.active
                           ? {
-                                assigned: 'Verificação pendente',
-                                playing: 'Verificação em andamento',
+                                assigned: user.source === 'manual' ? 'Partida livre pronta' : 'Verificação pendente',
+                                playing:
+                                    user.source === 'manual'
+                                        ? 'Partida livre em andamento'
+                                        : 'Verificação em andamento',
+                                paused: 'Partida pausada',
                                 result: 'Avaliando o resultado',
                             }[user.phase] || 'Jogo aberto'
                           : 'Disponível'
@@ -203,7 +208,7 @@
                 await openVote(user.id);
                 notice('Votação aberta para os presentes.');
             });
-            play.disabled = vote.disabled = !user.ready || user.active;
+            play.disabled = vote.disabled = !user.canChallenge;
             actions.append(play, vote);
             row.append(node('span', user.name.slice(0, 2).toUpperCase(), 'avatar'), name, actions);
             $('users').append(row);
@@ -211,6 +216,7 @@
         if (!roomDirty) {
             const config = state.settings.rooms[selectedRoom] || defaults();
             $('randomEnabled').checked = config.enabled;
+            $('participantVotes').checked = state.settings.interactions?.participantVotes !== false;
             $('randomMode').value = config.mode;
             $('interval').value = config.intervalSeconds;
             $('cooldown').value = config.cooldownSeconds;
@@ -228,7 +234,7 @@
             text.append(
                 node(
                     'small',
-                    `${a.config.title} · ${a.phase === 'result' ? 'resultado liberado' : a.phase === 'playing' ? 'jogando' : 'aguardando início'}`
+                    `${a.config.title} · ${a.source === 'manual' ? 'livre · ' : ''}${{ result: 'resultado salvo', playing: 'jogando', paused: 'pausado', waiting: 'aguarda a partida livre', assigned: 'aguarda início' }[a.phase] || a.phase}`
                 )
             );
             row.append(
@@ -238,13 +244,20 @@
             $('active').append(row);
         }
         if (!active.length) $('active').append(node('p', 'Nenhum jogo aberto.', 'empty'));
-        const votes = state.votes.filter((v) => v.roomId === selectedRoom && v.status === 'open');
+        const votes = state.votes.filter((v) => v.roomId === selectedRoom && ['open', 'queued'].includes(v.status));
         $('votes').replaceChildren();
         $('voteStatus').textContent = votes.length ? 'Votação aberta' : 'Nenhuma votação';
         for (const v of votes) {
             const row = node('div', undefined, 'vote-row'),
                 text = node('span', v.name);
-            text.append(node('small', `${v.yes}/${v.threshold} a favor · ${v.no} contra · até ${date(v.expiresAt)}`));
+            text.append(
+                node(
+                    'small',
+                    v.status === 'queued'
+                        ? `Na fila · posição ${v.queuePosition}`
+                        : `${v.yes}/${v.threshold} a favor · ${v.no} contra · até ${date(v.expiresAt)}`
+                )
+            );
             row.append(
                 text,
                 action('Encerrar votação', () => api('/api/cancel-vote', { id: v.id }))
@@ -354,7 +367,7 @@
     };
     function renderLogs() {
         const outcomes = { won: 'Vitória', lost: 'Derrota', abandoned: 'Interrompida', error: 'Falha do jogo' },
-            sources = { admin: 'Painel', random: 'Aleatório', vote: 'Votação' };
+            sources = { admin: 'Painel', random: 'Aleatório', vote: 'Votação', manual: 'Partida livre' };
         $('attempts').replaceChildren();
         for (const a of state.attempts.filter((a) => a.roomId === selectedRoom)) {
             const row = node('tr');

@@ -34,7 +34,7 @@ function state(value) {
     $('paused').hidden = value !== 'paused';
     $('countdown').hidden = value !== 'countdown';
     $('result').hidden = value !== 'finished';
-    $('pause').disabled = !['playing', 'countdown', 'paused'].includes(value);
+    post('play:phase', { phase: value });
 }
 function tick(info = {}) {
     if (!game?.sim) return;
@@ -60,8 +60,13 @@ function tick(info = {}) {
 function createPlayer() {
     game?.destroy();
     config = assignment.config;
-    $('title').textContent = 'Verificação em andamento';
-    $('readyTitle').textContent = 'Preparando verificação';
+    const manual = assignment.source === 'manual';
+    $('title').textContent = config.title;
+    $('readyTitle').textContent = config.title;
+    $('readyLabel').textContent = manual ? 'PARTIDA LIVRE' : 'CAPTCHA DO BOIOLÔMETRO';
+    $('readyCopy').textContent = manual
+        ? 'Jogue com o mouse e registre sua melhor marca.'
+        : 'Siga as instruções para concluir a análise.';
     const callbacks = {
         onState: state,
         onTick: tick,
@@ -70,8 +75,14 @@ function createPlayer() {
         onFinish: (result) => {
             const won = result.reason === 'survived';
             $('resultEmoji').src = won ? playerUrls.escape : playerUrls.impact;
-            $('resultTitle').textContent = won ? 'Verificação concluída' : 'Infelizmente, você é boiola.';
-            $('resultCopy').textContent = 'Análise concluída. O acesso às transmissões foi restabelecido.';
+            $('resultLabel').textContent = manual ? 'RESULTADO DA PARTIDA' : 'RESULTADO DA ANÁLISE';
+            $('resultTitle').textContent = won ? 'Você conseguiu!' : 'Infelizmente, você é boiola.';
+            $('resultCopy').textContent = won
+                ? 'Partida concluída. Sua marca vale para o ranking da sala.'
+                : 'Não precisa se sentir triste. A gente ainda te aceita mesmo assim.';
+            $('release').textContent = manual ? 'Voltar à sala' : 'Liberar acesso';
+            $('resultScore').textContent = 'Registrando sua marca…';
+            $('nextVerification').hidden = true;
             rating = 0;
             paintStars();
             $('ratingStatus').textContent = 'Avaliação opcional.';
@@ -79,6 +90,10 @@ function createPlayer() {
                 attemptId: attempt.id,
                 reason: ['survived', 'impact', 'timeout'].includes(result.reason) ? result.reason : 'impact',
                 elapsed: result.elapsed,
+                metrics: {
+                    score: result.score ?? game.sim?.score ?? 0,
+                    progress: game.sim?.courseProgress ?? (game.sim?.score || 0) / (game.sim?.goal || 5),
+                },
             });
         },
     };
@@ -87,7 +102,7 @@ function createPlayer() {
             ? new PeachGame($('game'), callbacks)
             : new ChallengeHost($('game'), config.id, callbacks);
     $('start').disabled = false;
-    $('start').textContent = 'Iniciar verificação';
+    $('start').textContent = manual ? 'Jogar' : 'Iniciar verificação';
     tick();
 }
 function start() {
@@ -126,8 +141,13 @@ $('stars').addEventListener('mouseleave', () => paintStars());
 $('start').addEventListener('click', start);
 $('retry').addEventListener('click', start);
 $('release').addEventListener('click', () => post('captcha:release'));
-$('pause').addEventListener('click', () => (game?.state === 'paused' ? game.resume() : game?.pause()));
 $('resume').addEventListener('click', () => game?.resume());
+$('ranking').addEventListener('click', () => post('play:ranking'));
+$('nextVerification').addEventListener('click', () => post('play:activate'));
+$('initialsForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    post('play:profile', { initials: $('initials').value.toUpperCase() });
+});
 window.addEventListener('message', (event) => {
     if (event.origin !== location.origin || event.source !== parent || !event.data || typeof event.data !== 'object')
         return;
@@ -136,6 +156,7 @@ window.addEventListener('message', (event) => {
         if (!data.assignment?.config || typeof data.nonce !== 'string') return;
         assignment = data.assignment;
         nonce = data.nonce;
+        $('initials').value = data.profile?.initials || 'JOG';
         Promise.all([artworkReady, playerSpritesReady])
             .then(() => {
                 createPlayer();
@@ -161,14 +182,22 @@ window.addEventListener('message', (event) => {
         pending = false;
         $('start').disabled = $('retry').disabled = false;
         message(data.error || 'Não foi possível iniciar. Tente novamente.');
-    } else if (data.type === 'captcha:rated') $('ratingStatus').textContent = 'Avaliação registrada.';
+    } else if (data.type === 'play:recorded') {
+        $('resultScore').textContent = data.score ? `Marca registrada · ${data.score.label}` : 'Partida registrada.';
+        $('initials').value = data.initials || 'JOG';
+        $('nextVerification').hidden = !data.pending;
+    } else if (data.type === 'play:profile') {
+        $('initials').value = data.initials;
+        $('resultScore').textContent = 'Sigla salva no ranking.';
+    } else if (data.type === 'play:pending') $('nextVerification').hidden = !data.pending;
+    else if (data.type === 'captcha:rated') $('ratingStatus').textContent = 'Avaliação registrada.';
     else if (data.type === 'captcha:minimize') {
-        hiddenPause = ['playing', 'countdown', 'paused'].includes(game?.state);
+        hiddenPause ||= ['playing', 'countdown'].includes(game?.state);
         if (hiddenPause) game.pause();
     } else if (data.type === 'captcha:expand' && hiddenPause) {
         hiddenPause = false;
         game?.resume();
-    }
+    } else if (data.type === 'captcha:toggle-pause') game?.state === 'paused' ? game.resume() : game?.pause();
 });
 window.addEventListener('error', () => post('captcha:load-error'));
 window.addEventListener('pagehide', () => game?.destroy());

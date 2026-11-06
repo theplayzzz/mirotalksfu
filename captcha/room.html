@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
-        <title>Verificação da sala</title>
+        <title>Jogos da sala</title>
     </head>
     <body>
         <main id="player">
@@ -14,16 +14,15 @@
                 </div>
                 <span id="score"></span>
                 <div id="resource" hidden><span></span><progress max="1" value="1"></progress></div>
-                <button id="pause" type="button" aria-label="Pausar jogo" disabled>Ⅱ</button>
                 <div id="progress"></div>
             </header>
             <section id="arena">
                 <canvas id="game" tabindex="0" aria-label="Área do jogo"></canvas>
                 <div id="ready" class="overlay">
                     <div class="card">
-                        <small>CAPTCHA DO BOIOLÔMETRO</small>
+                        <small id="readyLabel">CAPTCHA DO BOIOLÔMETRO</small>
                         <h1 id="readyTitle">Preparando verificação</h1>
-                        <p>Siga as instruções para concluir a análise.</p>
+                        <p id="readyCopy">Siga as instruções para concluir a análise.</p>
                         <button id="start" class="primary" disabled>Preparando…</button>
                     </div>
                 </div>
@@ -36,13 +35,29 @@
                 </div>
                 <div id="result" class="overlay" hidden>
                     <div class="card result-card">
-                        <img id="resultEmoji" data-emoji="impact" alt="" /><small>RESULTADO DA ANÁLISE</small>
+                        <img id="resultEmoji" data-emoji="impact" alt="" /><small id="resultLabel"
+                            >RESULTADO DA ANÁLISE</small
+                        >
                         <h1 id="resultTitle"></h1>
                         <p id="resultCopy"></p>
+                        <strong id="resultScore">Registrando sua marca…</strong>
+                        <form id="initialsForm">
+                            <label
+                                >Sua sigla
+                                <input
+                                    id="initials"
+                                    maxlength="3"
+                                    pattern="[A-Za-z0-9]{1,3}"
+                                    required
+                                    aria-label="Sigla no ranking"
+                                    autocomplete="off" /></label
+                            ><button>Salvar</button><button type="button" id="ranking">Ver ranking ↗</button>
+                        </form>
                         <div class="actions">
                             <button id="retry" class="primary">Tentar novamente ↻</button
                             ><button id="release">Liberar acesso</button>
                         </div>
+                        <button id="nextVerification" hidden>Fazer verificação →</button>
                         <fieldset class="rating">
                             <legend>Avalie esta verificação</legend>
                             <div id="stars" role="radiogroup" aria-label="Avaliação de uma a cinco estrelas"></div>

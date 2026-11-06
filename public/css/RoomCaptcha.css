@@ -1,185 +1,779 @@
-/* Only shared-screen pixels are obscured. Tile controls, cameras and audio stay available. */
-body.room-captcha-blur video[data-room-captcha-screen='true'] {
-    filter: blur(14px) !important;
+/* The hub is a modeless window: no backdrop and no ownership of meeting controls. */
+:root {
+    --rp-safe-bottom: 90px;
 }
-.room-captcha-prompts {
+.room-play,
+.rp-dock,
+.rp-ballot,
+.rp-dice-viewer,
+.rp-captcha-prompt {
+    box-sizing: border-box;
+    font-family: 'Segoe UI', sans-serif;
+    color: #f7f2fc;
+    color-scheme: dark;
+}
+.room-play *,
+.rp-dock *,
+.rp-ballot *,
+.rp-dice-viewer * {
+    box-sizing: border-box;
+}
+.room-play {
     position: fixed;
-    inset: 0;
-    z-index: 85;
-    pointer-events: none;
+    z-index: 100;
+    left: 50%;
+    top: 24px;
+    bottom: var(--rp-safe-bottom);
+    transform: translateX(-50%);
+    width: min(1140px, 85vw);
+    max-height: 790px;
+    background: #211c2c;
+    border: 1px solid #4d405a;
+    border-radius: 13px;
+    box-shadow: 0 18px 80px #0009;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
+    text-align: left;
 }
-.room-captcha-prompts[hidden],
-.room-captcha-prompt[hidden] {
+.room-play.is-max {
+    width: calc(100vw - 28px);
+    top: 14px;
+    max-height: none;
+}
+.room-play [hidden],
+.room-play[hidden],
+.rp-dock[hidden],
+.rp-ballot[hidden],
+.rp-dice-viewer[hidden],
+.rp-captcha-prompt[hidden] {
     display: none !important;
 }
-.room-captcha-prompt {
-    position: absolute;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 15px;
-    pointer-events: auto;
-    padding: 10px 16px;
-    border: 1px solid #a995b87d;
-    border-radius: 7px;
-    background: #211c2cf5;
-    color: #f8f2ff;
-    box-shadow: 0 4px 22px #0006;
-    font:
-        13px 'Segoe UI',
-        sans-serif;
-    text-align: left;
+.room-play button,
+.room-play select,
+.room-play input,
+.rp-dock button,
+.rp-ballot button,
+.rp-dice-viewer button,
+.rp-captcha-prompt {
+    font: inherit;
+    color: inherit;
+    border: 1px solid #50435e;
+    border-radius: 6px;
+    background: #2c2538;
+    padding: 8px 11px;
     cursor: pointer;
 }
-.room-captcha-prompt:hover {
-    background: #2d2639;
-    border-color: #d3c6df;
+.room-play button:hover,
+.rp-ballot button:hover,
+.rp-dock button:hover {
+    background: #3a3048;
+    border-color: #a68bbb;
 }
-.room-captcha-prompt:focus-visible {
-    outline: 2px solid #ffa78b;
-    outline-offset: 4px;
+.room-play button:disabled,
+.rp-ballot button:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
-.room-captcha-prompt-mark {
+.room-play :focus-visible,
+.rp-ballot :focus-visible,
+.rp-dock :focus-visible,
+.rp-captcha-prompt:focus-visible {
+    outline: 2px solid #ffac8d;
+    outline-offset: 2px;
+}
+.rp-header {
+    height: 40px;
     flex: none;
-    width: 25px;
-    height: 25px;
-    border: 2px solid #d6c9e0;
-    border-radius: 3px;
-    background: #ffffff07;
+    padding: 0 8px 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border-bottom: 1px solid #40364c;
+    font-size: 12px;
 }
-.room-captcha-prompt-copy {
+.rp-brand {
+    color: #ffac8d;
+    font-size: 21px;
+}
+#rpSession {
+    font-size: 10px;
+    color: #b8aec7;
+    margin-left: auto;
+}
+.rp-window-actions {
+    display: flex;
+    gap: 3px;
+    margin-left: 10px;
+}
+.rp-window-actions button {
+    border: 0;
+    background: transparent;
+    width: 29px;
+    height: 28px;
+    padding: 0;
+    font-size: 19px;
+    font-weight: 400;
+}
+.rp-window-actions button:last-child:hover {
+    background: #663344;
+}
+.rp-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+.rp-nav {
+    width: 142px;
+    flex: none;
     display: flex;
     flex-direction: column;
     gap: 5px;
+    padding: 16px 9px;
+    border-right: 1px solid #40364c;
+    background: #1b1723;
 }
-.room-captcha-prompt-copy strong {
-    font-size: 13px;
+.rp-nav > button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    border-color: transparent;
+    background: transparent;
+    padding: 10px 8px;
+    text-align: left;
+    font-size: 12px;
+}
+.rp-nav > button span {
+    font-size: 18px;
+    width: 21px;
+    color: #b3a2c4;
+}
+.rp-nav > button b {
+    font-weight: 500;
+}
+.rp-nav > button.is-active {
+    background: #362a40;
+    border-color: #664f71;
+    color: #ffbd9f;
+}
+.rp-nav > button.is-active span {
+    color: #ffac8d;
+}
+#rpBadge {
+    margin-left: auto;
+    width: 13px;
+    height: 13px;
+    line-height: 13px;
+    text-align: center;
+    font-size: 9px;
+    border-radius: 50%;
+    background: #ffac8d;
+    color: #211c2c;
+}
+.rp-sound {
+    margin-top: auto;
+    font-size: 10px;
+    color: #b8aec7;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-top: 14px;
+}
+.rp-sound input {
+    accent-color: #ffac8d;
+    width: 13px;
+    height: 13px;
+}
+.rp-volume {
+    width: 100%;
+    height: 12px;
+    accent-color: #a68bbb;
+    margin-top: 6px;
+}
+.rp-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+.rp-pane {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 24px;
+}
+.rp-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.rp-heading small {
+    font-size: 9px;
+    letter-spacing: 1.7px;
+    color: #b9a8c9;
+}
+.rp-heading h2 {
+    font-size: 27px;
+    letter-spacing: -0.8px;
+    line-height: 1.2;
+    margin: 7px 0 9px;
     font-weight: 650;
 }
-.room-captcha-prompt-copy small {
-    font-size: 10px;
-    color: #bfaed0;
+.rp-heading select {
+    max-width: 45%;
+    font-size: 12px;
 }
-.room-captcha-prompt-short {
-    display: none;
+.rp-muted {
+    font-size: 12px;
+    color: #b8aec7;
+    line-height: 1.6;
+    margin: 6px 0 22px;
+}
+.rp-catalog {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 11px;
+}
+.room-play .rp-game-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+    min-height: 110px;
+    padding: 15px;
+    text-align: left;
+    background: #282131;
+    border-color: #40364c;
+    transition:
+        background 0.15s,
+        border-color 0.15s;
+}
+.rp-game-icon {
+    font-size: 24px;
+    line-height: 1;
+    color: #ffac8d;
+}
+.rp-game-card b {
+    font-size: 13px;
+    font-weight: 600;
+}
+.rp-game-card small {
     font-size: 10px;
-    letter-spacing: 0.4px;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    color: #b8aec7;
+}
+#rpStatus {
+    margin: 0;
+    font-size: 11px;
+    color: #ffbc9f;
+    background: #211c2c;
+    padding: 0 16px;
+    flex: none;
+    line-height: 25px;
+    min-height: 0;
+}
+#rpStatus:empty {
+    display: none;
+}
+#rpPending {
+    padding: 8px 14px;
+    background: #40303b;
+    border-bottom: 1px solid #795448;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: none;
+    font-size: 11px;
+}
+#rpPending button {
+    margin-left: auto;
+    font-size: 11px;
     white-space: nowrap;
 }
-.room-captcha-prompt.is-compact {
-    gap: 8px;
-    padding: 6px;
-}
-.room-captcha-prompt.is-compact .room-captcha-prompt-mark {
-    width: 18px;
-    height: 18px;
-}
-.room-captcha-prompt.is-compact .room-captcha-prompt-copy {
-    display: none;
-}
-.room-captcha-prompt.is-compact .room-captcha-prompt-short {
-    display: block;
-}
-.room-captcha-window {
-    position: fixed;
-    z-index: 90;
+#rpGames {
+    padding: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid #a995b84d;
-    border-radius: 12px;
-    background: #252031;
-    color: #f8f2ff;
-    box-shadow: 0 12px 60px #0008;
 }
-.room-captcha-windowbar {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    height: 34px;
-    padding: 0 8px 0 12px;
-    background: #19151f;
-    font:
-        11px 'Segoe UI',
-        sans-serif;
-}
-.room-captcha-windowbar span {
+#rpLibrary {
+    overflow: auto;
+    padding: 24px;
     flex: 1;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    color: #d4c6e2;
 }
-.room-captcha-windowbar button,
-.room-captcha-vote button {
-    font: inherit;
-    border: 1px solid #a995b84d;
-    padding: 4px 9px;
-    border-radius: 6px;
-    background: #ffffff09;
-    color: #f8f2ff;
-    cursor: pointer;
-}
-.room-captcha-windowbar button:hover,
-.room-captcha-vote button:hover {
-    background: #ffffff1c;
-}
-.room-captcha-windowbar button:focus-visible,
-.room-captcha-vote button:focus-visible {
-    outline: 2px solid #ffa78b;
-    outline-offset: 1px;
-}
-.room-captcha-window iframe {
+#rpStage {
+    display: flex;
+    flex-direction: column;
     flex: 1;
     min-height: 0;
-    width: 100%;
+}
+.rp-stage-tools {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 30px;
+    padding: 2px 9px;
+    border-bottom: 1px solid #40364c;
+    font-size: 11px;
+    flex: none;
+}
+.rp-stage-tools button {
+    background: none;
     border: 0;
-}
-.room-captcha-window.is-minimized iframe {
-    visibility: hidden;
-    height: 0;
-}
-.room-captcha-window.is-minimized .room-captcha-windowbar {
-    height: 38px;
-}
-.room-captcha-vote {
-    position: fixed;
-    z-index: 95;
-    top: 14px;
-    right: 14px;
-    width: min(330px, calc(100vw - 28px));
-    padding: 15px;
-    border: 1px solid #a995b84d;
-    border-radius: 10px;
-    background: #211c2cf5;
-    color: #f8f2ff;
-    box-shadow: 0 10px 40px #0005;
-    font:
-        12px 'Segoe UI',
-        sans-serif;
-}
-.room-captcha-vote strong,
-.room-captcha-vote span {
-    display: block;
-    margin-bottom: 9px;
-}
-.room-captcha-vote span {
-    color: #c7b7d4;
+    padding: 3px 6px;
     font-size: 11px;
 }
-.room-captcha-vote div {
+#rpGameName {
+    color: #b8aec7;
+}
+#rpPause {
+    margin-left: auto;
+}
+#rpFrameHost {
+    flex: 1;
+    min-height: 0;
+}
+#rpFrameHost iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #252031;
+}
+#rpProfile {
     display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0 18px;
+    font-size: 12px;
+}
+#rpProfile label {
+    color: #b8aec7;
+}
+#rpInitials {
+    width: 65px;
+    font-family: Consolas, monospace;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-left: 7px;
+}
+#rpProfile button {
+    font-size: 11px;
+}
+#rpProfileStatus {
+    color: #a9e9ce;
+    font-size: 11px;
+}
+#rpRankRows table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12px;
+}
+#rpRankRows th {
+    color: #b8aec7;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 500;
+}
+#rpRankRows th,
+#rpRankRows td {
+    text-align: left;
+    padding: 13px 12px;
+    border-bottom: 1px solid #40364c;
+}
+#rpRankRows td:nth-child(2) {
+    font-family: Consolas, monospace;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+#rpRankRows td:last-child,
+#rpRankRows th:last-child {
+    text-align: right;
+}
+#rpRankRows .is-mine {
+    background: #a9e9ce0b;
+    color: #a9e9ce;
+}
+.rp-empty {
+    padding: 26px 0;
+    color: #b8aec7;
+    font-size: 13px;
+    text-align: center;
+}
+.rp-user {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 13px 0;
+    border-bottom: 1px solid #40364c;
+}
+.rp-user > div {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.rp-user b {
+    font-size: 12px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rp-user small {
+    font-size: 10px;
+    color: #b8aec7;
+}
+.rp-user button {
+    font-size: 11px;
+}
+.rp-avatar {
+    display: grid;
+    place-items: center;
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    background: #50405e;
+    color: #e2cfee;
+    font-size: 11px;
+    flex: none;
+}
+.rp-queue-item {
+    background: #302636;
+    border-left: 2px solid #ffac8d;
+    margin: 6px 0;
+    padding: 11px;
+    font-size: 11px;
+}
+.rp-dock {
+    position: fixed;
+    z-index: 103;
+    left: 10px;
+    top: 42%;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #5d4b6b;
+    border-radius: 9px;
+    background: #211c2c;
+    box-shadow: 0 5px 20px #0005;
+    padding: 3px;
+}
+.rp-dock button {
+    border: 0;
+    background: transparent;
+    padding: 5px 8px;
+}
+#rpRestore {
+    font-size: 23px;
+    color: #ffac8d;
+}
+#rpDockClose {
+    font-size: 17px;
+    color: #b8aec7;
+}
+.rp-ballot {
+    position: fixed;
+    z-index: 110;
+    top: 20px;
+    right: 20px;
+    width: min(330px, calc(100vw - 40px));
+    padding: 16px;
+    border: 1px solid #6a5577;
+    border-radius: 10px;
+    background: #211c2cf5;
+    box-shadow: 0 7px 35px #0005;
+    display: flex;
+    flex-direction: column;
     gap: 8px;
 }
-.room-captcha-vote button {
-    padding: 7px 13px;
+.rp-ballot small {
+    font-size: 10px;
+    color: #b8aec7;
+    line-height: 1.5;
 }
-.room-captcha-vote button:disabled {
-    opacity: 0.6;
-    cursor: default;
+.rp-ballot b {
+    font-size: 13px;
+    line-height: 1.5;
+}
+#rpVoteInfo {
+    font-size: 11px;
+    color: #d1c2dd;
+}
+.rp-ballot-actions {
+    display: flex;
+    gap: 7px;
+}
+.rp-ballot button {
+    font-size: 12px;
+    padding: 6px 11px;
+}
+.rp-roll-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin: 14px 0;
+}
+.rp-roll-actions button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    font-size: 24px;
+    padding: 13px;
+}
+.rp-roll-actions button b {
+    font-size: 11px;
+    font-weight: 500;
+}
+.rp-dice-viewer {
+    position: fixed;
+    z-index: 98;
+    right: 18px;
+    bottom: var(--rp-safe-bottom);
+    width: 300px;
+    border: 1px solid #5e4a6b;
+    border-radius: 10px;
+    background: #211c2cf5;
+    box-shadow: 0 6px 30px #0006;
+    overflow: hidden;
+}
+#rpDiceMount .rp-dice-viewer {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    width: 100%;
+    box-shadow: none;
+    margin-bottom: 18px;
+}
+.rp-dice-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: #c7b7d4;
+}
+.rp-dice-top button {
+    border: 0;
+    background: none;
+    font-size: 18px;
+    padding: 0 5px;
+}
+#rpDiceMount .rp-dice-top button {
+    display: none;
+}
+#rpDiceScene {
+    height: 195px;
+    background: radial-gradient(ellipse at 50% 70%, #3f324b, #211c2c 70%);
+}
+#rpDiceScene canvas {
+    display: block;
+    max-width: 100%;
+}
+#rpDiceResult {
+    font-size: 15px;
+    font-weight: 650;
+    text-align: center;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 15px 14px;
+    color: #ffbd9f;
+}
+#rpHistory {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+#rpHistory li {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border-bottom: 1px solid #40364c;
+    padding: 11px 2px;
+    font-size: 12px;
+}
+#rpHistory li span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#rpHistory small {
+    color: #b8aec7;
+    font-size: 10px;
+}
+#rpHistory b {
+    min-width: 62px;
+    text-align: right;
+    color: #ffbd9f;
+}
+body.room-captcha-blur .Camera > video,
+body.room-captcha-blur .Camera > img.videoAvatarImage {
+    filter: blur(14px) !important;
+}
+.rp-captcha-prompt {
+    position: absolute;
+    z-index: 6;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 90%;
+    padding: 12px 17px !important;
+    box-shadow: 0 4px 22px #0007;
+    background: #211c2cf5 !important;
+    border-color: #8a729b !important;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: center;
+    text-align: center;
+}
+.rp-captcha-prompt b {
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+.rp-captcha-prompt small {
+    font-size: 10px;
+    color: #ffbd9f;
+}
+#roomUtilitiesButton.rp-has-captcha {
+    box-shadow: 0 0 0 2px #ffac8d;
+    color: #ffbd9f;
+}
+@media (max-width: 800px) {
+    .room-play {
+        width: calc(100vw - 24px);
+        top: 12px;
+        max-height: none;
+    }
+    .rp-nav {
+        width: 56px;
+        padding: 12px 5px;
+    }
+    .rp-nav > button {
+        justify-content: center;
+        padding: 11px 4px;
+    }
+    .rp-nav > button b,
+    .rp-sound,
+    .rp-volume {
+        display: none;
+    }
+    .rp-nav > button span {
+        width: auto;
+    }
+    .rp-pane,
+    #rpLibrary {
+        padding: 17px;
+    }
+    .rp-catalog {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .rp-heading h2 {
+        font-size: 23px;
+    }
+    .rp-heading select {
+        max-width: 50%;
+        font-size: 11px;
+    }
+    #rpSession {
+        max-width: 110px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+    .rp-user {
+        gap: 8px;
+    }
+    .rp-user button {
+        max-width: 85px;
+        font-size: 10px;
+        padding: 7px;
+    }
+    .rp-user b {
+        font-size: 11px;
+    }
+    .rp-avatar {
+        width: 28px;
+        height: 28px;
+    }
+    .rp-roll-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .rp-dice-viewer {
+        width: 265px;
+    }
+    .rp-ballot {
+        top: 12px;
+        right: 12px;
+    }
+    #rpPending {
+        font-size: 10px;
+        padding: 7px 10px;
+    }
+    .rp-captcha-prompt b {
+        font-size: 10px;
+    }
+    #rpDiceScene {
+        height: 160px;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .room-play * {
+        transition: none !important;
+    }
+}
+.rp-main > .rp-ballot {
+    position: relative;
+    inset: auto;
+    width: auto;
+    border-width: 0 0 1px;
+    border-radius: 0;
+    box-shadow: none;
+    flex: none;
+    padding: 9px 14px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    background: #302536;
+}
+.rp-main > .rp-ballot > b {
+    grid-column: 1;
+    font-size: 12px;
+}
+.rp-main > .rp-ballot > small:first-child {
+    display: none;
+}
+.rp-main > .rp-ballot > .rp-ballot-actions {
+    grid-column: 2;
+    grid-row: 1/3;
+    align-self: center;
+}
+.rp-main > .rp-ballot > small:last-child {
+    display: none;
+}
+@media (max-width: 800px) {
+    .rp-nav .rp-sound {
+        display: flex;
+        font-size: 0;
+        justify-content: center;
+    }
+    .rp-nav .rp-volume {
+        display: block;
+        padding: 0;
+        width: 100%;
+    }
+    .rp-main > .rp-ballot {
+        gap: 4px;
+        padding: 8px;
+    }
+    .rp-main > .rp-ballot button {
+        padding: 5px 7px;
+        font-size: 11px;
+    }
 }

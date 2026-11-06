@@ -42,7 +42,11 @@ function captchaRoutes({ control, adminDir, playerDir, adminKey }) {
         express.static(playerDir, {
             index: 'room.html',
             setHeaders: (res, file) => {
-                if (!file.endsWith('.html')) res.set('Cache-Control', 'public, max-age=31536000, immutable');
+                if (!file.endsWith('.html'))
+                    res.set(
+                        'Cache-Control',
+                        file.endsWith('dice.js') ? 'no-cache' : 'public, max-age=31536000, immutable'
+                    );
             },
         })
     );
