@@ -70,6 +70,10 @@ try {
     assert.equal(room.users.find((u) => u.id === targetId).ready, true);
     await api('/api/trigger', { roomId: 'teste', peerId: targetId, gameId: 'juggle' });
     await until(player, '!!document.querySelector(".rp-captcha-prompt:not([hidden])")');
+    assert.equal(
+        await player.ev('getComputedStyle(document.querySelector(".rp-captcha-prompt b")).color'),
+        'rgb(247, 242, 252)'
+    );
     assert.equal(await player.ev('!!document.querySelector("#rpFrameHost iframe")'), false);
     assert.equal(await source.ev('!!document.querySelector("#rpFrameHost iframe")'), false);
     const framesBefore = await player.ev(
@@ -103,6 +107,9 @@ try {
     );
     await player.click(button.x, button.y);
     await until(player, child('!document.getElementById("result").hidden'), 18000);
+    // The local result precedes its server acknowledgment across the public TLS connection.
+    await until(player, '!document.body.classList.contains("room-captcha-blur")');
+    await until(player, child('document.getElementById("resultScore").textContent.includes("registrada")'));
     assert.equal(await player.ev('document.body.classList.contains("room-captcha-blur")'), false);
     await player.ev(child('document.querySelectorAll("#stars button")[4].click()'));
     await until(player, child('document.getElementById("ratingStatus").textContent.includes("registrada")'));

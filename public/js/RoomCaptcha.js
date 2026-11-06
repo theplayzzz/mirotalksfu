@@ -100,7 +100,8 @@ window.RoomCaptcha = (() => {
     }
     function mount() {
         if (hub) return;
-        hub = node('section', '', 'room-play');
+        hub = node('section', '', 'room-play notranslate');
+        hub.setAttribute('translate', 'no');
         hub.id = 'roomPlayHub';
         hub.hidden = true;
         hub.setAttribute('role', 'dialog');

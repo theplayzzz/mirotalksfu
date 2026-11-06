@@ -632,13 +632,14 @@ body.room-captcha-blur .Camera > img.videoAvatarImage {
     text-align: center;
 }
 .rp-captcha-prompt b {
+    color: #f7f2fc !important;
     font-size: 12px;
     line-height: 1.4;
     white-space: nowrap;
 }
 .rp-captcha-prompt small {
     font-size: 10px;
-    color: #ffbd9f;
+    color: #ffbd9f !important;
 }
 #roomUtilitiesButton.rp-has-captcha {
     box-shadow: 0 0 0 2px #ffac8d;
