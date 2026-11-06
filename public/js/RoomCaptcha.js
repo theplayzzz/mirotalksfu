@@ -422,6 +422,10 @@ window.RoomCaptcha = (() => {
                     node('small', `${g.config.duration}s · só mouse`)
                 );
                 button.onclick = async () => {
+                    if (!data || !socket?.connected) {
+                        tell('A conexão com a sala está sendo restabelecida.');
+                        return;
+                    }
                     if (data.active && data.active.phase !== 'result') {
                         if (frame) openGame(false);
                         else tell('Sua partida está aberta em outra janela.');
@@ -821,9 +825,14 @@ window.RoomCaptcha = (() => {
             changed();
         });
         listen('disconnect', () => {
-            paused(true);
+            epoch++;
+            fetching = false;
+            resync = false;
+            dropFrame();
+            data = null;
             document.body.classList.remove('room-captcha-blur');
             $('rpSession').textContent = 'Reconectando…';
+            renderBallot();
             tiles();
         });
         listen('connect', () =>

@@ -83,6 +83,9 @@ window.RoomUtilities = (() => {
             publish();
         });
         listen('disconnect', () => {
+            generation++;
+            pending = false;
+            nextAt = 0;
             online = false;
             publish();
         });
