@@ -19,6 +19,10 @@ await build({
     build: {
         outDir: '../app/captcha-player',
         emptyOutDir: true,
-        rollupOptions: { input: path.join(root, 'room.html') },
+        rollupOptions: {
+            preserveEntrySignatures: 'strict',
+            input: { room: path.join(root, 'room.html'), dice: path.join(root, 'src/dice-scene.js') },
+            output: { entryFileNames: (chunk) => (chunk.name === 'dice' ? 'dice.js' : 'assets/[name]-[hash].js') },
+        },
     },
 });

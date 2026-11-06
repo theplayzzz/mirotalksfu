@@ -74,8 +74,8 @@
                                 >
                                 <div id="users" class="users"></div>
                                 <p class="muted">
-                                    O disparo afeta só as telas compartilhadas de quem recebe. Câmera, áudio e controles
-                                    continuam disponíveis. O participante inicia a verificação pelo botão nas streams.
+                                    O disparo borra as imagens dos participantes somente para quem recebe. Áudio e
+                                    controles continuam disponíveis. Jogos manuais em andamento não são interrompidos.
                                 </p>
                             </section>
                             <section class="panel">
@@ -95,7 +95,7 @@
                                             type="number"
                                             min="1"
                                             max="100"
-                                            value="35" /></label
+                                            value="30" /></label
                                     ><label
                                         >Prazo em segundos<input
                                             id="voteSeconds"
@@ -107,8 +107,8 @@
                                 </div>
                                 <p class="muted">
                                     Use “Votar” ao lado do participante. Os presentes no início votam uma vez, inclusive
-                                    o escolhido. O padrão é 35%, com o total de votos arredondado para cima. O total
-                                    necessário não diminui com saídas.
+                                    o escolhido. O padrão exige mais de 30%: numa sala de 10 pessoas, são 4 votos Sim. O
+                                    total necessário não diminui com saídas.
                                 </p>
                                 <div id="votes"></div>
                             </section>
@@ -124,6 +124,11 @@
                             <section class="panel automation">
                                 <span class="eyebrow">NO RITMO DA SALA</span>
                                 <h2>Automação</h2>
+                                <label class="switch-line"
+                                    ><input id="participantVotes" type="checkbox" checked /><span
+                                        >Participantes podem propor votações</span
+                                    ></label
+                                >
                                 <label class="switch-line"
                                     ><input id="randomEnabled" type="checkbox" /><span
                                         >Disparos aleatórios ligados</span
@@ -160,10 +165,11 @@
                                 </p>
                             </section>
                             <section class="note">
-                                <strong>Verificação na área das transmissões.</strong>
+                                <strong>Uma janela de jogos independente.</strong>
                                 <p>
-                                    Ganhar e perder liberam as streams. O jogador pode minimizar o jogo, tentar
-                                    novamente ou liberar as telas. Se a conexão ou o jogo falhar, o blur sai.
+                                    Ganhar, perder ou fechar liberam as imagens. Minimizar pausa a partida. Uma
+                                    verificação aguarda o jogo manual por até dois minutos. Se a conexão ou o jogo
+                                    falhar, o blur sai.
                                 </p>
                                 <p>Somente nesta instância.</p>
                             </section>

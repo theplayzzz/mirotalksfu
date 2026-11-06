@@ -114,6 +114,22 @@ describe('RoomUtilities', () => {
         assert.equal(history.rolls[0].sequence, 4);
         assert.equal(history.rolls.at(-1).sequence, 53);
         const other = { sessionId: 'another-session', getPeer: () => ({ peer_name: 'Alice' }), sendToAll: () => {} };
-        assert.deepEqual(f.socket('alice', () => other)('utilityHistory'), { session: 'another-session', rolls: [] });
+        const empty = f.socket('alice', () => other)('utilityHistory');
+        assert.equal(empty.session, 'another-session');
+        assert.deepEqual(empty.rolls, []);
+        assert.ok(Number.isFinite(empty.now));
+    });
+
+    it('keeps cooldown and request deduplication across tabs without exposing the stable identity', () => {
+        const f = fixture();
+        f.peers.get('alice').peer_uuid = 'same-user';
+        f.peers.set('copy', { peer_uuid: 'same-user', peer_name: 'Alice' });
+        const a = f.socket('alice'),
+            b = f.socket('copy');
+        const first = a('utilityRoll', { kind: 'd20', requestId: 'one' });
+        assert.equal(first.roll.revealAt - first.roll.at, 4000);
+        assert.equal(b('utilityRoll', { kind: 'd20', requestId: 'one' }).roll.id, first.roll.id);
+        assert.equal(b('utilityRoll', { kind: 'd6', requestId: 'two' }).code, 'COOLDOWN');
+        assert.ok(!Object.hasOwn(b('utilityHistory').rolls[0], 'owner'));
     });
 });

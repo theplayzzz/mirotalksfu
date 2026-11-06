@@ -322,3 +322,84 @@ p {
         max-width: 200px;
     }
 }
+#resultScore {
+    display: block;
+    color: #ffbd9f;
+    font-size: 13px;
+    margin: 8px 0;
+}
+#initialsForm {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-size: 11px;
+    margin: 10px 0 14px;
+    color: #c7b7d4;
+}
+#initialsForm input {
+    font:
+        700 12px Consolas,
+        monospace;
+    letter-spacing: 2px;
+    color: #f8f2ff;
+    background: #211c2c;
+    border: 1px solid #6a5577;
+    border-radius: 5px;
+    padding: 6px;
+    width: 56px;
+    margin-left: 5px;
+    text-transform: uppercase;
+}
+#initialsForm button {
+    font-size: 11px;
+    padding: 6px 9px;
+    font-weight: 500;
+}
+#nextVerification {
+    margin-top: 10px;
+    border-color: #ffac8d;
+    color: #ffbd9f;
+    font-size: 12px;
+}
+.result-card > img {
+    width: 60px;
+    height: 60px;
+}
+.result-card h1 {
+    font-size: clamp(24px, 4vw, 37px);
+    margin: 10px auto;
+}
+.result-card .rating {
+    margin-top: 14px;
+    padding-top: 8px;
+}
+.result-card #stars button {
+    font-size: 27px;
+}
+@media (max-height: 500px) {
+    .result-card > img {
+        width: 38px;
+        height: 38px;
+    }
+    .result-card h1 {
+        font-size: 25px;
+        margin: 6px auto;
+    }
+    .result-card p {
+        font-size: 11px;
+        margin: 4px auto 8px;
+    }
+    .result-card .rating {
+        margin-top: 8px;
+        padding-top: 4px;
+    }
+    #initialsForm {
+        margin: 6px 0 10px;
+    }
+    .result-card .actions button {
+        min-width: 135px;
+        font-size: 12px;
+        padding: 8px 10px;
+    }
+}

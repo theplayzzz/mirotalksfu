@@ -158,6 +158,7 @@ class CaptchaControl {
     async configure(value) {
         this.validateSettings(value);
         const clean = {
+            ...(this.settings.interactions ? { interactions: value.interactions || this.settings.interactions } : {}),
             games: Object.fromEntries(
                 this.catalog.map((g) => [
                     g.id,

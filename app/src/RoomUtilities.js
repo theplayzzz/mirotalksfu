@@ -14,13 +14,17 @@ class RoomUtilities {
 
     state(room) {
         if (!this.rooms.has(room)) {
-            this.rooms.set(room, { session: room.sessionId || randomUUID(), sequence: 0, rolls: [] });
+            this.rooms.set(room, {
+                session: room.sessionId || randomUUID(),
+                sequence: 0,
+                rolls: [],
+                lastRollAt: new Map(),
+            });
         }
         return this.rooms.get(room);
     }
 
     bind(socket, getRoom) {
-        let lastRollAt = -Infinity;
         const member = () => {
             const room = getRoom(socket);
             const peer = room?.getPeer(socket.id);
@@ -32,7 +36,11 @@ class RoomUtilities {
             const context = member();
             if (!context) return callback({ error: 'Entre na sala para ver as rolagens.', code: 'NOT_JOINED' });
             const state = this.state(context.room);
-            callback({ session: state.session, rolls: state.rolls.slice() });
+            callback({
+                session: state.session,
+                now: this.now(),
+                rolls: state.rolls.map(({ owner: _owner, ...roll }) => roll),
+            });
         });
 
         socket.on('utilityRoll', (request, callback) => {
@@ -45,13 +53,17 @@ class RoomUtilities {
                 return callback({ error: 'Escolha d6, d10, d20 ou cara ou coroa.', code: 'INVALID_ROLL' });
             }
             const state = this.state(context.room);
-            const previous = state.rolls.find((roll) => roll.requestId === requestId && roll.peerId === socket.id);
-            if (previous) return callback({ roll: previous, session: state.session });
+            const owner = context.peer.peer_uuid || socket.id;
+            const previous = state.rolls.find((roll) => roll.requestId === requestId && roll.owner === owner);
+            const publicRoll = ({ owner: _owner, ...roll }) => roll;
+            if (previous) return callback({ roll: publicRoll(previous), now: this.now(), session: state.session });
             const now = this.now();
-            if (now - lastRollAt < COOLDOWN_MS) {
+            if (now - (state.lastRollAt.get(owner) ?? -Infinity) < COOLDOWN_MS) {
                 return callback({ error: 'Espere um instante antes de rolar novamente.', code: 'COOLDOWN' });
             }
-            lastRollAt = now;
+            state.lastRollAt.set(owner, now);
+            if (state.lastRollAt.size > 2000)
+                for (const [key, at] of state.lastRollAt) if (now - at > 60000) state.lastRollAt.delete(key);
             // Ignore names, room IDs and results supplied by the browser. Identity and randomness are server-owned.
             const roll = {
                 id: randomUUID(),
@@ -62,11 +74,12 @@ class RoomUtilities {
                 kind,
                 value: this.draw(1, KINDS[kind] + 1),
                 at: now,
+                revealAt: now + 4000,
             };
-            state.rolls.push(roll);
+            state.rolls.push({ ...roll, owner });
             if (state.rolls.length > HISTORY_LIMIT) state.rolls.shift();
-            context.room.sendToAll('utilityRolled', { session: state.session, roll });
-            callback({ session: state.session, roll });
+            context.room.sendToAll('utilityRolled', { session: state.session, now, roll });
+            callback({ session: state.session, now, roll });
         });
     }
 }
