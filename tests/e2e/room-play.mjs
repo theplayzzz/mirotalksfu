@@ -296,6 +296,22 @@ try {
         await close(alice);
         console.log(`OK mouse game boots: ${g.id}`);
     }
+    await hub(alice);
+    await alice.ev('document.querySelector("[data-game=arena]").click()');
+    await until(alice, frame(`${$('ready')}.hidden`));
+    await alice.ev('socket.disconnect()');
+    await until(
+        alice,
+        '!document.querySelector("#rpFrameHost iframe") && !document.body.classList.contains("room-captcha-blur")'
+    );
+    control.version = 1; // a restarted service starts its state counter again
+    await alice.ev('socket.connect()');
+    await until(alice, 'socket.connected && document.getElementById("rpSession").textContent==="Sala conectada"');
+    await alice.ev('document.querySelector("[data-game=rain]").click()');
+    await until(alice, frame(`${$('ready')}.hidden`));
+    assert.equal([...control.active.values()].filter((a) => a.name === 'Alice').length, 1);
+    await close(alice);
+    console.log('OK reconnect releases the abandoned match and accepts a fresh server state');
     await alice.send('Emulation.setDeviceMetricsOverride', {
         width: 520,
         height: 850,
