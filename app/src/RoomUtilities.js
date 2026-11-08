@@ -3,7 +3,7 @@
 const { randomInt, randomUUID } = require('node:crypto');
 const KINDS = Object.freeze({ d6: 6, d10: 10, d20: 20, coin: 2 });
 const HISTORY_LIMIT = 50;
-const ROLL_DURATION_MS = 6000;
+const ROLL_DURATION_MS = 4000;
 const COOLDOWN_MS = ROLL_DURATION_MS;
 const ownBusyUntil = (state, owner) => (state.lastRollAt.get(owner) ?? -COOLDOWN_MS) + COOLDOWN_MS;
 

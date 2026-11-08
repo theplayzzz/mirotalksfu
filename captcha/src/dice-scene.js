@@ -1,6 +1,6 @@
 import DiceBox from '@3d-dice/dice-box-threejs';
 
-const THROW_DURATION = 4800;
+const THROW_DURATION = 3400;
 const random = (min, max) => min + Math.random() * (max - min);
 
 // These two faces are local canvas artwork, so the coin never needs a model,
@@ -167,13 +167,15 @@ export async function createDiceScene(container) {
             const axis = [random(-1, 1), random(-1, 1), random(-1, 1)];
             const length = Math.hypot(...axis) || 1;
             vector.pos = {
-                x: side * box.display.containerWidth * (isCoin ? 0.22 : 0.62),
-                y: random(-0.37, 0.37) * box.display.containerHeight + (index % 2 ? 25 : -25),
+                x: side * box.display.containerWidth * (isCoin ? 0.08 : 0.62),
+                y:
+                    random(isCoin ? -0.12 : -0.37, isCoin ? 0.12 : 0.37) * box.display.containerHeight +
+                    (index % 2 ? 25 : -25),
                 z: random(130, 190),
             };
             vector.velocity = {
-                x: -side * random(isCoin ? 170 : 560, isCoin ? 260 : 780),
-                y: random(-160, 160),
+                x: -side * random(isCoin ? 65 : 560, isCoin ? 110 : 780),
+                y: random(isCoin ? -45 : -160, isCoin ? 45 : 160),
                 z: random(isCoin ? 650 : 510, isCoin ? 820 : 690),
             };
             vector.angle = {
@@ -213,7 +215,8 @@ export async function createDiceScene(container) {
     box.spawnDice = (vector, existing) => {
         spawnDice(vector, existing);
         const die = existing || box.diceList.at(-1);
-        die.body.linearDamping = 0.25;
+        // A flipping coin sheds lateral drift sooner instead of rolling into a wall.
+        die.body.linearDamping = die.shape === 'd2' ? 0.72 : 0.25;
         die.body.angularDamping = die.shape === 'd2' ? 0.52 : 0.3;
         die.body.sleepSpeedLimit = die.shape === 'd2' ? 2 : 6;
         die.body.sleepTimeLimit = 0.25;
@@ -278,7 +281,7 @@ export async function createDiceScene(container) {
     };
     // Replay the actual Cannon trajectory rather than integrate it twice. A
     // second integration can differ by a sleep/contact tick and disagree with
-    // the pre-simulated forced face. Presentation alone lasts a readable 4.8s.
+    // the pre-simulated forced face. Presentation lasts 3.4s, within the room's four-second reveal.
     box.animateThrow = (_thread, completed) => {
         const startedAt = performance.now();
         box.animstate = 'throw';

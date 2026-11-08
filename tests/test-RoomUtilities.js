@@ -385,7 +385,12 @@ describe('RoomUtilities browser coordination', () => {
         await abandoned;
         assert.equal(f.sent.filter((item) => item.event === 'utilityHistory').length, 2);
         assert.equal(f.utilities.current().busy, false);
-        f.reply('utilityRoll', { session: 'room', now: 10000, roll: browserRoll(10000), selfBusyUntil: 16000 });
+        f.reply('utilityRoll', {
+            session: 'room',
+            now: 10000,
+            roll: browserRoll(10000),
+            selfBusyUntil: 10000 + ROLL_DURATION_MS,
+        });
         assert.equal(f.utilities.current().session, 'new-room');
         assert.equal(f.utilities.current().rolls.length, 0);
         f.utilities.disconnect();

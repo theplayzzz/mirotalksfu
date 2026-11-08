@@ -132,7 +132,7 @@ try {
     }
     const accepted = await alice.ev('RoomUtilities.current().rolls');
     assert.equal(new Set(accepted.map((roll) => roll.id)).size, 3);
-    for (const roll of accepted) assert.equal(roll.revealAt - roll.at, 6000);
+    for (const roll of accepted) assert.equal(roll.revealAt - roll.at, 4000);
     const sampleAt = Math.min(...accepted.map((roll) => roll.revealAt)) - 500;
     await shot(alice, '01-concurrent-rolling');
     const waitNearReveal = sampleAt - (await alice.ev('RoomUtilities.now()'));
@@ -146,7 +146,9 @@ try {
         ),
         true
     );
-    checks.push('rapid clicks accept one roll; staggered d6, coin and d20 remain independently locked for six seconds');
+    checks.push(
+        'rapid clicks accept one roll; staggered d6, coin and d20 remain independently locked for four seconds'
+    );
 
     await Promise.all(pages.map((page) => until(page, enabled, 35000)));
     await Promise.all(
