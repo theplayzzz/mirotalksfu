@@ -85,7 +85,7 @@ rating behind “Avaliar jogo”. A participant proposal uses one target selecto
 
 The room server owns randomness, roll IDs, sequence, names and the reveal timestamp.
 The shared last-50 history deduplicates acknowledgment/broadcast delivery. A stable
-identity can have one roll in flight for six seconds, including across tabs and
+identity can have one roll in flight for four seconds, including across tabs and
 reconnections; different people roll independently. All four actions lock before
 the acknowledgment and remain locked until the person's displayed throw finishes.
 Lost acknowledgments resynchronize from history before allowing another request. Closing the
@@ -102,7 +102,7 @@ The 3D scene uses pinned MIT `@3d-dice/dice-box-threejs` 0.0.12 (Three.js + Cann
 which supports predetermined physical outcomes. It is built as a separate, lazy
 `/captcha/play/dice.js` module, about 145 kB gzip; no CDN, textures or audio downloads
 are needed. The gold coin has local portrait/CARA and crown/COROA canvas faces.
-Launch spin, rebound and a 4.8-second fixed-step replay keep physical motion visible
+Launch spin, rebound and a 3.4-second fixed-step replay keep physical motion visible
 without changing the server result. Resize keeps the existing simulated path.
 One renderer handles up to four throws per batch, followed by a bounded queue of
 twelve incoming rolls. Own rolls receive priority in the next batch; excess visual
