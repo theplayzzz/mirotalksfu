@@ -3,7 +3,9 @@
 const { randomInt, randomUUID } = require('node:crypto');
 const KINDS = Object.freeze({ d6: 6, d10: 10, d20: 20, coin: 2 });
 const HISTORY_LIMIT = 50;
-const COOLDOWN_MS = 1200;
+const ROLL_DURATION_MS = 6000;
+const COOLDOWN_MS = ROLL_DURATION_MS;
+const ownBusyUntil = (state, owner) => (state.lastRollAt.get(owner) ?? -COOLDOWN_MS) + COOLDOWN_MS;
 
 class RoomUtilities {
     constructor({ now = Date.now, draw = randomInt } = {}) {
@@ -36,9 +38,12 @@ class RoomUtilities {
             const context = member();
             if (!context) return callback({ error: 'Entre na sala para ver as rolagens.', code: 'NOT_JOINED' });
             const state = this.state(context.room);
+            const owner = context.peer.peer_uuid || socket.id;
             callback({
                 session: state.session,
                 now: this.now(),
+                selfBusyUntil: ownBusyUntil(state, owner),
+                selfRollIds: state.rolls.filter((roll) => roll.owner === owner).map((roll) => roll.id),
                 rolls: state.rolls.map(({ owner: _owner, ...roll }) => roll),
             });
         });
@@ -56,10 +61,25 @@ class RoomUtilities {
             const owner = context.peer.peer_uuid || socket.id;
             const previous = state.rolls.find((roll) => roll.requestId === requestId && roll.owner === owner);
             const publicRoll = ({ owner: _owner, ...roll }) => roll;
-            if (previous) return callback({ roll: publicRoll(previous), now: this.now(), session: state.session });
+            if (previous)
+                return callback({
+                    roll: publicRoll(previous),
+                    now: this.now(),
+                    session: state.session,
+                    selfBusyUntil: ownBusyUntil(state, owner),
+                    selfRollId: previous.id,
+                });
             const now = this.now();
             if (now - (state.lastRollAt.get(owner) ?? -Infinity) < COOLDOWN_MS) {
-                return callback({ error: 'Espere um instante antes de rolar novamente.', code: 'COOLDOWN' });
+                const retryAt = state.lastRollAt.get(owner) + COOLDOWN_MS;
+                return callback({
+                    error: 'Sua rolagem ainda está em andamento. Espere ela terminar.',
+                    code: 'COOLDOWN',
+                    now,
+                    session: state.session,
+                    retryAt,
+                    selfBusyUntil: retryAt,
+                });
             }
             state.lastRollAt.set(owner, now);
             if (state.lastRollAt.size > 2000)
@@ -74,7 +94,7 @@ class RoomUtilities {
                 kind,
                 value: this.draw(1, KINDS[kind] + 1),
                 at: now,
-                revealAt: now + 4000,
+                revealAt: now + ROLL_DURATION_MS,
             };
             state.rolls.push({ ...roll, owner });
             if (state.rolls.length > HISTORY_LIMIT) state.rolls.shift();
@@ -82,12 +102,20 @@ class RoomUtilities {
             // reaches peers waiting in the lobby, who must not receive room roll data.
             const peers = context.room.getPeers?.() || context.room.peers;
             for (const [id, peer] of peers || []) {
-                if (!peer.closed && !peer.peer_lobby)
-                    context.room.send(id, 'utilityRolled', { session: state.session, now, roll });
+                if (!peer.closed && !peer.peer_lobby) {
+                    const recipient = peer.peer_uuid || id;
+                    context.room.send(id, 'utilityRolled', {
+                        session: state.session,
+                        now,
+                        roll,
+                        selfBusyUntil: ownBusyUntil(state, recipient),
+                        ...(recipient === owner ? { selfRollId: roll.id } : {}),
+                    });
+                }
             }
-            callback({ session: state.session, now, roll });
+            callback({ session: state.session, now, roll, selfBusyUntil: roll.revealAt, selfRollId: roll.id });
         });
     }
 }
 
-module.exports = { RoomUtilities, HISTORY_LIMIT, COOLDOWN_MS };
+module.exports = { RoomUtilities, HISTORY_LIMIT, COOLDOWN_MS, ROLL_DURATION_MS };

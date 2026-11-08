@@ -85,17 +85,28 @@ rating behind “Avaliar jogo”. A participant proposal uses one target selecto
 
 The room server owns randomness, roll IDs, sequence, names and the reveal timestamp.
 The shared last-50 history deduplicates acknowledgment/broadcast delivery. A stable
-identity can roll every 1.2 seconds; different people roll independently. Closing the
+identity can have one roll in flight for six seconds, including across tabs and
+reconnections; different people roll independently. All four actions lock before
+the acknowledgment and remain locked until the person's displayed throw finishes.
+Lost acknowledgments resynchronize from history before allowing another request. Closing the
 hub cannot cancel a roll already accepted by the server. Reconnect fetches history
 without replaying old animations.
 Only admitted room peers receive roll broadcasts; lobby peers and other rooms cannot
 receive them. The initial history shows three recent rolls, with the rest on demand.
+This history belongs to the in-memory room, not a profile or the durable game-score
+store: it survives peer reconnection while that room exists, but not room deletion
+or an application restart. Names, kind, timestamp and result are shared; private
+identity keys are never sent to other peers.
 
 The 3D scene uses pinned MIT `@3d-dice/dice-box-threejs` 0.0.12 (Three.js + Cannon ES),
 which supports predetermined physical outcomes. It is built as a separate, lazy
-`/captcha/play/dice.js` module, about 142 kB gzip; no CDN, textures or audio downloads
-are needed. One renderer handles up to four simultaneous throws. Additional results
-remain in history rather than building an unbounded animation queue. No animation
+`/captcha/play/dice.js` module, about 145 kB gzip; no CDN, textures or audio downloads
+are needed. The gold coin has local portrait/CARA and crown/COROA canvas faces.
+Launch spin, rebound and a 4.8-second fixed-step replay keep physical motion visible
+without changing the server result. Resize keeps the existing simulated path.
+One renderer handles up to four throws per batch, followed by a bounded queue of
+twelve incoming rolls. Own rolls receive priority in the next batch; excess visual
+traffic stays in shared history rather than creating an unbounded queue. No animation
 appears over the game arena. Results stay masked until the server reveal time;
 WebGL failure falls back to the same recorded result, never a new roll.
 
@@ -103,7 +114,11 @@ WebGL failure falls back to the same recorded result, never a new roll.
 
 - `npx mocha tests/test-RoomPlayControl.js tests/test-RoomUtilities.js tests/test-CaptchaControl.js`
 - `npm run build --prefix captcha` and `npm test --prefix captcha`
-- `node tests/e2e/dice-renderer.mjs`: actual WebGL, all four predetermined outcomes.
+- `node tests/e2e/dice-renderer.mjs`: actual WebGL, all four predetermined outcomes,
+  rotation/rebound, coin face geometry, resize during flight, stop and disposal.
+- `node tests/e2e/room-dice.mjs`: independent users, burst clicks, duplicate tabs,
+  staggered animation delivery, shared history, reconnect/late join, renderer failure,
+  320/390px mobile and landscape layout.
 - `node tests/e2e/room-play.mjs`: independent Socket.IO clients, private panel, tile
   blur, natural results, stars/initials/ranking, manual/pending/close, quorum/queue,
   simultaneous real 3D rolls, all 14 iframe games, and mobile/callbar geometry.
@@ -115,5 +130,8 @@ WebGL failure falls back to the same recorded result, never a new roll.
 - `tests/e2e/captcha-dev.mjs`: opt-in development SFU test using only named synthetic
   peers in the isolated `teste` room. It checks live video/audio under local blur,
   game completion and persisted feedback without changing global game settings.
+- `tests/e2e/room-dice-dev.mjs`: opt-in development room test with three separate
+  browser identities, burst clicks, staggered rolls, common history and mobile layout;
+  no camera, microphone or screen capture.
 
 Deployment follows `ops/deploy.sh dev <CI image>`; production is a separate action.

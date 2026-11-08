@@ -526,6 +526,9 @@
     gap: 8px;
     font-size: 24px;
     padding: 13px;
+    min-width: 0;
+    min-height: 64px;
+    touch-action: manipulation;
 }
 .rp-roll-actions button b {
     font-size: 11px;
@@ -534,9 +537,10 @@
 .rp-dice-viewer {
     position: fixed;
     z-index: 98;
-    right: 18px;
+    right: var(--rp-safe-right);
     bottom: var(--rp-safe-bottom);
     width: 300px;
+    max-width: calc(100vw - var(--rp-safe-left) - var(--rp-safe-right));
     border: 1px solid #5e4a6b;
     border-radius: 10px;
     background: #211c2cf5;
@@ -572,11 +576,41 @@
     height: 195px;
     background: radial-gradient(ellipse at 50% 70%, #3f324b, #211c2c 70%);
 }
+#rpDiceMount #rpDiceScene {
+    height: clamp(210px, 28vh, 290px);
+}
+.rp-dice-copy,
+#rpRollStatus {
+    margin: 5px 0 14px;
+    color: #b8aec7;
+    font-size: 12px;
+    line-height: 1.5;
+}
+#rpRollStatus {
+    min-height: 18px;
+    margin: -4px 0 15px;
+    font-size: 11px;
+}
+#rpRollStatus[data-state='queued'],
+#rpRollStatus[data-state='rolling'],
+#rpRollStatus[data-state='request'] {
+    color: #ffbd9f;
+}
+.rp-history-title {
+    margin: 20px 0 4px;
+    color: #c7b7d4;
+    font-size: 12px;
+    font-weight: 600;
+}
 #rpDiceScene canvas {
     display: block;
     max-width: 100%;
 }
 #rpDiceResult {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 14px;
     font-size: 15px;
     font-weight: 650;
     text-align: center;
@@ -584,6 +618,43 @@
     margin: 0;
     padding: 0 15px 14px;
     color: #ffbd9f;
+    overflow-wrap: anywhere;
+}
+.rp-dice-outcome {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    max-width: 100%;
+    min-width: 0;
+}
+.rp-outcome-name {
+    max-width: 160px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.rp-dice-outcome small {
+    flex: none;
+    color: #b8aec7;
+    font-size: 10px;
+    font-weight: 400;
+}
+.rp-dice-outcome b {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+}
+.rp-dice-top {
+    min-width: 0;
+    gap: 8px;
+}
+#rpDiceWho {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.rp-dice-top button {
+    flex: none;
 }
 #rpHistory {
     list-style: none;
@@ -603,6 +674,25 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+#rpHistory .rp-roll-person {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+#rpHistory .rp-roll-person span {
+    min-width: 0;
+}
+#rpHistory time {
+    flex: none;
+    color: #9587a6;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+#rpHistoryMore {
+    margin-top: 12px;
+    min-height: 44px;
 }
 #rpHistory small {
     color: #b8aec7;
@@ -985,5 +1075,115 @@ body.room-play-open #bottomButtons {
     #rpRankMore,
     #rpHistoryMore {
         padding-left: 0;
+    }
+}
+@media (max-width: 480px) {
+    .rp-header {
+        min-width: 0;
+        height: 44px;
+        gap: 5px;
+        padding: 0 5px 0 9px;
+    }
+    .rp-header > b {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 11px;
+    }
+    .rp-header .rp-brand,
+    #rpSession {
+        display: none;
+    }
+    .rp-window-actions {
+        margin-left: 0;
+        gap: 0;
+    }
+    .rp-window-actions button {
+        width: 30px;
+        height: 40px;
+    }
+    #rpContinue {
+        margin-left: 0;
+        padding: 6px;
+        font-size: 0;
+    }
+    #rpContinue::after {
+        content: 'Continuar';
+        font-size: 10px;
+    }
+    .rp-nav {
+        width: 48px;
+        padding: 8px 2px;
+    }
+    .rp-nav > button {
+        min-height: 44px;
+    }
+    .rp-pane,
+    #rpLibrary {
+        padding: 12px;
+    }
+    .rp-roll-actions {
+        gap: 6px;
+        margin: 12px 0;
+    }
+    .rp-roll-actions button {
+        padding: 9px 5px;
+        min-height: 58px;
+        gap: 5px;
+    }
+    .rp-roll-actions button b {
+        font-size: 11px;
+        line-height: 1.25;
+        white-space: normal;
+    }
+    #rpDiceMount #rpDiceScene {
+        height: 205px;
+    }
+    #rpDiceResult {
+        font-size: 13px;
+        padding: 0 9px 12px;
+    }
+    .rp-outcome-name {
+        max-width: 88px;
+    }
+    #rpHistory li {
+        gap: 6px;
+        font-size: 11px;
+    }
+    #rpHistory .rp-roll-person {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 2px;
+    }
+    #rpHistory .rp-roll-person span {
+        width: 100%;
+        flex: auto;
+    }
+    #rpHistory b {
+        min-width: 49px;
+        font-size: 11px;
+    }
+}
+@media (max-height: 480px) and (orientation: landscape) {
+    #rpDice .rp-heading h2 {
+        margin: 0;
+        font-size: 20px;
+    }
+    .rp-dice-copy {
+        display: none;
+    }
+    #rpDiceMount #rpDiceScene {
+        height: 155px;
+    }
+    .rp-roll-actions {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .rp-roll-actions button {
+        flex-direction: row;
+        justify-content: center;
+        min-height: 44px;
+        padding: 7px;
     }
 }
