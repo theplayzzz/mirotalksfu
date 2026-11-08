@@ -13,8 +13,9 @@ function fixture() {
     ]);
     const room = {
         sessionId: 'room-session',
+        getPeers: () => peers,
         getPeer: (id) => peers.get(id),
-        sendToAll: (event, data) => events.push({ event, data }),
+        send: (id, event, data) => events.push({ id, event, data }),
     };
     function socket(id, provider = () => room) {
         const handlers = new Map();
@@ -54,9 +55,13 @@ describe('RoomUtilities', () => {
         assert.equal(reply.roll.value, 20);
         assert.equal(reply.roll.peerName, 'Alice');
         assert.equal(reply.roll.peerId, 'alice');
-        assert.equal(f.events.length, 1);
+        assert.equal(f.events.length, 2);
         assert.equal(f.events[0].event, 'utilityRolled');
         assert.deepEqual(f.events[0].data, reply);
+        assert.deepEqual(
+            f.events.map((event) => event.id),
+            ['alice', 'bob']
+        );
         assert.deepEqual(f.socket('bob')('utilityHistory').rolls, [reply.roll]);
     });
 
@@ -90,12 +95,40 @@ describe('RoomUtilities', () => {
         assert.equal(f.events.length, 0);
     });
 
+    it('sends live rolls only to admitted, open peers using the actual Room membership API', () => {
+        const Room = require('../app/src/Room');
+        const seen = [];
+        const room = Object.create(Room.prototype);
+        room.sessionId = 'membership-room';
+        room.peers = new Map([
+            ['alice', { peer_name: 'Alice' }],
+            ['bob', { peer_name: 'Bob' }],
+            ['lobby', { peer_name: 'Lobby', peer_lobby: true }],
+            ['closed', { peer_name: 'Closed', closed: true }],
+        ]);
+        room.io = { to: (id) => ({ emit: (event, data) => seen.push({ id, event, data }) }) };
+        const f = fixture(),
+            caller = f.socket('alice', () => room);
+        const reply = caller('utilityRoll', { kind: 'd6', requestId: 'live-membership' });
+        assert.ok(reply.roll);
+        assert.deepEqual(
+            seen.map((message) => message.id),
+            ['alice', 'bob']
+        );
+        for (const message of seen) assert.deepEqual(message.data, reply);
+        const history = f.socket('bob', () => room)('utilityHistory');
+        assert.deepEqual(history.rolls, [reply.roll]);
+        assert.equal(f.socket('lobby', () => room)('utilityHistory').code, 'NOT_JOINED');
+        room.peers.get('lobby').peer_lobby = false;
+        assert.deepEqual(f.socket('lobby', () => room)('utilityHistory').rolls, [reply.roll]);
+    });
+
     it('deduplicates a repeated request and rate-limits separate rolls per participant', () => {
         const f = fixture();
         const alice = f.socket('alice');
         const first = alice('utilityRoll', { kind: 'd6', requestId: 'same' });
         assert.deepEqual(alice('utilityRoll', { kind: 'd6', requestId: 'same' }), first);
-        assert.equal(f.events.length, 1);
+        assert.equal(f.events.length, 2);
         assert.equal(alice('utilityRoll', { kind: 'd6', requestId: 'next' }).code, 'COOLDOWN');
         assert.ok(f.socket('bob')('utilityRoll', { kind: 'd6', requestId: 'bob' }).roll);
         f.advance();

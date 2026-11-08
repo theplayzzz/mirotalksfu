@@ -58,6 +58,55 @@ function fixture(count = 10, options = {}) {
 }
 
 describe('Room game hub coordination', () => {
+    it('accepts exactly three letters and distinguishes a confirmed profile from a default', () => {
+        const f = fixture();
+        const defaultProfile = f.control.profile('0');
+        assert.equal(defaultProfile.saved, false);
+        assert.equal(f.control.profiles.size, 0, 'reading a suggested label is not confirmation');
+        for (const invalid of ['', 'A', 'AB', 'ABCD', 'A12', '123', 'A B', 'ÁBC', null, 123])
+            assert.throws(() => f.control.profile('0', invalid), /três letras/);
+        assert.equal(f.control.profiles.size, 0);
+        const profile = f.control.profile('0', 'abc');
+        assert.equal(profile.initials, 'ABC');
+        assert.equal(profile.saved, true);
+        assert.equal(f.control.userState('0').profile.saved, true);
+        assert.deepEqual(f.control.profiles.get(profile.key), { key: profile.key, initials: 'ABC' });
+    });
+    it('reads legacy initials and their historical ranking without rewriting the profile', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'room-play-legacy-'));
+        try {
+            const f = fixture(3, { dataDir: dir }),
+                key = f.control.identity('friends', '0');
+            const a = f.control.manual('0', 'slash');
+            f.finish('0', a);
+            f.control.record({ kind: 'profile', profile: { key, initials: 'A1' } });
+            await f.control.writes;
+            const before = fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8');
+            const restored = fixture(3, { dataDir: dir });
+            const profile = restored.control.profile('0');
+            assert.equal(profile.initials, 'A1');
+            assert.equal(profile.saved, false);
+            assert.equal(restored.control.ranking('0', 'slash').mine.initials, 'A1');
+            await restored.control.writes;
+            assert.equal(fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8'), before);
+            assert.deepEqual(restored.control.profiles.get(key), { key, initials: 'A1' });
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+    it('exposes the proposal cooldown for the author identity without changing the voting threshold', () => {
+        const f = fixture();
+        f.add('copy', '1');
+        assert.equal(f.control.userState('1').proposalAvailableAt, 0);
+        const vote = f.control.openVote({ roomId: 'friends', peerId: '0', authorPeerId: '1' });
+        assert.equal(vote.threshold, 4);
+        assert.equal(f.control.userState('1').proposalAvailableAt, 190000);
+        assert.equal(f.control.userState('copy').proposalAvailableAt, 190000);
+        assert.equal(f.control.userState('2').proposalAvailableAt, 0);
+        f.advance(90001);
+        f.control.tick();
+        assert.equal(f.control.userState('1').proposalAvailableAt, 0);
+    });
     it('waits behind a manual match, including pauses, without replacing its attempt', () => {
         const f = fixture(),
             a = f.control.manual('0', 'slash'),

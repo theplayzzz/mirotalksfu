@@ -1,6 +1,9 @@
 /* The hub is a modeless window: no backdrop and no ownership of meeting controls. */
 :root {
     --rp-safe-bottom: 90px;
+    --rp-safe-left: 14px;
+    --rp-safe-right: 14px;
+    --rp-safe-top: 14px;
 }
 .room-play,
 .rp-dock,
@@ -21,11 +24,11 @@
 .room-play {
     position: fixed;
     z-index: 100;
-    left: 50%;
-    top: 24px;
+    left: calc((100vw + var(--rp-safe-left) - var(--rp-safe-right)) / 2);
+    top: max(24px, var(--rp-safe-top));
     bottom: var(--rp-safe-bottom);
     transform: translateX(-50%);
-    width: min(1140px, 85vw);
+    width: min(1140px, 85vw, calc(100vw - var(--rp-safe-left) - var(--rp-safe-right)));
     max-height: 790px;
     background: #211c2c;
     border: 1px solid #4d405a;
@@ -37,8 +40,8 @@
     text-align: left;
 }
 .room-play.is-max {
-    width: calc(100vw - 28px);
-    top: 14px;
+    width: calc(100vw - var(--rp-safe-left) - var(--rp-safe-right));
+    top: var(--rp-safe-top);
     max-height: none;
 }
 .room-play [hidden],
@@ -610,8 +613,7 @@
     text-align: right;
     color: #ffbd9f;
 }
-body.room-captcha-blur .Camera > video,
-body.room-captcha-blur .Camera > img.videoAvatarImage {
+body.room-captcha-blur [data-room-play-obscured='true'] {
     filter: blur(14px) !important;
 }
 .rp-captcha-prompt {
@@ -620,26 +622,18 @@ body.room-captcha-blur .Camera > img.videoAvatarImage {
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    max-width: 90%;
-    padding: 12px 17px !important;
-    box-shadow: 0 4px 22px #0007;
-    background: #211c2cf5 !important;
+    width: 36px;
+    height: 36px;
+    max-width: 85%;
+    padding: 0 !important;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
     border-color: #8a729b !important;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    align-items: center;
-    text-align: center;
-}
-.rp-captcha-prompt b {
-    color: #f7f2fc !important;
-    font-size: 12px;
-    line-height: 1.4;
-    white-space: nowrap;
-}
-.rp-captcha-prompt small {
-    font-size: 10px;
+    background: #211c2cf5 !important;
     color: #ffbd9f !important;
+    font-size: 23px;
+    box-shadow: 0 4px 18px #0007;
 }
 #roomUtilitiesButton.rp-has-captcha {
     box-shadow: 0 0 0 2px #ffac8d;
@@ -776,5 +770,220 @@ body.room-captcha-blur .Camera > img.videoAvatarImage {
     .rp-main > .rp-ballot button {
         padding: 5px 7px;
         font-size: 11px;
+    }
+}
+
+/* Call controls remain usable above this modeless window, including their menus. */
+body.room-play-open #bottomButtons {
+    z-index: 120 !important;
+}
+.room-play .rp-heading h2 {
+    color: #f7f2fc;
+}
+.room-play .rp-primary,
+.rp-challenge .rp-primary {
+    background: #ffac8d;
+    color: #302027;
+    border: 1px solid transparent;
+}
+.room-play .rp-primary:hover,
+.rp-challenge .rp-primary:hover {
+    background: #ffc0a7;
+}
+#rpContinue {
+    margin-left: auto;
+    background: transparent;
+    border-color: #665270;
+    color: #ffbd9f;
+    font-size: 11px;
+    padding: 4px 8px;
+}
+#rpContinue:not([hidden]) + #rpSession {
+    display: none;
+}
+.room-play.is-playing .rp-nav {
+    width: 55px;
+    padding-left: 5px;
+    padding-right: 5px;
+}
+.room-play.is-playing .rp-nav > button {
+    justify-content: center;
+}
+.room-play.is-playing .rp-nav > button b,
+.room-play.is-playing .rp-preferences summary span {
+    display: none;
+}
+.rp-preferences {
+    margin-top: auto;
+    color: #b8aec7;
+    font-size: 11px;
+}
+.rp-preferences summary,
+.rp-secondary summary,
+#rpProfileDetails summary {
+    cursor: pointer;
+    padding: 7px 0;
+    font-size: 12px;
+    color: #b8aec7;
+}
+.rp-preferences .rp-sound {
+    padding-top: 8px;
+}
+.room-play.is-playing .rp-preferences[open] {
+    position: absolute;
+    bottom: 8px;
+    left: 58px;
+    background: #211c2c;
+    border: 1px solid #50435e;
+    border-radius: 7px;
+    padding: 10px;
+    width: 155px;
+    z-index: 2;
+}
+#rpProfileDetails {
+    margin: 10px 0;
+}
+#rpProfileLabel {
+    font-family: Consolas, monospace;
+    color: #ffbd9f;
+    letter-spacing: 2px;
+}
+#rpRankRules {
+    font-size: 11px;
+    margin-bottom: 10px;
+}
+.rp-secondary {
+    margin: 18px 0;
+}
+.rp-secondary label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+}
+#rpVoteTarget {
+    display: block;
+    width: 100%;
+    max-width: 420px;
+    margin: 6px 0 12px;
+}
+.rp-target-label {
+    font-size: 11px;
+    color: #b8aec7;
+}
+#rpPropose {
+    font-size: 12px;
+}
+#rpQueue:empty {
+    display: none;
+}
+.rp-user {
+    padding: 8px 0;
+}
+.rp-user small {
+    margin-left: auto;
+}
+#rpRankMore,
+#rpHistoryMore {
+    margin-top: 12px;
+    border-color: transparent;
+    background: none;
+    color: #c2afd2;
+    font-size: 12px;
+}
+.rp-challenge {
+    position: fixed;
+    z-index: 105;
+    left: calc((100vw + var(--rp-safe-left) - var(--rp-safe-right)) / 2);
+    top: 42%;
+    transform: translate(-50%, -50%);
+    box-sizing: border-box;
+    width: min(350px, calc(100vw - var(--rp-safe-left) - var(--rp-safe-right) - 24px));
+    padding: 24px;
+    text-align: center;
+    color: #f7f2fc;
+    background: #211c2cf8;
+    border: 1px solid #8a729b;
+    border-radius: 12px;
+    box-shadow: 0 12px 55px #0007;
+    font-family: 'Segoe UI', sans-serif;
+}
+.rp-challenge[hidden] {
+    display: none !important;
+}
+.rp-challenge h2 {
+    font-size: 20px;
+    color: #f7f2fc;
+    margin: 10px 0;
+    line-height: 1.3;
+}
+.rp-challenge p {
+    font-size: 12px;
+    color: #c7b7d4;
+    margin: 8px 0 18px;
+}
+.rp-challenge button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 9px 20px;
+}
+.rp-challenge-close {
+    position: absolute;
+    top: 5px;
+    right: 6px;
+    padding: 2px 7px !important;
+    color: #c7b7d4 !important;
+    background: none;
+    border: 0;
+    font-size: 22px !important;
+}
+.rp-challenge-mark {
+    font-size: 32px;
+    color: #ffbd9f;
+}
+.rp-challenge :focus-visible {
+    outline: 2px solid #ffac8d;
+    outline-offset: 3px;
+}
+.rp-dock {
+    left: max(10px, calc(var(--rp-safe-left) - 4px));
+}
+#rpRestore {
+    font-size: 12px;
+    white-space: nowrap;
+    padding: 9px;
+}
+@media (max-width: 800px) {
+    .room-play {
+        width: calc(100vw - var(--rp-safe-left) - var(--rp-safe-right));
+        top: var(--rp-safe-top);
+    }
+    .rp-preferences summary span {
+        display: none;
+    }
+    .rp-preferences[open] {
+        position: absolute;
+        left: 58px;
+        bottom: 8px;
+        padding: 10px;
+        width: 155px;
+        background: #211c2c;
+        border: 1px solid #50435e;
+        border-radius: 7px;
+        z-index: 2;
+    }
+    .rp-preferences .rp-sound {
+        font-size: 10px;
+    }
+    #rpContinue {
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    #rpRankMore,
+    #rpHistoryMore {
+        padding-left: 0;
     }
 }

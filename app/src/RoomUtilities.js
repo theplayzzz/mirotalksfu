@@ -78,7 +78,13 @@ class RoomUtilities {
             };
             state.rolls.push({ ...roll, owner });
             if (state.rolls.length > HISTORY_LIMIT) state.rolls.shift();
-            context.room.sendToAll('utilityRolled', { session: state.session, now, roll });
+            // Use the admitted membership, just like history access. Room.sendToAll also
+            // reaches peers waiting in the lobby, who must not receive room roll data.
+            const peers = context.room.getPeers?.() || context.room.peers;
+            for (const [id, peer] of peers || []) {
+                if (!peer.closed && !peer.peer_lobby)
+                    context.room.send(id, 'utilityRolled', { session: state.session, now, roll });
+            }
             callback({ session: state.session, now, roll });
         });
     }

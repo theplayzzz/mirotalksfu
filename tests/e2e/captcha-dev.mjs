@@ -68,12 +68,10 @@ try {
     const room = state.rooms.find((r) => r.id === 'teste');
     targetId = room.users.find((u) => u.name === names[1]).id;
     assert.equal(room.users.find((u) => u.id === targetId).ready, true);
+    await player.ev("setParticipantViewMode('grid', true, false)");
     await api('/api/trigger', { roomId: 'teste', peerId: targetId, gameId: 'juggle' });
     await until(player, '!!document.querySelector(".rp-captcha-prompt:not([hidden])")');
-    assert.equal(
-        await player.ev('getComputedStyle(document.querySelector(".rp-captcha-prompt b")).color'),
-        'rgb(247, 242, 252)'
-    );
+    await until(player, '!document.getElementById("roomPlayChallenge").hidden');
     assert.equal(await player.ev('!!document.querySelector("#rpFrameHost iframe")'), false);
     assert.equal(await source.ev('!!document.querySelector("#rpFrameHost iframe")'), false);
     const framesBefore = await player.ev(
@@ -102,23 +100,40 @@ try {
         )
     );
     await shot(player, 'real-room-prompt');
+    // Exercise the actual RoomClient pin handler, not a synthetic class change.
+    await player.ev(
+        `document.getElementById(document.querySelector('video[data-room-captcha-screen=true]').id+'__pin').click()`
+    );
+    await until(player, '!!document.querySelector(".pinned-video-container > video[data-room-play-obscured=true]")');
+    assert.equal(
+        await player.ev('getComputedStyle(document.querySelector(".pinned-video-container > video")).filter'),
+        'blur(14px)'
+    );
+    await shot(player, 'real-room-pinned');
+    await player.ev('document.querySelector(".pinned-video-container").requestFullscreen()');
+    await until(player, 'document.fullscreenElement?.contains(document.getElementById("rpChallengeStart"))');
     const button = await player.ev(
-        '(()=>{const r=document.querySelector(".rp-captcha-prompt:not([hidden])").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()'
+        '(()=>{const r=document.getElementById("rpChallengeStart").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()'
     );
     await player.click(button.x, button.y);
+    await until(player, '!document.fullscreenElement && !!document.querySelector("#rpFrameHost iframe")');
     await until(player, child('!document.getElementById("result").hidden'), 18000);
     // The local result precedes its server acknowledgment across the public TLS connection.
     await until(player, '!document.body.classList.contains("room-captcha-blur")');
     await until(player, child('document.getElementById("resultScore").textContent.includes("registrada")'));
     assert.equal(await player.ev('document.body.classList.contains("room-captcha-blur")'), false);
-    await player.ev(child('document.querySelectorAll("#stars button")[4].click()'));
+    await player.ev(
+        child(
+            'document.getElementById("ratingDetails").open=true;document.querySelectorAll("#stars button")[4].click()'
+        )
+    );
     await until(player, child('document.getElementById("ratingStatus").textContent.includes("registrada")'));
     await shot(player, 'real-room-result');
     const after = await api('/api/state');
     assert.ok(after.attempts.some((a) => a.name === names[1] && a.outcome));
     await api('/api/release', { peerId: targetId });
     console.log(
-        `PASS development: actual SFU peers, synthetic video + audio screen, targeted delivery, live decoding under blur, game completion and rating persistence. Screenshots: ${shots}`
+        `PASS development: actual SFU peers, synthetic video + audio screen, targeted delivery, grid/pinned/fullscreen, live decoding under blur, game completion and rating persistence. Screenshots: ${shots}`
     );
 } finally {
     if (targetId) await api('/api/release', { peerId: targetId }).catch(() => {});

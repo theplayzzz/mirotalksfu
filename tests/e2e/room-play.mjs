@@ -59,6 +59,7 @@ io.on('connection', (socket) => {
             peers,
             getPeers: () => peers,
             getPeer: (id) => peers.get(id),
+            send: (id, event, data) => io.sockets.sockets.get(id)?.emit(event, data),
             sendToAll: (event, data) => {
                 for (const id of peers.keys()) io.sockets.sockets.get(id)?.emit(event, data);
             },
@@ -196,7 +197,7 @@ try {
     assert.equal(await alice.ev('document.body.classList.contains("room-captcha-blur")'), false);
     await alice.ev(
         frame(
-            `document.querySelectorAll('#stars button')[3].click();${$('initials')}.value='ACE';${$('initialsForm')}.requestSubmit()`
+            `document.getElementById('ratingDetails').open=true;document.querySelectorAll('#stars button')[3].click();${$('initials')}.value='ACE';${$('initialsForm')}.requestSubmit()`
         )
     );
     await until(alice, frame(`${$('ratingStatus')}.textContent.includes('registrada')`));
@@ -239,7 +240,7 @@ try {
     await hub(alice, 'vote');
     await until(alice, 'document.querySelectorAll(".rp-user").length===5');
     await alice.ev(
-        `(()=>{const rows=[...document.querySelectorAll('.rp-user')];rows.find(r=>r.textContent.includes('Bob')).querySelector('button').click()})()`
+        `document.getElementById('rpVoteTarget').value=${JSON.stringify(bobId)};document.getElementById('rpVoteTarget').dispatchEvent(new Event('change'));document.getElementById('rpPropose').click()`
     );
     await until(alice, `!${$('roomPlayBallot')}.hidden`);
     await until(bob, `!${$('roomPlayBallot')}.hidden`);
