@@ -41,28 +41,37 @@
                         <h1 id="resultTitle"></h1>
                         <p id="resultCopy"></p>
                         <strong id="resultScore">Registrando sua marca…</strong>
-                        <form id="initialsForm">
+                        <form id="initialsForm" hidden>
                             <label
-                                >Sua sigla
+                                >Suas três letras
                                 <input
                                     id="initials"
                                     maxlength="3"
-                                    pattern="[A-Za-z0-9]{1,3}"
+                                    minlength="3"
+                                    pattern="[A-Za-z]{3}"
+                                    placeholder="ABC"
                                     required
                                     aria-label="Sigla no ranking"
                                     autocomplete="off" /></label
-                            ><button>Salvar</button><button type="button" id="ranking">Ver ranking ↗</button>
+                            ><button>Salvar</button>
                         </form>
                         <div class="actions">
                             <button id="retry" class="primary">Tentar novamente ↻</button
                             ><button id="release">Liberar acesso</button>
                         </div>
                         <button id="nextVerification" hidden>Fazer verificação →</button>
-                        <fieldset class="rating">
-                            <legend>Avalie esta verificação</legend>
-                            <div id="stars" role="radiogroup" aria-label="Avaliação de uma a cinco estrelas"></div>
-                            <span id="ratingStatus" role="status">Avaliação opcional.</span>
-                        </fieldset>
+                        <div class="result-links">
+                            <button type="button" id="ranking">Ver ranking ↗</button>
+                            <button type="button" id="editInitials" hidden>Editar sigla</button>
+                        </div>
+                        <details id="ratingDetails">
+                            <summary>Avaliar jogo</summary>
+                            <fieldset class="rating">
+                                <legend class="sr-only">Avaliação do jogo</legend>
+                                <div id="stars" role="radiogroup" aria-label="Avaliação de uma a cinco estrelas"></div>
+                                <span id="ratingStatus" role="status">Avaliação opcional.</span>
+                            </fieldset>
+                        </details>
                     </div>
                 </div>
                 <p id="error" role="alert" hidden></p>

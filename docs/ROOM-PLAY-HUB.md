@@ -2,7 +2,8 @@
 
 The gamepad button in the call toolbar opens a modeless window with Games, Ranking,
 Boiolômetro and Dice. No game is attached to a video or to the pinned layout. The
-maximum window size reserves space for the existing call toolbar. Minimizing keeps
+maximum window size reserves space for the existing call toolbar, including its
+vertical position and microphone menus. Minimizing keeps
 one restore/close dock on the left; closing ends the current assignment and any
 verification waiting behind it. Neither action touches media transports.
 
@@ -14,7 +15,9 @@ Duplicate tabs share voting eligibility, game ownership and the target cooldown.
 
 - Manual: assigned → playing ↔ paused → result → next game or close.
 - Verification while idle: assigned; blur only the target's participant images and
-  avatars. The target clicks a tile prompt or the hub banner to open and start it.
+  avatars, including pinned tiles. One invitation opens the game even without any
+  tiles; small tile icons are secondary entry points. Nothing starts before a click.
+  A video-specific fullscreen exits before the game opens; app fullscreen is retained.
 - Verification during manual play (including a paused match): one pending request,
   no blur and no focus change. The manual result remains visible. Verification
   becomes available after that result, and starts only on another click.
@@ -29,7 +32,10 @@ Switching hub tabs suspends the iframe without destroying it. A manually paused
 game does not auto-resume on restore. Both entry points use identical pause rules
 and a fixed logical canvas. Replies have assignment IDs, a bridge nonce and an
 origin/source check; closure generations prevent late replies from reopening a game.
-Mutating hub commands also carry idempotency keys.
+Mutating hub commands also carry idempotency keys. An accepted assignment is resumable
+even when its start acknowledgment timed out before the iframe was created. A player
+that fails to become ready within 18 seconds is closed server-side, removes blur
+permanently for that assignment and leaves a message in the library.
 
 ## Votes
 
@@ -57,8 +63,9 @@ Natural wins and losses automatically record a mark; incomplete attempts do not.
 Both manual and CAPTCHA matches use one board per game, rule revision, duration
 and intensity. Configuration changes leave prior records intact, while the current
 board compares only the current configuration. Each identity contributes its best
-mark; ties share a rank. Initials (1–3 ASCII letters/numbers) are optional profile
-labels and cannot edit a mark.
+mark; ties share a rank. Initials are optional profile labels and cannot edit a
+mark. New labels must contain exactly three letters A–Z;
+existing stored labels and marks remain readable. The chosen label is remembered.
 
 Survival games rank by seconds; defense/count games by successful actions. Course
 games put completed courses first, ordered by time; unfinished courses use progress.
@@ -67,6 +74,13 @@ room scores are client-reported gameplay, not an anti-cheat tournament system.
 The existing append-only CAPTCHA store persists attempts, latest game ratings and
 initials. The private panel keeps wins, losses, retries, abandonment and rating means.
 
+The library shows names and icons; the active game collapses the navigation to icons.
+Continue is available from every tab and the minimized dock. Ranking initially shows
+the top five plus the player's position, with the complete board on demand. The result
+prioritizes the mark and next action, asks for initials only when needed and keeps
+rating behind “Avaliar jogo”. A participant proposal uses one target selector and one
+“Propor e votar Sim” button; optional game selection and rules are collapsed.
+
 ## Dice
 
 The room server owns randomness, roll IDs, sequence, names and the reveal timestamp.
@@ -74,6 +88,8 @@ The shared last-50 history deduplicates acknowledgment/broadcast delivery. A sta
 identity can roll every 1.2 seconds; different people roll independently. Closing the
 hub cannot cancel a roll already accepted by the server. Reconnect fetches history
 without replaying old animations.
+Only admitted room peers receive roll broadcasts; lobby peers and other rooms cannot
+receive them. The initial history shows three recent rolls, with the rest on demand.
 
 The 3D scene uses pinned MIT `@3d-dice/dice-box-threejs` 0.0.12 (Three.js + Cannon ES),
 which supports predetermined physical outcomes. It is built as a separate, lazy
@@ -92,6 +108,10 @@ WebGL failure falls back to the same recorded result, never a new roll.
   blur, natural results, stars/initials/ranking, manual/pending/close, quorum/queue,
   simultaneous real 3D rolls, all 14 iframe games, and mobile/callbar geometry.
 - `tests/e2e/captcha.mjs` and `room-utilities.mjs` delegate to that current suite.
+- `node tests/e2e/room-play-layouts.mjs`: grid, pinned video/avatar, small tiles,
+  no tiles, video/app fullscreen, vertical callbar and microphone dropdown, manual
+  game with a pending verification, delayed start acknowledgment, failed player
+  loading and recovery from proposal cooldown/full-queue errors with independent peers.
 - `tests/e2e/captcha-dev.mjs`: opt-in development SFU test using only named synthetic
   peers in the isolated `teste` room. It checks live video/audio under local blur,
   game completion and persisted feedback without changing global game settings.

@@ -288,12 +288,15 @@ class RoomPlayControl extends CaptchaControl {
     profile(peerId, value) {
         const { key, peer, roomId } = this.context(peerId);
         if (value !== undefined) {
-            if (typeof value !== 'string' || !/^[a-zA-Z0-9]{1,3}$/.test(value))
-                throw fault('Use de uma a três letras ou números para sua sigla.');
+            if (typeof value !== 'string' || !/^[a-zA-Z]{3}$/.test(value))
+                throw fault('Use exatamente três letras de A a Z para sua sigla.');
             this.record({ kind: 'profile', profile: { key, initials: initials(value) } });
             this.changed(roomId);
         }
-        return this.profiles.get(key) || { key, initials: initials(peer.peer_name) };
+        const profile = this.profiles.get(key);
+        return profile
+            ? { ...profile, saved: /^[A-Z]{3}$/.test(profile.initials) }
+            : { key, initials: initials(peer.peer_name), saved: false };
     }
     ranking(peerId, gameId) {
         const { roomId, key } = this.context(peerId),
@@ -516,6 +519,7 @@ class RoomPlayControl extends CaptchaControl {
             enabled: this.enabled,
             selfId: peerId,
             profile: this.profile(peerId),
+            proposalAvailableAt: this.proposalAt.get(key) || 0,
             busyElsewhere: !!this.occupied(key) && this.occupied(key).peerId !== peerId,
             catalog: this.catalog.map((g) => ({
                 ...g,
@@ -586,7 +590,7 @@ class RoomPlayControl extends CaptchaControl {
         handler('playState', () => this.userState(socket.id));
         handler('playManualStart', (d) => ({ assignment: this.manual(socket.id, d.gameId) }), true);
         handler('playActivate', () => ({ assignment: this.activate(socket.id) }), true);
-        handler('playClose', () => this.release(socket.id, 'closed'), true);
+        handler('playClose', (d) => this.release(socket.id, d.reason === 'load_error' ? 'load_error' : 'closed'), true);
         handler('playPause', (d) => this.pause(socket.id, d.assignmentId, !!d.paused), true);
         handler(
             'playPropose',

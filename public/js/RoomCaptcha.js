@@ -18,6 +18,13 @@ window.RoomCaptcha = (() => {
         visible = false,
         minimized = false,
         maximized = false;
+    let challenge,
+        ballot,
+        dock,
+        barObserver,
+        lastOpener,
+        starting = false,
+        proposing = false;
     let data,
         epoch = 0,
         poll,
@@ -107,16 +114,16 @@ window.RoomCaptcha = (() => {
         hub.setAttribute('role', 'dialog');
         hub.setAttribute('aria-label', 'Jogos e utilidades');
         hub.setAttribute('aria-modal', 'false');
-        hub.innerHTML = `<header class="rp-header"><span class="rp-brand">◈</span><b>Jogos e utilidades</b><span id="rpSession">Sala conectada</span><div class="rp-window-actions"><button id="rpMinimize" title="Minimizar" aria-label="Minimizar jogos">−</button><button id="rpMaximize" title="Maximizar" aria-label="Maximizar jogos">⛶</button><button id="rpClose" title="Fechar" aria-label="Fechar jogos">×</button></div></header>
-        <div class="rp-body"><nav class="rp-nav" aria-label="Seções do painel"><button data-view="games"><span>◈</span><b>Jogos</b></button><button data-view="ranking"><span>♜</span><b>Ranking</b></button><button data-view="vote"><span>◎</span><b>Boiolômetro</b><i id="rpBadge" hidden>1</i></button><button data-view="dice"><span>⚄</span><b>Dados</b></button><label class="rp-sound" title="Som das votações"><input id="rpSound" type="checkbox"> Som de votação</label><input id="rpVolume" class="rp-volume" type="range" min="0" max="0.5" step="0.02" aria-label="Volume da votação"></nav>
+        hub.innerHTML = `<header class="rp-header"><span class="rp-brand">◈</span><b>Jogos e utilidades</b><button id="rpContinue" hidden>Continuar partida →</button><span id="rpSession">Sala conectada</span><div class="rp-window-actions"><button id="rpMinimize" title="Minimizar" aria-label="Minimizar jogos">−</button><button id="rpMaximize" title="Maximizar" aria-label="Maximizar jogos">⛶</button><button id="rpClose" title="Fechar" aria-label="Fechar jogos">×</button></div></header>
+        <div class="rp-body"><nav class="rp-nav" aria-label="Seções do painel"><button data-view="games"><span>◈</span><b>Jogos</b></button><button data-view="ranking"><span>♜</span><b>Ranking</b></button><button data-view="vote"><span>◎</span><b>Boiolômetro</b><i id="rpBadge" hidden>1</i></button><button data-view="dice"><span>⚄</span><b>Dados</b></button><details class="rp-preferences"><summary aria-label="Preferências de som" title="Preferências de som">⚙ <span>Som</span></summary><label class="rp-sound"><input id="rpSound" type="checkbox"> Som de votação</label><input id="rpVolume" class="rp-volume" type="range" min="0" max="0.5" step="0.02" aria-label="Volume da votação"></details></nav>
         <main class="rp-main"><div id="rpPending" hidden><span id="rpPendingText"></span><button id="rpActivate">Fazer verificação →</button></div>
-        <section id="rpGames" class="rp-pane"><div id="rpLibrary"><div class="rp-heading"><div><small>ESCOLHA SUA PRÓXIMA PARTIDA</small><h2>Um intervalo para jogar.</h2></div><button id="rpResume" hidden>Retomar partida →</button></div><p class="rp-muted">Só o mouse. Sua melhor marca vai para o ranking da sala.</p><div id="rpCatalog" class="rp-catalog"></div></div><div id="rpStage" hidden><div class="rp-stage-tools"><button id="rpBack">‹ Jogos</button><span id="rpGameName"></span><button id="rpPause" aria-label="Pausar ou continuar partida" title="Pausar ou continuar">Ⅱ</button></div><div id="rpFrameHost"></div></div></section>
-        <section id="rpRanking" class="rp-pane" hidden><div class="rp-heading"><div><small>RECORDES DA SALA</small><h2>Ranking</h2></div><select id="rpRankGame" aria-label="Jogo do ranking"></select></div><form id="rpProfile"><label>Sua sigla <input id="rpInitials" maxlength="3" pattern="[A-Za-z0-9]{1,3}" required autocomplete="off" aria-label="Sua sigla no ranking"></label><button>Salvar</button><span id="rpProfileStatus"></span></form><p id="rpRankRules" class="rp-muted"></p><div id="rpRankRows"></div></section>
-        <section id="rpVote" class="rp-pane" hidden><div class="rp-heading"><div><small>QUEM PASSA PELA ANÁLISE?</small><h2>Boiolômetro</h2></div><select id="rpVoteGame" aria-label="Jogo da proposta"><option value="random">Jogo aleatório</option></select></div><p class="rp-muted">Propor já conta como seu voto Sim. Mais de 30% das pessoas online na abertura aprovam. Uma votação por vez; as demais aguardam na fila.</p><div id="rpQueue"></div><div id="rpUsers" class="rp-users"></div></section>
-        <section id="rpDice" class="rp-pane" hidden><div class="rp-heading"><div><small>A SORTE É COMPARTILHADA</small><h2>Dados e moeda</h2></div><span class="rp-muted">Histórico da sala</span></div><div class="rp-roll-actions"><button data-roll="d6">⚄ <b>d6</b></button><button data-roll="d10">◇ <b>d10</b></button><button data-roll="d20">⬡ <b>d20</b></button><button data-roll="coin">◉ <b>Cara ou coroa</b></button></div><div id="rpDiceMount"></div><ol id="rpHistory" aria-label="Histórico compartilhado de rolagens"></ol></section>
+        <section id="rpGames" class="rp-pane"><div id="rpLibrary"><div class="rp-heading"><div><h2>Escolha um jogo.</h2></div><button id="rpResume" hidden>Retomar partida →</button></div><p class="rp-muted">Jogue com o mouse. Sua melhor marca fica no ranking.</p><div id="rpCatalog" class="rp-catalog"></div></div><div id="rpStage" hidden><div class="rp-stage-tools"><button id="rpBack">‹ Jogos</button><span id="rpGameName"></span><button id="rpPause" aria-label="Pausar ou continuar partida" title="Pausar ou continuar">Ⅱ</button></div><div id="rpFrameHost"></div></div></section>
+        <section id="rpRanking" class="rp-pane" hidden><div class="rp-heading"><div><small>RECORDES DA SALA</small><h2>Ranking</h2></div><select id="rpRankGame" aria-label="Jogo do ranking"></select></div><details id="rpProfileDetails"><summary>Sua sigla · <b id="rpProfileLabel">JOG</b></summary><form id="rpProfile"><label>Sua sigla <input id="rpInitials" maxlength="3" minlength="3" pattern="[A-Za-z]{3}" required autocomplete="off" aria-label="Sua sigla no ranking"></label><button>Salvar</button><span id="rpProfileStatus"></span></form></details><p id="rpRankRules" class="rp-muted"></p><div id="rpRankRows"></div><button id="rpRankMore" hidden>Ver ranking completo</button></section>
+        <section id="rpVote" class="rp-pane" hidden><div class="rp-heading"><h2>Boiolômetro</h2></div><p class="rp-muted">Quem passa pela análise?</p><label class="rp-target-label" for="rpVoteTarget">Participante</label><select id="rpVoteTarget" aria-label="Participante da votação"></select><button id="rpPropose" class="rp-primary">Propor e votar Sim</button><details class="rp-secondary"><summary>Escolher jogo e ver regras</summary><label>Jogo<select id="rpVoteGame"><option value="random">Jogo aleatório</option></select></label><p class="rp-muted">Mais de 30% da sala na abertura aprovam. Seu voto Sim já conta. Uma votação por vez.</p></details><div id="rpQueue"></div><details class="rp-secondary"><summary>Participantes online</summary><div id="rpUsers" class="rp-users"></div></details></section>
+        <section id="rpDice" class="rp-pane" hidden><div class="rp-heading"><div><small>A SORTE É COMPARTILHADA</small><h2>Dados e moeda</h2></div><span class="rp-muted">Histórico da sala</span></div><div class="rp-roll-actions"><button data-roll="d6">⚄ <b>d6</b></button><button data-roll="d10">◇ <b>d10</b></button><button data-roll="d20">⬡ <b>d20</b></button><button data-roll="coin">◉ <b>Cara ou coroa</b></button></div><div id="rpDiceMount"></div><ol id="rpHistory" aria-label="Histórico compartilhado de rolagens"></ol><button id="rpHistoryMore" hidden>Ver histórico completo</button></section>
         <p id="rpStatus" role="status" aria-live="polite"></p></main></div>`;
         document.body.append(hub);
-        const dock = node('div', '', 'rp-dock');
+        dock = node('div', '', 'rp-dock');
         dock.id = 'roomPlayDock';
         dock.hidden = true;
         dock.append(
@@ -128,11 +135,21 @@ window.RoomCaptcha = (() => {
             Object.assign(node('button', '×'), { id: 'rpDockClose', title: 'Fechar jogos', ariaLabel: 'Fechar jogos' })
         );
         document.body.append(dock);
-        const vote = node('aside', '', 'rp-ballot');
+        const vote = (ballot = node('aside', '', 'rp-ballot'));
         vote.id = 'roomPlayBallot';
         vote.hidden = true;
         vote.setAttribute('aria-label', 'Votação da sala');
         document.body.append(vote);
+        challenge = node('section', '', 'rp-challenge notranslate');
+        challenge.id = 'roomPlayChallenge';
+        challenge.hidden = true;
+        challenge.setAttribute('translate', 'no');
+        challenge.setAttribute('aria-label', 'CAPTCHA do Boiolômetro');
+        challenge.innerHTML =
+            '<button id="rpChallengeClose" class="rp-challenge-close" aria-label="Fechar verificação" title="Fechar">×</button><span class="rp-challenge-mark" aria-hidden="true">◎</span><h2>CAPTCHA do Boiolômetro</h2><p>Você foi escolhido para a análise.</p><button id="rpChallengeStart" class="rp-primary">Começar</button>';
+        document.body.append(challenge);
+        $('rpChallengeClose').onclick = close;
+        $('rpChallengeStart').onclick = openVerification;
         const dice = node('aside', '', 'rp-dice-viewer');
         dice.id = 'roomPlayDiceViewer';
         dice.hidden = true;
@@ -142,7 +159,8 @@ window.RoomCaptcha = (() => {
         $('rpMinimize').onclick = () => hide(true);
         $('rpClose').onclick = close;
         $('rpDockClose').onclick = close;
-        $('rpRestore').onclick = () => show(view);
+        $('rpRestore').onclick = () => (data?.active ? openGame(data.active.phase === 'assigned') : show(view));
+        $('rpContinue').onclick = () => openGame(data?.active?.phase === 'assigned');
         $('rpMaximize').onclick = () => {
             maximized = !maximized;
             hub.classList.toggle('is-max', maximized);
@@ -155,9 +173,19 @@ window.RoomCaptcha = (() => {
             button.onclick = () => show(button.dataset.view);
         });
         $('rpBack').onclick = () => library(true);
-        $('rpResume').onclick = () => openGame(false);
+        $('rpResume').onclick = () => openGame(data?.active?.phase === 'assigned');
         $('rpPause').onclick = () => post('captcha:toggle-pause');
         $('rpActivate').onclick = () => openVerification();
+        $('rpPropose').onclick = propose;
+        $('rpVoteTarget').onchange = proposalButton;
+        $('rpRankMore').onclick = () => {
+            $('rpRankMore').dataset.expanded = 'true';
+            loadRanking();
+        };
+        $('rpHistoryMore').onclick = () => {
+            $('rpHistoryMore').dataset.expanded = 'true';
+            diceUpdate(window.RoomUtilities.current());
+        };
         $('rpRankGame').onchange = () => {
             rankingGame = $('rpRankGame').value;
             loadRanking();
@@ -216,14 +244,55 @@ window.RoomCaptcha = (() => {
         observer.observe(document.body, { childList: true, subtree: true });
         window.addEventListener('resize', layout);
         window.addEventListener('message', bridge);
+        document.addEventListener('fullscreenchange', layout);
+        document.addEventListener('keydown', escapeWindow);
+        barObserver = new ResizeObserver(layout);
+        barObserver.observe($('bottomButtons') || document.body);
         unsubscribe = window.RoomUtilities?.subscribe(diceUpdate);
         layout();
     }
+    function overlayHost() {
+        const fs = document.fullscreenElement;
+        return fs &&
+            fs !== document.documentElement &&
+            fs !== document.body &&
+            !['VIDEO', 'IFRAME'].includes(fs.tagName)
+            ? fs
+            : document.body;
+    }
     function layout() {
-        const bar = $('bottomButtons')?.getBoundingClientRect();
-        const safe = bar && bar.top > innerHeight * 0.45 && bar.height ? Math.max(76, innerHeight - bar.top + 14) : 90;
-        document.documentElement.style.setProperty('--rp-safe-bottom', `${safe}px`);
+        const barNode = $('bottomButtons'),
+            bar = barNode?.getBoundingClientRect();
+        const column =
+            bar && bar.width && bar.height
+                ? bar.height > bar.width && bar.width < innerWidth * 0.4
+                : getComputedStyle(document.documentElement).getPropertyValue('--bottom-btns-flex-direction').trim() ===
+                  'column';
+        let left = 14,
+            right = 14,
+            top = 14,
+            bottom = 90;
+        if (column) {
+            bottom = 14;
+            if (bar?.width && bar.left > innerWidth / 2) right = Math.max(80, innerWidth - bar.left + 12);
+            else left = Math.max(88, (bar?.right || 76) + 12);
+        } else if (bar?.width && bar.height && bar.top < innerHeight * 0.3) {
+            top = bar.bottom + 12;
+            bottom = 14;
+        } else if (bar?.height && bar.top > innerHeight * 0.45) bottom = Math.max(76, innerHeight - bar.top + 14);
+        for (const [side, value] of Object.entries({ left, right, top, bottom }))
+            document.documentElement.style.setProperty('--rp-safe-' + side, value + 'px');
+        const host = overlayHost();
+        if (challenge && challenge.parentElement !== host) host.append(challenge);
+        if (dock && dock.parentElement !== host) host.append(dock);
+        renderBallot();
         tiles();
+    }
+    function escapeWindow(event) {
+        if (event.key === 'Escape' && visible && !event.defaultPrevented) {
+            event.preventDefault();
+            close();
+        }
     }
     function paused(value) {
         if (frame) post(value ? 'captcha:minimize' : 'captcha:expand');
@@ -231,9 +300,11 @@ window.RoomCaptcha = (() => {
     function show(next = view) {
         mount();
         unlockAudio();
+        if (!visible) lastOpener = document.activeElement;
         visible = true;
         minimized = false;
         hub.hidden = false;
+        document.body.classList.add('room-play-open');
         $('roomPlayDock').hidden = true;
         view = next;
         hub.querySelectorAll('[data-view]').forEach((b) => {
@@ -259,6 +330,7 @@ window.RoomCaptcha = (() => {
         renderBallot();
         $('roomUtilitiesButton')?.setAttribute('aria-expanded', 'true');
         tell('');
+        render();
         layout();
     }
     function hide(minimize) {
@@ -267,14 +339,16 @@ window.RoomCaptcha = (() => {
         minimized = !!minimize;
         hub.hidden = true;
         $('roomPlayDock').hidden = !minimize;
+        document.body.classList.remove('room-play-open');
         paused(true);
         moveDice(false);
         renderBallot();
         tiles();
         $('roomUtilitiesButton')?.setAttribute('aria-expanded', 'false');
     }
-    async function close() {
+    async function close(reason = 'closed') {
         if (!hub) return;
+        reason = reason === 'load_error' ? reason : 'closed';
         for (const a of [data?.active, data?.pending]) if (a) closedIds.add(a.id);
         while (closedIds.size > 50) closedIds.delete(closedIds.values().next().value);
         epoch++;
@@ -288,8 +362,9 @@ window.RoomCaptcha = (() => {
         hide(false);
         tiles();
         render();
+        lastOpener?.isConnected && lastOpener.focus({ preventScroll: true });
         try {
-            await request('playClose', {}, true);
+            await request('playClose', { reason }, true);
         } catch (error) {
             tell(error.message);
             sync();
@@ -309,15 +384,29 @@ window.RoomCaptcha = (() => {
         if (pause) paused(true);
         $('rpLibrary').hidden = false;
         $('rpStage').hidden = true;
-        $('rpResume').hidden = !frame;
+        $('rpResume').hidden = !data?.active;
     }
     function post(type, extra = {}) {
         if (frame?.contentWindow)
             frame.contentWindow.postMessage({ type, nonce, assignmentId: assignment?.id, ...extra }, location.origin);
     }
-    function openGame(begin = true) {
-        const a = data?.active;
-        if (!a) return;
+    async function openGame(begin = true) {
+        const a = data?.active,
+            g = epoch;
+        if (!a || starting) return;
+        const fs = document.fullscreenElement;
+        if (fs && fs !== document.documentElement && fs !== document.body) {
+            starting = true;
+            try {
+                await document.exitFullscreen();
+            } catch {
+                tell('Saia da tela cheia para abrir o jogo.');
+                return;
+            } finally {
+                starting = false;
+            }
+            if (g !== epoch || data?.active?.id !== a.id) return;
+        }
         show('games');
         $('rpLibrary').hidden = true;
         $('rpStage').hidden = false;
@@ -342,10 +431,15 @@ window.RoomCaptcha = (() => {
         $('roomPlayDiceViewer').hidden = true;
         scene?.stop();
         render();
-        loadTimer = setTimeout(() => {
-            if (frame) {
-                tell('O jogo não carregou. Feche a janela para continuar.');
-                document.body.classList.remove('room-captcha-blur');
+        const loadedId = a.id;
+        loadTimer = setTimeout(async () => {
+            if (frame && assignment?.id === loadedId) {
+                const closeEpoch = epoch + 1;
+                await close('load_error');
+                if (epoch !== closeEpoch || !socket?.connected || visible || data?.active || data?.pending || frame)
+                    return;
+                show('games');
+                tell('O jogo não carregou. A verificação foi encerrada e suas imagens estão liberadas.');
             }
         }, 18000);
     }
@@ -396,14 +490,20 @@ window.RoomCaptcha = (() => {
                 : 'Sala conectada';
         $('rpBadge').hidden = !p && !(a && a.source !== 'manual' && a.phase !== 'result');
         const available = a && a.source !== 'manual' && a.phase === 'assigned' && !frame;
-        $('rpPending').hidden = !p && !available;
+        const activeUnfinished = a && a.phase !== 'result';
+        const onGame = visible && view === 'games' && frame && !$('rpStage').hidden;
+        hub.classList.toggle('is-playing', !!onGame && activeUnfinished);
+        $('rpPending').hidden = (!p && !available) || (waiting && onGame);
+        $('rpContinue').hidden = !a || onGame;
+        $('rpContinue').textContent = a?.source === 'manual' ? 'Continuar partida →' : 'Continuar verificação →';
         $('rpPendingText').textContent = waiting
             ? 'Uma verificação aguarda sua partida.'
             : available
               ? 'Há uma verificação disponível.'
               : 'Sua partida foi registrada. Há uma verificação disponível.';
         $('rpActivate').disabled = waiting;
-        $('rpResume').hidden = !frame;
+        $('rpResume').hidden = !a;
+        $('rpRestore').textContent = a ? '◈ Continuar' : '◈ Jogos';
         if (frame && a?.phase === 'result') post('play:pending', { pending: !!p });
         const key = JSON.stringify(data.catalog);
         if (key !== catalogKey) {
@@ -417,19 +517,18 @@ window.RoomCaptcha = (() => {
                 const button = node('button', '', 'rp-game-card');
                 button.type = 'button';
                 button.dataset.game = g.id;
-                button.append(
-                    node('span', icons[i % icons.length], 'rp-game-icon'),
-                    node('b', g.title),
-                    node('small', `${g.config.duration}s · só mouse`)
-                );
+                button.append(node('span', icons[i % icons.length], 'rp-game-icon'), node('b', g.title));
                 button.onclick = async () => {
                     if (!data || !socket?.connected) {
                         tell('A conexão com a sala está sendo restabelecida.');
                         return;
                     }
                     if (data.active && data.active.phase !== 'result') {
-                        if (frame) openGame(false);
-                        else tell('Sua partida está aberta em outra janela.');
+                        openGame(data.active.phase === 'assigned');
+                        return;
+                    }
+                    if (data.busyElsewhere) {
+                        tell('Sua partida está aberta em outra janela.');
                         return;
                     }
                     if (data.pending) {
@@ -453,13 +552,16 @@ window.RoomCaptcha = (() => {
             if (rankingGame && [...$('rpRankGame').options].some((o) => o.value === rankingGame))
                 $('rpRankGame').value = rankingGame;
         }
-        if (document.activeElement !== $('rpInitials')) $('rpInitials').value = data.profile.initials;
-        const uk = JSON.stringify([data.users, data.votes, data.participantVotes]);
+        if (document.activeElement !== $('rpInitials'))
+            $('rpInitials').value = /^[A-Z]{3}$/.test(data.profile.initials) ? data.profile.initials : 'JOG';
+        $('rpProfileLabel').textContent = data.profile.initials;
+        const uk = JSON.stringify([data.users, data.votes, data.participantVotes, data.proposalAvailableAt]);
         if (uk !== usersKey) {
             usersKey = uk;
             renderUsers();
             renderQueue();
         }
+        proposalButton();
         renderBallot();
         const rankKey = `${data.version}:${rankingGame}`;
         if (visible && view === 'ranking' && rankKey !== lastRankingKey) {
@@ -468,41 +570,49 @@ window.RoomCaptcha = (() => {
         }
     }
     function renderUsers() {
+        const select = $('rpVoteTarget'),
+            selected = select.value;
+        select.replaceChildren(new Option('Escolha alguém online', ''));
         $('rpUsers').replaceChildren();
         for (const user of data.users) {
+            const option = new Option(user.name + (user.mine ? ' · você' : ''), user.id);
+            option.disabled = !user.canChallenge;
+            select.append(option);
             const row = node('div', '', 'rp-user');
-            const avatar = node('span', user.name.slice(0, 2).toUpperCase(), 'rp-avatar');
-            const copy = node('div');
-            copy.append(
-                node('b', user.name + (user.mine ? ' · você' : '')),
-                node(
-                    'small',
-                    user.canChallenge
-                        ? 'Online'
-                        : user.ready
-                          ? 'Em partida ou intervalo de proteção'
-                          : 'Atualize a página para participar'
-                )
+            row.append(
+                node('span', user.name.slice(0, 2).toUpperCase(), 'rp-avatar'),
+                node('b', user.name),
+                node('small', user.canChallenge ? 'Disponível' : 'Indisponível agora')
             );
-            const button = node('button', 'Propor e votar Sim');
-            button.disabled = !data.participantVotes || !user.canChallenge;
-            button.onclick = async () => {
-                button.disabled = true;
-                unlockAudio();
-                try {
-                    await request('playPropose', { peerId: user.id, gameId: $('rpVoteGame').value }, true);
-                    tell('Proposta registrada.');
-                } catch (error) {
-                    tell(error.message);
-                } finally {
-                    changed();
-                }
-            };
-            row.append(avatar, copy, button);
             $('rpUsers').append(row);
         }
-        if (!data.participantVotes)
-            $('rpUsers').prepend(node('p', 'Propostas estão desativadas pelo líder.', 'rp-muted'));
+        if ([...select.options].some((o) => o.value === selected && !o.disabled)) select.value = selected;
+        proposalButton();
+    }
+    function proposalButton() {
+        if (!data || !$('rpPropose')) return;
+        const user = data.users.find((u) => u.id === $('rpVoteTarget').value);
+        $('rpPropose').disabled = proposing || !data.participantVotes || !user?.canChallenge;
+    }
+    async function propose() {
+        if (proposing) return;
+        proposing = true;
+        proposalButton();
+        unlockAudio();
+        try {
+            const reply = await request(
+                'playPropose',
+                { peerId: $('rpVoteTarget').value, gameId: $('rpVoteGame').value },
+                true
+            );
+            if (reply) tell(reply.vote?.status === 'queued' ? 'Proposta na fila.' : 'Voto enviado.');
+        } catch (error) {
+            tell(error.message);
+        } finally {
+            proposing = false;
+            proposalButton();
+            changed();
+        }
     }
     function renderQueue() {
         $('rpQueue').replaceChildren();
@@ -519,9 +629,9 @@ window.RoomCaptcha = (() => {
     }
     function renderBallot() {
         if (!hub) return;
-        const box = $('roomPlayBallot'),
+        const box = ballot,
             v = data?.votes.find((v) => v.status === 'open');
-        const target = visible ? hub.querySelector('.rp-main') : document.body;
+        const target = visible ? hub.querySelector('.rp-main') : overlayHost();
         if (box.parentElement !== target) target.prepend(box);
         box.hidden = !v;
         if (!v) return;
@@ -557,7 +667,7 @@ window.RoomCaptcha = (() => {
             );
         }
         $('rpVoteInfo').textContent =
-            `${v.yes}/${v.threshold} votos Sim · ${Math.max(0, Math.ceil((v.expiresAt - Date.now()) / 1000))}s`;
+            `${v.yes} de ${v.threshold} votos · ${Math.max(0, Math.ceil((v.expiresAt - Date.now()) / 1000))}s`;
     }
     async function loadRanking() {
         if (!data || !visible || view !== 'ranking') return;
@@ -567,9 +677,9 @@ window.RoomCaptcha = (() => {
         try {
             const reply = await request('playRanking', { gameId: id });
             if (!reply || $('rpRankGame').value !== id) return;
-            $('rpRankRules').textContent =
-                `Melhor marca por pessoa · ${reply.config.duration}s · intensidade ${reply.config.intensity.toFixed(2)}. Partidas livres e verificações compartilham este ranking.`;
+            $('rpRankRules').textContent = 'Melhor marca por pessoa.';
             $('rpRankRows').replaceChildren();
+            $('rpRankMore').hidden = true;
             if (!reply.rows.length) {
                 $('rpRankRows').append(node('p', 'Ainda sem marcas. A primeira pode ser sua.', 'rp-empty'));
                 return;
@@ -577,7 +687,10 @@ window.RoomCaptcha = (() => {
             const table = node('table');
             table.innerHTML = '<thead><tr><th>Posição</th><th>Jogador</th><th>Marca</th></tr></thead>';
             const body = node('tbody');
-            for (const r of reply.rows) {
+            const expanded = $('rpRankMore').dataset.expanded === 'true';
+            $('rpRankMore').hidden = expanded || reply.rows.length <= 5;
+            const shown = expanded ? reply.rows : reply.rows.slice(0, 5);
+            for (const r of shown) {
                 const row = node('tr');
                 if (r.mine) row.className = 'is-mine';
                 row.append(
@@ -589,7 +702,7 @@ window.RoomCaptcha = (() => {
             }
             table.append(body);
             $('rpRankRows').append(table);
-            if (reply.mine && !reply.rows.some((r) => r.mine))
+            if (reply.mine && !shown.some((r) => r.mine))
                 $('rpRankRows').append(node('p', `Sua posição: ${reply.mine.rank} · ${reply.mine.label}`, 'rp-muted'));
         } catch (error) {
             tell(error.message);
@@ -606,27 +719,37 @@ window.RoomCaptcha = (() => {
         const blur = !!needsBlur();
         document.body.classList.toggle('room-captcha-blur', blur);
         const wanted = new Set();
-        if (blur)
-            for (const tile of document.querySelectorAll('.Camera')) {
-                if (!tile.querySelector('video,.videoAvatarImage')) continue;
-                wanted.add(tile);
-                let button = tile.querySelector(':scope > .rp-captcha-prompt');
-                if (!button) {
-                    button = node('button', '', 'rp-captcha-prompt');
-                    button.type = 'button';
-                    button.append(node('b', 'CAPTCHA do Boiolômetro'), node('small', 'Iniciar verificação →'));
-                    button.onclick = (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        openVerification();
-                    };
-                    tile.append(button);
-                }
-                button.hidden = visible;
+        const media = document.querySelectorAll(
+            '.Camera > video,.Camera > img.videoAvatarImage,.pinned-video-container > video,.pinned-video-container > img.videoAvatarImage'
+        );
+        document.querySelectorAll('[data-room-play-obscured]').forEach((element) => {
+            if (!blur || ![...media].includes(element)) element.removeAttribute('data-room-play-obscured');
+        });
+        for (const image of media) {
+            if (!blur) continue;
+            image.setAttribute('data-room-play-obscured', 'true');
+            const tile = image.parentElement;
+            if (wanted.has(tile)) continue;
+            wanted.add(tile);
+            let button = tile.querySelector(':scope > .rp-captcha-prompt');
+            if (!button) {
+                button = node('button', '◎', 'rp-captcha-prompt');
+                button.type = 'button';
+                button.setAttribute('aria-label', 'Abrir CAPTCHA do Boiolômetro');
+                button.title = 'CAPTCHA do Boiolômetro';
+                button.onclick = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openVerification();
+                };
+                tile.append(button);
             }
+            button.hidden = visible;
+        }
         document.querySelectorAll('.rp-captcha-prompt').forEach((button) => {
             if (!wanted.has(button.parentElement)) button.remove();
         });
+        if (challenge) challenge.hidden = !blur || visible || !!frame;
         const trigger = $('roomUtilitiesButton');
         if (trigger) trigger.classList.toggle('rp-has-captcha', blur);
     }
@@ -671,6 +794,7 @@ window.RoomCaptcha = (() => {
                 if (reply && assignment?.id === id)
                     post('play:recorded', {
                         score: reply.attempt.score,
+                        savedInitials: !!data.profile.saved,
                         initials: data.profile.initials,
                         pending: !!data.pending,
                     });
@@ -740,7 +864,9 @@ window.RoomCaptcha = (() => {
         if (!hub) return;
         const list = $('rpHistory');
         list.replaceChildren();
-        for (const r of state.rolls) {
+        const expanded = $('rpHistoryMore').dataset.expanded === 'true';
+        $('rpHistoryMore').hidden = expanded || state.rolls.length <= 3;
+        for (const r of expanded ? state.rolls : state.rolls.slice(0, 3)) {
             const li = node('li');
             const settled = r.revealAt <= state.now;
             li.append(
@@ -863,18 +989,25 @@ window.RoomCaptcha = (() => {
         clearTimeout(revealTimer);
         unsubscribe?.();
         observer?.disconnect();
+        barObserver?.disconnect();
         window.removeEventListener('resize', layout);
         window.removeEventListener('message', bridge);
+        document.removeEventListener('fullscreenchange', layout);
+        document.removeEventListener('keydown', escapeWindow);
         dropFrame();
         sceneGeneration++;
         scene?.dispose();
         scene = null;
         scenePromise = null;
         batch = [];
-        for (const id of ['roomPlayHub', 'roomPlayDock', 'roomPlayBallot', 'roomPlayDiceViewer']) $(id)?.remove();
+        for (const id of ['roomPlayHub', 'roomPlayDock', 'roomPlayBallot', 'roomPlayDiceViewer', 'roomPlayChallenge'])
+            $(id)?.remove();
         document.querySelectorAll('.rp-captcha-prompt').forEach((e) => e.remove());
         document.body.classList.remove('room-captcha-blur');
+        document.body.classList.remove('room-play-open');
         hub = null;
+        challenge = ballot = dock = null;
+        starting = proposing = false;
         data = null;
         socket = null;
         catalogKey = null;

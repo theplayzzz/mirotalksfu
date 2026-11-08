@@ -22,12 +22,28 @@ let assignment,
     config,
     rating = 0,
     pending = false,
-    hiddenPause = false;
+    hiddenPause = false,
+    profileConfirmed = false,
+    initialsEditing = false,
+    recordedLabel = '';
 const post = (type, data = {}) =>
     parent.postMessage({ type, nonce, assignmentId: assignment?.id, ...data }, location.origin);
 function message(text) {
     $('error').textContent = text;
     $('error').hidden = !text;
+}
+function suggestedInitials(value) {
+    const letters = String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '')
+        .slice(0, 3);
+    return letters.length === 3 ? letters : 'JOG';
+}
+function syncInitials() {
+    $('initialsForm').hidden = profileConfirmed && !initialsEditing;
+    $('editInitials').hidden = !profileConfirmed || initialsEditing;
 }
 function state(value) {
     $('ready').hidden = value !== 'ready';
@@ -82,6 +98,10 @@ function createPlayer() {
                 : 'Não precisa se sentir triste. A gente ainda te aceita mesmo assim.';
             $('release').textContent = manual ? 'Voltar à sala' : 'Liberar acesso';
             $('resultScore').textContent = 'Registrando sua marca…';
+            recordedLabel = '';
+            initialsEditing = false;
+            syncInitials();
+            $('ratingDetails').open = false;
             $('nextVerification').hidden = true;
             rating = 0;
             paintStars();
@@ -143,6 +163,21 @@ $('retry').addEventListener('click', start);
 $('release').addEventListener('click', () => post('captcha:release'));
 $('resume').addEventListener('click', () => game?.resume());
 $('ranking').addEventListener('click', () => post('play:ranking'));
+$('editInitials').addEventListener('click', () => {
+    initialsEditing = true;
+    syncInitials();
+    $('initials').focus({ preventScroll: true });
+    $('initials').select();
+});
+$('initials').addEventListener('input', () => {
+    initialsEditing = true;
+    $('initials').value = $('initials')
+        .value.normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '')
+        .slice(0, 3);
+});
 $('nextVerification').addEventListener('click', () => post('play:activate'));
 $('initialsForm').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -156,7 +191,9 @@ window.addEventListener('message', (event) => {
         if (!data.assignment?.config || typeof data.nonce !== 'string') return;
         assignment = data.assignment;
         nonce = data.nonce;
-        $('initials').value = data.profile?.initials || 'JOG';
+        $('initials').value = suggestedInitials(data.profile?.initials);
+        profileConfirmed = !!data.profile?.saved && /^[A-Za-z]{3}$/.test(data.profile?.initials || '');
+        syncInitials();
         Promise.all([artworkReady, playerSpritesReady])
             .then(() => {
                 createPlayer();
@@ -183,12 +220,20 @@ window.addEventListener('message', (event) => {
         $('start').disabled = $('retry').disabled = false;
         message(data.error || 'Não foi possível iniciar. Tente novamente.');
     } else if (data.type === 'play:recorded') {
-        $('resultScore').textContent = data.score ? `Marca registrada · ${data.score.label}` : 'Partida registrada.';
-        $('initials').value = data.initials || 'JOG';
+        recordedLabel = data.score ? `Marca registrada · ${data.score.label}` : 'Partida registrada.';
+        $('resultScore').textContent = recordedLabel;
+        if (!initialsEditing) $('initials').value = suggestedInitials(data.initials);
+        profileConfirmed = !!data.savedInitials && /^[A-Za-z]{3}$/.test(data.initials || '');
+        syncInitials();
         $('nextVerification').hidden = !data.pending;
     } else if (data.type === 'play:profile') {
-        $('initials').value = data.initials;
-        $('resultScore').textContent = 'Sigla salva no ranking.';
+        const restoreEditorFocus = $('initialsForm').contains(document.activeElement);
+        $('initials').value = suggestedInitials(data.initials);
+        profileConfirmed = /^[A-Za-z]{3}$/.test(data.initials || '');
+        initialsEditing = false;
+        syncInitials();
+        $('resultScore').textContent = recordedLabel ? `${recordedLabel} · Sigla salva.` : 'Sigla salva no ranking.';
+        if (restoreEditorFocus) $('editInitials').focus({ preventScroll: true });
     } else if (data.type === 'play:pending') $('nextVerification').hidden = !data.pending;
     else if (data.type === 'captcha:rated') $('ratingStatus').textContent = 'Avaliação registrada.';
     else if (data.type === 'captcha:minimize') {
