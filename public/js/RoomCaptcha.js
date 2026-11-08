@@ -39,8 +39,10 @@ window.RoomCaptcha = (() => {
     let scene,
         scenePromise,
         batch = [],
+        activeDice = [],
         batchTimer,
         revealTimer,
+        diceDeadline,
         sceneGeneration = 0,
         diceMounted = false,
         rankingGame,
@@ -120,7 +122,7 @@ window.RoomCaptcha = (() => {
         <section id="rpGames" class="rp-pane"><div id="rpLibrary"><div class="rp-heading"><div><h2>Escolha um jogo.</h2></div><button id="rpResume" hidden>Retomar partida →</button></div><p class="rp-muted">Jogue com o mouse. Sua melhor marca fica no ranking.</p><div id="rpCatalog" class="rp-catalog"></div></div><div id="rpStage" hidden><div class="rp-stage-tools"><button id="rpBack">‹ Jogos</button><span id="rpGameName"></span><button id="rpPause" aria-label="Pausar ou continuar partida" title="Pausar ou continuar">Ⅱ</button></div><div id="rpFrameHost"></div></div></section>
         <section id="rpRanking" class="rp-pane" hidden><div class="rp-heading"><div><small>RECORDES DA SALA</small><h2>Ranking</h2></div><select id="rpRankGame" aria-label="Jogo do ranking"></select></div><details id="rpProfileDetails"><summary>Sua sigla · <b id="rpProfileLabel">JOG</b></summary><form id="rpProfile"><label>Sua sigla <input id="rpInitials" maxlength="3" minlength="3" pattern="[A-Za-z]{3}" required autocomplete="off" aria-label="Sua sigla no ranking"></label><button>Salvar</button><span id="rpProfileStatus"></span></form></details><p id="rpRankRules" class="rp-muted"></p><div id="rpRankRows"></div><button id="rpRankMore" hidden>Ver ranking completo</button></section>
         <section id="rpVote" class="rp-pane" hidden><div class="rp-heading"><h2>Boiolômetro</h2></div><p class="rp-muted">Quem passa pela análise?</p><label class="rp-target-label" for="rpVoteTarget">Participante</label><select id="rpVoteTarget" aria-label="Participante da votação"></select><button id="rpPropose" class="rp-primary">Propor e votar Sim</button><details class="rp-secondary"><summary>Escolher jogo e ver regras</summary><label>Jogo<select id="rpVoteGame"><option value="random">Jogo aleatório</option></select></label><p class="rp-muted">Mais de 30% da sala na abertura aprovam. Seu voto Sim já conta. Uma votação por vez.</p></details><div id="rpQueue"></div><details class="rp-secondary"><summary>Participantes online</summary><div id="rpUsers" class="rp-users"></div></details></section>
-        <section id="rpDice" class="rp-pane" hidden><div class="rp-heading"><div><small>A SORTE É COMPARTILHADA</small><h2>Dados e moeda</h2></div><span class="rp-muted">Histórico da sala</span></div><div class="rp-roll-actions"><button data-roll="d6">⚄ <b>d6</b></button><button data-roll="d10">◇ <b>d10</b></button><button data-roll="d20">⬡ <b>d20</b></button><button data-roll="coin">◉ <b>Cara ou coroa</b></button></div><div id="rpDiceMount"></div><ol id="rpHistory" aria-label="Histórico compartilhado de rolagens"></ol><button id="rpHistoryMore" hidden>Ver histórico completo</button></section>
+        <section id="rpDice" class="rp-pane" hidden><div class="rp-heading"><h2>Dados e moeda</h2></div><p class="rp-dice-copy">Todo mundo na sala vê as mesmas rolagens.</p><div class="rp-roll-actions"><button data-roll="d6" aria-label="Rolar d6"><span aria-hidden="true">⚄</span><b>d6</b></button><button data-roll="d10" aria-label="Rolar d10"><span aria-hidden="true">◇</span><b>d10</b></button><button data-roll="d20" aria-label="Rolar d20"><span aria-hidden="true">⬡</span><b>d20</b></button><button data-roll="coin" aria-label="Lançar cara ou coroa"><span aria-hidden="true">◉</span><b>Cara ou coroa</b></button></div><p id="rpRollStatus" role="status" aria-live="polite">Escolha um dado ou lance a moeda.</p><div id="rpDiceMount"></div><h3 class="rp-history-title">Histórico da sala</h3><ol id="rpHistory" aria-label="Histórico compartilhado de rolagens"></ol><button id="rpHistoryMore" hidden>Ver histórico completo</button></section>
         <p id="rpStatus" role="status" aria-live="polite"></p></main></div>`;
         document.body.append(hub);
         dock = node('div', '', 'rp-dock');
@@ -205,6 +207,7 @@ window.RoomCaptcha = (() => {
         hub.querySelectorAll('[data-roll]').forEach(
             (button) =>
                 (button.onclick = () => {
+                    if (button.disabled) return;
                     unlockAudio();
                     window.RoomUtilities.roll(button.dataset.roll).catch((error) => tell(error.message));
                 })
@@ -225,8 +228,8 @@ window.RoomCaptcha = (() => {
             } catch {}
         };
         $('rpDiceDismiss').onclick = () => {
+            stopDice();
             $('roomPlayDiceViewer').hidden = true;
-            scene?.stop();
         };
         const trigger = $('roomUtilitiesButton');
         if (trigger) {
@@ -321,11 +324,13 @@ window.RoomCaptcha = (() => {
         if (view !== 'games') paused(true);
         else if (frame && !$('rpStage').hidden) paused(false);
         if (view === 'ranking') loadRanking();
-        if (view === 'dice') moveDice(true);
-        else moveDice(false);
+        if (view === 'dice') {
+            moveDice(true);
+            diceUpdate(window.RoomUtilities.current());
+        } else moveDice(false);
         if (view === 'games' && frame) {
+            stopDice();
             $('roomPlayDiceViewer').hidden = true;
-            scene?.stop();
         }
         renderBallot();
         $('roomUtilitiesButton')?.setAttribute('aria-expanded', 'true');
@@ -428,8 +433,8 @@ window.RoomCaptcha = (() => {
         frame.src = '/captcha/play/room.html';
         frame.onload = () => post('captcha:init', { assignment: a, profile: data.profile });
         $('rpFrameHost').append(frame);
+        stopDice();
         $('roomPlayDiceViewer').hidden = true;
-        scene?.stop();
         render();
         const loadedId = a.id;
         loadTimer = setTimeout(async () => {
@@ -860,17 +865,95 @@ window.RoomCaptcha = (() => {
             diceMounted = false;
         }
     }
+    function ownDie(roll, state = window.RoomUtilities?.current()) {
+        return roll.localOwn === true || roll.peerId === socket?.id || !!state?.selfRollIds?.includes(roll.id);
+    }
+    function diceSummary(rolls) {
+        const result = $('rpDiceResult');
+        result.replaceChildren();
+        for (const roll of rolls) {
+            const item = node('span', '', 'rp-dice-outcome');
+            item.dataset.rollId = roll.id;
+            item.title = roll.peerName;
+            const name = node('span', roll.peerName, 'rp-outcome-name');
+            item.append(
+                name,
+                node('small', roll.kind === 'coin' ? 'Moeda' : roll.kind),
+                node('b', window.RoomUtilities.result(roll))
+            );
+            result.append(item);
+        }
+    }
+    function diceControls(state = window.RoomUtilities?.current()) {
+        if (!hub || !state) return;
+        const own = (roll) => ownDie(roll, state);
+        const showingOwn = activeDice.some(own),
+            waitingOwn = batch.some(own);
+        const busy = !state.online || state.busy || showingOwn || waitingOwn;
+        hub.querySelectorAll('[data-roll]').forEach((button) => {
+            button.disabled = busy;
+            button.setAttribute('aria-disabled', String(busy));
+        });
+        const status = $('rpRollStatus');
+        status.dataset.state = !state.online
+            ? 'offline'
+            : state.pending || state.synchronizing
+              ? 'request'
+              : showingOwn
+                ? 'rolling'
+                : waitingOwn
+                  ? 'queued'
+                  : state.busy
+                    ? 'rolling'
+                    : 'ready';
+        status.textContent = !state.online
+            ? 'Reconectando à sala…'
+            : state.pending || state.synchronizing
+              ? 'Confirmando sua rolagem…'
+              : waitingOwn
+                ? 'Sua rolagem aparece em seguida.'
+                : showingOwn || state.busy
+                  ? 'Aguarde sua rolagem terminar.'
+                  : 'Escolha um dado ou lance a moeda.';
+    }
+    function stopDice() {
+        sceneGeneration++;
+        clearTimeout(batchTimer);
+        clearTimeout(revealTimer);
+        clearTimeout(diceDeadline);
+        batch = [];
+        activeDice = [];
+        scene?.stop();
+        if (!scene) scenePromise = null;
+        const viewer = $('roomPlayDiceViewer');
+        if (viewer) {
+            viewer.dataset.rolling = 'false';
+            viewer.dataset.activeRollIds = '[]';
+        }
+        diceControls();
+    }
     function diceUpdate(state, incoming = []) {
         if (!hub) return;
+        if (!state.online) stopDice();
         const list = $('rpHistory');
         list.replaceChildren();
         const expanded = $('rpHistoryMore').dataset.expanded === 'true';
         $('rpHistoryMore').hidden = expanded || state.rolls.length <= 3;
+        $('rpHistoryMore').textContent = `Ver as ${state.rolls.length} rolagens`;
         for (const r of expanded ? state.rolls : state.rolls.slice(0, 3)) {
             const li = node('li');
             const settled = r.revealAt <= state.now;
+            const person = node('span', '', 'rp-roll-person');
+            const name = node('span', r.peerName);
+            name.title = r.peerName;
+            const time = node(
+                'time',
+                new Date(r.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            );
+            time.dateTime = new Date(r.at).toISOString();
+            person.append(name, time);
             li.append(
-                node('span', r.peerName),
+                person,
                 node('small', r.kind === 'coin' ? 'Moeda' : r.kind),
                 node('b', settled ? window.RoomUtilities.result(r) : 'Rolando…')
             );
@@ -878,59 +961,113 @@ window.RoomCaptcha = (() => {
             list.append(li);
         }
         if (!state.rolls.length) list.append(node('li', 'Ninguém rolou ainda.', 'rp-empty'));
-        hub.querySelectorAll('[data-roll]').forEach((button) => (button.disabled = !state.online || state.busy));
-        if (incoming.length) {
-            batch.push(...incoming);
+        const playingGame = visible && view === 'games' && frame && !$('rpStage').hidden;
+        if (incoming.length && !playingGame) {
+            for (const roll of incoming) {
+                if (batch.some((r) => r.id === roll.id) || activeDice.some((r) => r.id === roll.id)) continue;
+                batch.push({ ...roll, localOwn: ownDie(roll, state) });
+            }
+            // Presentation stays bounded; every accepted roll remains in shared history.
+            while (batch.length > 12) {
+                const other = batch.findIndex((r) => !ownDie(r, state));
+                batch.splice(other < 0 ? 0 : other, 1);
+            }
             clearTimeout(batchTimer);
-            batchTimer = setTimeout(animateDice, 90);
+            batchTimer = setTimeout(animateDice, 120);
         }
+        if (!activeDice.length && !batch.length) {
+            const latest = state.rolls[0];
+            $('rpDiceWho').textContent = latest
+                ? `${latest.peerName} · ${latest.kind === 'coin' ? 'moeda' : latest.kind}`
+                : 'Mesa de dados';
+            if (latest && latest.revealAt <= state.now) diceSummary([latest]);
+            else $('rpDiceResult').textContent = latest ? 'Rolando…' : 'Role um dado para começar.';
+        }
+        diceControls(state);
     }
     async function animateDice() {
-        const rolls = batch
-            .splice(0)
-            .sort((a, b) => a.sequence - b.sequence)
-            .slice(0, 4);
-        if (!rolls.length || !hub) return;
-        if (
-            (visible && view === 'games' && frame && !$('rpStage').hidden) ||
-            (scenePromise && !scene) ||
-            $('roomPlayDiceViewer').dataset.rolling === 'true'
-        )
+        if (!hub || activeDice.length || !batch.length) return;
+        if (visible && view === 'games' && frame && !$('rpStage').hidden) {
+            batch = [];
+            diceControls();
             return;
+        }
+        // A new physical throw cannot alter a throw already in flight. Coalesce nearby
+        // arrivals, then serve the next group without dropping staggered participants.
+        batch.sort((a, b) => Number(ownDie(b)) - Number(ownDie(a)) || a.sequence - b.sequence);
+        const rolls = batch.splice(0, 4).sort((a, b) => a.sequence - b.sequence);
+        activeDice = rolls;
         const viewer = $('roomPlayDiceViewer');
         viewer.hidden = false;
         viewer.dataset.rolling = 'true';
+        viewer.dataset.activeRollIds = JSON.stringify(rolls.map((r) => r.id));
+        if (visible && view === 'dice' && innerHeight <= 480 && rolls.some((roll) => ownDie(roll))) {
+            const pane = $('rpDice');
+            const top = pane.scrollTop + viewer.getBoundingClientRect().top - pane.getBoundingClientRect().top - 8;
+            pane.scrollTo({
+                top: Math.max(0, top),
+                behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+            });
+        }
         $('rpDiceWho').textContent =
             rolls.length === 1
                 ? `${rolls[0].peerName} · ${rolls[0].kind === 'coin' ? 'moeda' : rolls[0].kind}`
                 : `${rolls.length} rolagens da sala`;
         $('rpDiceResult').textContent = 'Rolando…';
+        diceControls();
         const g = ++sceneGeneration;
+        const revealAt = Math.max(...rolls.map((r) => r.revealAt));
+        let motionDone = false;
+        const finish = () => {
+            if (g !== sceneGeneration || !hub || !motionDone || window.RoomUtilities.now() < revealAt) return;
+            sceneGeneration++;
+            clearTimeout(revealTimer);
+            clearTimeout(diceDeadline);
+            viewer.dataset.rolling = 'false';
+            viewer.dataset.activeRollIds = '[]';
+            diceSummary(rolls);
+            activeDice = [];
+            diceControls();
+            if (batch.length) {
+                clearTimeout(batchTimer);
+                batchTimer = setTimeout(animateDice, 350);
+            }
+        };
         clearTimeout(revealTimer);
-        revealTimer = setTimeout(
-            () => {
-                if (g !== sceneGeneration) return;
-                viewer.dataset.rolling = 'false';
-                $('rpDiceResult').textContent = rolls
-                    .map((r) => `${r.peerName}: ${window.RoomUtilities.result(r)}`)
-                    .join(' · ');
-            },
-            Math.max(0, Math.max(...rolls.map((r) => r.revealAt)) - window.RoomUtilities.now())
-        );
+        revealTimer = setTimeout(finish, Math.max(0, revealAt - window.RoomUtilities.now()) + 25);
+        clearTimeout(diceDeadline);
+        diceDeadline = setTimeout(() => {
+            if (g !== sceneGeneration || !hub) return;
+            scene?.stop();
+            if (!scene) scenePromise = null;
+            motionDone = true;
+            $('rpDiceWho').textContent = 'Resultado da sala · modo simples';
+            finish();
+        }, 10000);
         try {
             if (!scenePromise)
-                scenePromise = import('/captcha/play/dice.js').then((m) => m.createDiceScene($('rpDiceScene')));
+                scenePromise = import('/captcha/play/dice.js').then((m) => {
+                    if (!hub || g !== sceneGeneration) throw new Error('Animação encerrada.');
+                    return m.createDiceScene($('rpDiceScene'));
+                });
             const loaded = await scenePromise;
             if (!hub || g !== sceneGeneration) {
-                loaded.dispose();
+                if (loaded !== scene) loaded.dispose();
                 return;
             }
             scene = loaded;
             await scene.roll(rolls);
+            motionDone = true;
+            finish();
         } catch (error) {
+            if (g !== sceneGeneration || !hub) return;
             console.warn('3D dice unavailable:', error.message);
-            if (g === sceneGeneration && $('rpDiceWho'))
-                $('rpDiceWho').textContent = 'Resultado da sala · modo simples';
+            scene?.dispose();
+            scene = null;
+            scenePromise = null;
+            motionDone = true;
+            $('rpDiceWho').textContent = 'Resultado da sala · modo simples';
+            finish();
         }
     }
     async function connect(value) {
@@ -987,6 +1124,7 @@ window.RoomCaptcha = (() => {
         clearTimeout(loadTimer);
         clearTimeout(batchTimer);
         clearTimeout(revealTimer);
+        clearTimeout(diceDeadline);
         unsubscribe?.();
         observer?.disconnect();
         barObserver?.disconnect();
@@ -1000,6 +1138,7 @@ window.RoomCaptcha = (() => {
         scene = null;
         scenePromise = null;
         batch = [];
+        activeDice = [];
         for (const id of ['roomPlayHub', 'roomPlayDock', 'roomPlayBallot', 'roomPlayDiceViewer', 'roomPlayChallenge'])
             $(id)?.remove();
         document.querySelectorAll('.rp-captcha-prompt').forEach((e) => e.remove());
