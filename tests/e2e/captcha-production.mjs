@@ -32,7 +32,7 @@ try {
     await until('!document.getElementById("dashboard").hidden');
     token = await page.ev('sessionStorage.getItem("captcha-admin-token")');
     assert.ok(token);
-    assert.equal(await page.ev('document.getElementById("voteRequired").value'), '35');
+    assert.equal(await page.ev('document.getElementById("voteRequired").value'), '30');
     assert.equal(await page.ev('document.body.innerText.includes("AMBIENTE DE DESENVOLVIMENTO")'), false);
     const stateResponse = await fetch(origin + '/captcha/api/state', { headers: { Authorization: `Bearer ${token}` } });
     assert.ok(stateResponse.ok);

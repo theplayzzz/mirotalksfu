@@ -86,3 +86,40 @@ Produção atualizada com autorização explícita para reiniciar os serviços c
 
 Painel privado em `/captcha/`, chave própria e histórico vazio, automação desligada. Implantação, testes e observação pós-reinício descritos em [CAPTCHA.md](CAPTCHA.md#produção--01112026). Compose anterior: `/home/debian/mirotalksfu/compose.yaml.pre-deploy-20261101T032646Z`.
 
+## Painel de jogos e dados — 09/11/2026
+
+Publicado em 09/11/2026, com os serviços iniciados às 20:27 de Brasília. Código
+`0b0a0c43`, imagem `ghcr.io/theplayzzz/mirotalksfu@sha256:151ccc9c8f19a81fdf42cc93a66ddcc27da93a5ca1f23ced7129ef7c83894a88`.
+
+Foram promovidos somente o painel de jogos, ranking, Boiolômetro, dados e suas
+correções validadas no desenvolvimento, sobre a base de produção anterior. Os
+arquivos dos recursos promovidos conferem com o desenvolvimento `41ab933d`.
+`RoomClient.js` e `Room.js` permaneceram idênticos aos servidos antes da troca.
+
+- CI de produção: 492 testes passaram, 48 pendentes; build do player e testes dos
+  jogos aprovados. Execução: <https://github.com/theplayzzz/mirotalksfu/actions/runs/42719239780>.
+- Validação local da versão: 49 testes de coordenação, suíte de 14 jogos e matriz
+  de dados com oito clientes em duas salas aprovadas. O timeout local foi de 10 s
+  para acomodar o carregamento do módulo Room no Windows.
+- Produção: teste somente de leitura aprovou login privado, API protegida, os 14
+  jogos, HTML da sala, integração do painel e módulo 3D sem cache permanente.
+  Nenhum participante, sorteio, voto ou configuração foi acionado pelo teste.
+- Os seis arquivos servidos conferem com a versão publicada. O servidor confirma
+  a revelação dos dados em 4 s; a animação mantém os 3,4 s validados.
+- Chave administrativa, configurações e os 36 registros anteriores de partidas
+  foram preservados. Os dois serviços ficaram saudáveis, sem reinícios inesperados.
+  O desenvolvimento permaneceu na imagem anterior.
+
+A reinicialização foi autorizada na conversa; havia sete participantes antes da
+troca. É necessário recarregar a sala para receber os novos scripts.
+
+O backup privado dos dados do CAPTCHA está em
+`/home/debian/mirotalksfu/backups/captcha-pre-room-hub-20261109-0b0a0c4-final.tgz`
+(permissão 600). Compose anterior:
+`/home/debian/mirotalksfu/compose.yaml.pre-deploy-20261109T232657Z`.
+`bash /home/debian/mirotalk-dev/ops/rollback.sh prod` volta à imagem anterior;
+os volumes de dados continuam preservados.
+
+Sala: <https://livestream.grupogrowon.com.br/join/link>.
+Controle: <https://livestream.grupogrowon.com.br/captcha/> (mesma chave).
+
