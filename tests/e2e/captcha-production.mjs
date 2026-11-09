@@ -45,12 +45,20 @@ try {
     const script = await (await fetch(origin + '/js/RoomCaptcha.js')).text();
     assert.ok(script.includes("frame.src = '/captcha/play/room.html'"));
     assert.ok(script.includes('deve passar pelo Boiolômetro?'));
+    assert.ok(script.includes("hub.id = 'roomPlayHub'"));
+    assert.ok(script.includes('rpRollStatus'));
+    const room = await fetch(origin + '/join/link');
+    assert.equal(room.status, 200);
+    assert.ok((await room.text()).includes('aria-controls="roomPlayHub"'));
+    const dice = await fetch(origin + '/captcha/play/dice.js');
+    assert.equal(dice.status, 200);
+    assert.equal(dice.headers.get('cache-control'), 'no-cache');
     const shots = path.join(tmpdir(), 'captcha-production-shots');
     mkdirSync(shots, { recursive: true });
     const shot = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     writeFileSync(path.join(shots, 'control.png'), Buffer.from(shot.result.data, 'base64'));
     console.log(
-        `PASS production: private login, protected API, 14 games, 35% voting default, player and room integration. No participant or setting changed. Screenshot: ${shots}`
+        `PASS production: private login, protected API, 14 games, game hub, shared dice module and room integration. No participant or setting changed. Screenshot: ${shots}`
     );
 } finally {
     if (token)
